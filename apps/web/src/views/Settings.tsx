@@ -119,7 +119,7 @@ export function Settings(
     ? syncState.walletAddress
       ? `On - encrypted locally for ${shortAddr(syncState.walletAddress)}. Cross-device delivery starts when the sync relay is connected.`
       : "On - encrypted locally. Cross-device delivery starts when the sync relay is connected."
-    : "Off - stored only on this device. Turn on to encrypt them to your wallet and sync across devices (one signature, no gas).";
+    : "Off - stored only on this device. Turn on to encrypt them to your wallet and sync across devices (two signatures, no gas).";
   const handleSyncClick = async () => {
     setSyncMessage("");
     setSyncMessageKind("neutral");

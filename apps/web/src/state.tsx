@@ -7,6 +7,14 @@ import {
 } from "@app/transport";
 import { DEFAULT_TRANSPORT } from "./app.config";
 import { resolveEns, type EnsRecord } from "./ens";
+import {
+  AUTH_MESSAGE,
+  mergePayload,
+  pullRemoteBlob,
+  pushBlob,
+  type EncryptedSyncBlobSnapshot,
+  type SettingsSyncPayload,
+} from "./userSync";
 
 // ---------- storage helpers ----------
 const LS = {
@@ -257,7 +265,7 @@ interface SettingsPrefs {
   syncAcrossDevices: boolean;
   blocked: string[];
 }
-interface EncryptedSyncBlob {
+interface EncryptedSyncBlob extends EncryptedSyncBlobSnapshot {
   version: 1;
   algorithm: "AES-GCM";
   kdf: "HKDF-SHA-256";
@@ -286,6 +294,7 @@ interface SettingsPrefsCtx {
 const SettingsPrefsContext = createContext<SettingsPrefsCtx | null>(null);
 const SETTINGS_PREFS_KEY = "chat:settingsPrefs:v1";
 const SETTINGS_SYNC_BLOB_KEY = "chat:settingsSyncBlob:v1";
+const SETTINGS_SYNC_AUTH_SIG_PREFIX = "chirpy.sync.authSig.";
 const DEFAULT_SETTINGS_PREFS: SettingsPrefs = {
   readReceiptsDefault: true,
   syncAcrossDevices: false,
@@ -306,6 +315,12 @@ const bytesToBase64 = (bytes: Uint8Array) => {
   let binary = "";
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
   return btoa(binary);
+};
+const base64ToBytes = (value: string) => {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 };
 
 async function deriveSyncKey(signature: string, address: string): Promise<CryptoKey> {
@@ -345,14 +360,19 @@ async function requestWalletSyncKey(preferredAddress?: string): Promise<{ addres
   return { address, key: await deriveSyncKey(signature, address) };
 }
 
-async function encryptSettingsPayload(prefs: SettingsPrefs, key: CryptoKey, address: string): Promise<EncryptedSyncBlob> {
+async function requestWalletSyncAuthSignature(address: string): Promise<string> {
+  const ethereum = getInjectedEthereum();
+  if (!ethereum) throw new Error("No injected wallet was found. Open Chirpy in a browser with a wallet extension, then try again.");
+  const signature = await ethereum.request({
+    method: "personal_sign",
+    params: [bytesToHex(textEncoder.encode(AUTH_MESSAGE)), address],
+  });
+  if (typeof signature !== "string") throw new Error("Wallet did not return a sync authorization signature.");
+  return signature;
+}
+
+async function encryptSyncPayload(payload: SettingsSyncPayload, key: CryptoKey, address: string): Promise<EncryptedSyncBlob> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const payload = {
-    version: 1,
-    settingsPrefs: prefs,
-    savedMessages: [],
-    updatedAt: Date.now(),
-  };
   const ciphertext = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     key,
@@ -369,6 +389,41 @@ async function encryptSettingsPayload(prefs: SettingsPrefs, key: CryptoKey, addr
   };
 }
 
+const payloadFromPrefs = (prefs: SettingsPrefs, savedMessages: SettingsSyncPayload["savedMessages"] = []): SettingsSyncPayload => ({
+  version: 1,
+  settingsPrefs: prefs,
+  savedMessages,
+  updatedAt: Date.now(),
+});
+
+async function encryptSettingsPayload(
+  prefs: SettingsPrefs,
+  key: CryptoKey,
+  address: string,
+  savedMessages: SettingsSyncPayload["savedMessages"] = [],
+): Promise<EncryptedSyncBlob> {
+  return encryptSyncPayload(payloadFromPrefs(prefs, savedMessages), key, address);
+}
+
+async function decryptSettingsPayload(blob: EncryptedSyncBlob, key: CryptoKey): Promise<SettingsSyncPayload> {
+  const plaintext = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToBytes(blob.iv) },
+    key,
+    base64ToBytes(blob.ciphertext),
+  );
+  const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as SettingsSyncPayload;
+  return {
+    version: 1,
+    settingsPrefs: {
+      ...DEFAULT_SETTINGS_PREFS,
+      ...parsed.settingsPrefs,
+      blocked: Array.isArray(parsed.settingsPrefs?.blocked) ? parsed.settingsPrefs.blocked : [],
+    },
+    savedMessages: Array.isArray(parsed.savedMessages) ? parsed.savedMessages.filter((m) => typeof m?.id === "string") : [],
+    updatedAt: Number(parsed.updatedAt) || blob.updatedAt || Date.now(),
+  };
+}
+
 export function SettingsPrefsProvider({ children }: { children: React.ReactNode }) {
   const { identity, mode } = useIdentity();
   const [prefs, setPrefs] = useState<SettingsPrefs>(() =>
@@ -376,6 +431,11 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
   const existingSyncBlob = useMemo(() => LS.get<EncryptedSyncBlob | null>(SETTINGS_SYNC_BLOB_KEY, null), []);
   const syncKeyRef = useRef<CryptoKey | null>(null);
   const syncAddressRef = useRef<string | null>(existingSyncBlob?.address ?? null);
+  const authSigRef = useRef<string | null>(null);
+  const authSigAddressRef = useRef<string | null>(null);
+  const savedMessagesRef = useRef<SettingsSyncPayload["savedMessages"]>([]);
+  const pullOnSessionKeyRef = useRef(false);
+  const pushTimerRef = useRef<number | null>(null);
   const [syncState, setSyncState] = useState<SettingsSyncState>({
     walletAddress: existingSyncBlob?.address ?? null,
     encryptedAt: existingSyncBlob?.updatedAt ?? null,
@@ -383,21 +443,110 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
     isEncrypting: false,
   });
 
+  const getAuthSig = useCallback((address: string) => {
+    const addressLower = address.toLowerCase();
+    if (authSigRef.current && authSigAddressRef.current === addressLower) return authSigRef.current;
+    try {
+      const sig = sessionStorage.getItem(`${SETTINGS_SYNC_AUTH_SIG_PREFIX}${addressLower}`);
+      authSigRef.current = sig;
+      authSigAddressRef.current = sig ? addressLower : null;
+      return sig;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const storeAuthSig = useCallback((address: string, signature: string) => {
+    authSigAddressRef.current = address.toLowerCase();
+    authSigRef.current = signature;
+    try { sessionStorage.setItem(`${SETTINGS_SYNC_AUTH_SIG_PREFIX}${address.toLowerCase()}`, signature); } catch { /* */ }
+  }, []);
+
+  const pullMergePushOnce = useCallback(async (
+    key: CryptoKey,
+    address: string,
+    localPrefs: SettingsPrefs,
+    authSig?: string | null,
+    repush = true,
+  ): Promise<{ prefs: SettingsPrefs; blob: EncryptedSyncBlob; merged: boolean } | null> => {
+    const remoteBlob = await pullRemoteBlob(address);
+    if (!remoteBlob) return null;
+    try {
+      const remotePayload = await decryptSettingsPayload(remoteBlob as EncryptedSyncBlob, key);
+      const localPayload = payloadFromPrefs(localPrefs, savedMessagesRef.current);
+      const mergedPayload = mergePayload(localPayload, remotePayload);
+      const mergedBlob = await encryptSyncPayload(mergedPayload, key, address);
+      savedMessagesRef.current = mergedPayload.savedMessages;
+      LS.set(SETTINGS_SYNC_BLOB_KEY, mergedBlob);
+      if (repush && authSig) void pushBlob(address, authSig, mergedBlob);
+      return { prefs: mergedPayload.settingsPrefs, blob: mergedBlob, merged: true };
+    } catch {
+      return null;
+    }
+  }, []);
+
   useEffect(() => { LS.set(SETTINGS_PREFS_KEY, prefs); }, [prefs]);
   useEffect(() => {
     if (!prefs.syncAcrossDevices || !syncKeyRef.current || !syncAddressRef.current) return;
+    const key = syncKeyRef.current;
+    const address = syncAddressRef.current;
     let cancelled = false;
-    encryptSettingsPayload(prefs, syncKeyRef.current, syncAddressRef.current)
+    encryptSettingsPayload(prefs, key, address, savedMessagesRef.current)
       .then((blob) => {
         if (cancelled) return;
         LS.set(SETTINGS_SYNC_BLOB_KEY, blob);
         setSyncState((s) => ({ ...s, walletAddress: blob.address, encryptedAt: blob.updatedAt, hasSessionKey: true }));
+        const authSig = getAuthSig(address);
+        if (!authSig) return;
+        if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current);
+        pushTimerRef.current = window.setTimeout(() => {
+          pushTimerRef.current = null;
+          pushBlob(address, authSig, blob).then(async (result) => {
+            if (result.ok || !result.stale || cancelled) return;
+            const merged = await pullMergePushOnce(key, address, prefs, authSig, false);
+            if (!merged || cancelled) return;
+            const retry = await pushBlob(address, authSig, merged.blob);
+            if (retry.ok && !cancelled) {
+              setPrefs(merged.prefs);
+              setSyncState((s) => ({ ...s, walletAddress: merged.blob.address, encryptedAt: merged.blob.updatedAt, hasSessionKey: true }));
+            }
+          });
+        }, 1500);
       })
       .catch(() => {
         if (!cancelled) setSyncState((s) => ({ ...s, hasSessionKey: Boolean(syncKeyRef.current) }));
       });
-    return () => { cancelled = true; };
-  }, [prefs]);
+    return () => {
+      cancelled = true;
+      if (pushTimerRef.current) {
+        window.clearTimeout(pushTimerRef.current);
+        pushTimerRef.current = null;
+      }
+    };
+  }, [getAuthSig, prefs, pullMergePushOnce]);
+
+  useEffect(() => () => {
+    if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (
+      pullOnSessionKeyRef.current ||
+      !prefs.syncAcrossDevices ||
+      !syncKeyRef.current ||
+      !syncAddressRef.current ||
+      !syncState.hasSessionKey
+    ) return;
+    pullOnSessionKeyRef.current = true;
+    const key = syncKeyRef.current;
+    const address = syncAddressRef.current;
+    const authSig = getAuthSig(address);
+    void pullMergePushOnce(key, address, prefs, authSig).then((merged) => {
+      if (!merged) return;
+      setPrefs(merged.prefs);
+      setSyncState((s) => ({ ...s, walletAddress: merged.blob.address, encryptedAt: merged.blob.updatedAt, hasSessionKey: true }));
+    });
+  }, [getAuthSig, prefs, pullMergePushOnce, syncState.hasSessionKey]);
 
   const value = useMemo<SettingsPrefsCtx>(() => ({
     prefs,
@@ -407,12 +556,26 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
       setSyncState((s) => ({ ...s, isEncrypting: true }));
       try {
         const { address, key } = await requestWalletSyncKey(mode === "wallet" ? identity.address : undefined);
+        const authSig = await requestWalletSyncAuthSignature(address);
         const nextPrefs = { ...prefs, syncAcrossDevices: true };
-        const blob = await encryptSettingsPayload(nextPrefs, key, address);
         syncKeyRef.current = key;
         syncAddressRef.current = address;
+        storeAuthSig(address, authSig);
+        const remoteMerged = await pullMergePushOnce(key, address, nextPrefs, authSig, false);
+        const mergedPrefs = remoteMerged?.prefs ?? nextPrefs;
+        const blob = remoteMerged?.blob ?? await encryptSettingsPayload(mergedPrefs, key, address, savedMessagesRef.current);
         LS.set(SETTINGS_SYNC_BLOB_KEY, blob);
-        setPrefs(nextPrefs);
+        const pushed = await pushBlob(address, authSig, blob);
+        if (!pushed.ok && pushed.stale) {
+          const latest = await pullMergePushOnce(key, address, mergedPrefs, authSig, false);
+          if (latest) {
+            await pushBlob(address, authSig, latest.blob);
+            setPrefs(latest.prefs);
+            setSyncState({ walletAddress: address, encryptedAt: latest.blob.updatedAt, hasSessionKey: true, isEncrypting: false });
+            return { ok: true, message: "Encrypted sync is enabled for this browser session." };
+          }
+        }
+        setPrefs(mergedPrefs);
         setSyncState({ walletAddress: address, encryptedAt: blob.updatedAt, hasSessionKey: true, isEncrypting: false });
         return { ok: true, message: "Encrypted sync is enabled for this browser session." };
       } catch (err) {
@@ -421,6 +584,8 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
           : "Wallet signature was rejected or unavailable. Sync stayed off.";
         syncKeyRef.current = null;
         syncAddressRef.current = null;
+        authSigRef.current = null;
+        authSigAddressRef.current = null;
         setPrefs((p) => ({ ...p, syncAcrossDevices: false }));
         setSyncState((s) => ({ ...s, hasSessionKey: false, isEncrypting: false }));
         return { ok: false, message };
@@ -429,11 +594,13 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
     disableSyncAcrossDevices: () => {
       syncKeyRef.current = null;
       syncAddressRef.current = null;
+      authSigRef.current = null;
+      authSigAddressRef.current = null;
       LS.remove(SETTINGS_SYNC_BLOB_KEY);
       setPrefs((p) => ({ ...p, syncAcrossDevices: false }));
       setSyncState({ walletAddress: null, encryptedAt: null, hasSessionKey: false, isEncrypting: false });
     },
-  }), [prefs, syncState]);
+  }), [identity.address, mode, prefs, pullMergePushOnce, storeAuthSig, syncState]);
 
   return <SettingsPrefsContext.Provider value={value}>{children}</SettingsPrefsContext.Provider>;
 }
