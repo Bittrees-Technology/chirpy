@@ -1,0 +1,24 @@
+{
+  "id": "org_bittrees_inc",
+  "version": 1,
+  "branding": { "name": "Bittrees, Inc.", "slug": "inc", "accent": "#eab308", "homeUrl": "https://gov.bittrees.org" },
+  "chain": { "chainId": 1 },
+  "namespace": "bittrees:inc",
+  "entryGate": [],
+  "gating": {
+    "enableTokenRules": true,
+    "enableSafeRules": true,
+    "enableEnsRules": true,
+    "roleCascade": {},
+    "powerTier": { "label": "BGOV", "resolver": "snapshot", "tiers": [1, 69, 210, 420], "params": { "space": "gov.bittrees.eth" } }
+  },
+  "roles": [{ "label": "Operations", "color": "#ef4444" }],
+  "defaultRooms": [
+    { "id": "inc-shareholders", "title": "shareholders", "description": "≥ 1 BGOV", "gate": { "combine": "any", "rules": [{ "kind": "power", "tier": 1 }] } },
+    { "id": "inc-associates", "title": "associates", "description": "≥ 69 BGOV", "gate": { "combine": "any", "rules": [{ "kind": "power", "tier": 69 }] } },
+    { "id": "inc-partners", "title": "partners", "description": "≥ 210 BGOV", "gate": { "combine": "any", "rules": [{ "kind": "power", "tier": 210 }] } },
+    { "id": "inc-board", "title": "board", "description": "≥ 420 BGOV", "gate": { "combine": "any", "rules": [{ "kind": "power", "tier": 420 }] } }
+  ],
+  "admins": [],
+  "gateUrl": "https://gov.bittrees.org/api/gate"
+}

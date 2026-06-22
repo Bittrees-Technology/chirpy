@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.DS_Store
+*.log
+.env
+.env.local
+.turbo/
+# Tauri native build artifacts
+apps/web/src-tauri/target/
+apps/web/src-tauri/gen/

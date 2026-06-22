@@ -1,0 +1,18 @@
+{
+  "name": "chat-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "dev": "pnpm --filter @app/web dev",
+    "build": "pnpm --filter @app/web build",
+    "preview": "pnpm --filter @app/web preview",
+    "typecheck": "tsc -p tsconfig.base.json --noEmit",
+    "tauri": "pnpm --filter @app/web tauri"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

@@ -1,0 +1,20 @@
+[package]
+name = "parley"
+version = "0.1.0"
+description = "Parley — wallet-native chat for any community"
+authors = ["Bittrees Technology"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+# The shared library that both the desktop binary and the mobile entrypoints use.
+name = "parley_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
