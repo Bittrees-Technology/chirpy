@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Parley",
+  "productName": "Chirp",
   "version": "0.1.0",
-  "identifier": "org.bittrees.parley",
+  "identifier": "org.bittrees.chirp",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Parley",
+        "title": "Chirp",
         "width": 1100,
         "height": 740,
         "minWidth": 380,

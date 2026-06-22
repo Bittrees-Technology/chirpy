@@ -1,6 +1,6 @@
 # Native builds — macOS & iOS (Tauri 2)
 
-Parley uses **Tauri 2**: the same Vite + React frontend is loaded into a native webview
+Chirp uses **Tauri 2**: the same Vite + React frontend is loaded into a native webview
 on every platform. There is no separate native UI codebase — `apps/web/src` is the app,
 and `apps/web/src-tauri` is the thin native shell.
 
@@ -30,7 +30,7 @@ source "$HOME/.cargo/env"
 
 ```bash
 pnpm tauri dev      # hot-reload dev window (runs `pnpm dev` for the frontend)
-pnpm tauri build    # → apps/web/src-tauri/target/release/bundle/macos/Parley.app  (+ .dmg)
+pnpm tauri build    # → apps/web/src-tauri/target/release/bundle/macos/Chirp.app  (+ .dmg)
 ```
 
 The first build compiles the Tauri/Rust dependency graph and takes several minutes;
@@ -47,7 +47,7 @@ pnpm tauri ios build      # archive for device / TestFlight (needs signing)
 ```
 
 `tauri ios init` creates the Xcode project under `src-tauri/gen/` (git-ignored). Open it in
-Xcode to set the bundle identifier (`org.bittrees.parley`), signing team, and capabilities.
+Xcode to set the bundle identifier (`org.bittrees.chirp`), signing team, and capabilities.
 
 ## iOS web-platform notes (for when XmtpTransport is wired)
 
@@ -56,7 +56,7 @@ The real transport relies on browser primitives inside WKWebView:
 - **OPFS / IndexedDB** — XMTP's local message store. Verify OPFS availability on the target
   iOS version early; fall back to IndexedDB if needed.
 - **WalletConnect / deep links** — mobile wallet connection uses WalletConnect v2; register
-  the app's URL scheme so wallet round-trips return to Parley.
+  the app's URL scheme so wallet round-trips return to Chirp.
 
 These are integration concerns for the XMTP phase, not the current mock build.
 
@@ -84,14 +84,14 @@ git tag app-v0.1.1 && git push origin app-v0.1.1
 ```
 
 One-time CI setup — add repo **Actions secrets**:
-- `TAURI_SIGNING_PRIVATE_KEY` — contents of `src-tauri/.tauri/parley-updater.key`
+- `TAURI_SIGNING_PRIVATE_KEY` — contents of `src-tauri/.tauri/chirp-updater.key`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the key password (empty for the current key)
 - (optional) Apple notarization vars for Gatekeeper-clean downloads.
 
 Build + sign locally instead:
 
 ```bash
-export TAURI_SIGNING_PRIVATE_KEY="$(cat apps/web/src-tauri/.tauri/parley-updater.key)"
+export TAURI_SIGNING_PRIVATE_KEY="$(cat apps/web/src-tauri/.tauri/chirp-updater.key)"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
 pnpm tauri build            # emits the bundle + .sig + latest.json
 ```

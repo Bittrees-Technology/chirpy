@@ -25,7 +25,7 @@ Requirements captured for the live release. Today the app runs on the offline
 - **Where it plugs in:** the `IdentityProvider` (`apps/web/src/state.tsx`) swaps its local
   stub for the wagmi account + an `ens.ts` resolver. No other UI changes — components already
   read `identity.handle`.
-- **Mobile (iOS):** WalletConnect deep-links back to Parley; register the app URL scheme so
+- **Mobile (iOS):** WalletConnect deep-links back to Chirp; register the app URL scheme so
   the wallet round-trip returns to the app (see `docs/NATIVE.md`).
 
 ## 3. Chats persist across all orgs and personally

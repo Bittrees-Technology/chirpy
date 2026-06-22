@@ -144,7 +144,7 @@ export function NewRoomDialog({ onClose }: { onClose: () => void }) {
 export function CreateOrgDialog({ onClose }: { onClose: () => void }) {
   const { addOrg } = useOrgs();
   const [name, setName] = useState("");
-  const [accent, setAccent] = useState("#6366f1");
+  const [accent, setAccent] = useState("#F7931A");
   const [chainId, setChainId] = useState(1);
   const [gateUrl, setGateUrl] = useState("");
   const [enableSafe, setEnableSafe] = useState(true);
@@ -202,7 +202,7 @@ export function CreateOrgDialog({ onClose }: { onClose: () => void }) {
       <PolicyEditor value={policy} onChange={setPolicy} />
 
       <div className="section-title">Custom theme CSS <span className="field-hint">(optional — re-skins the app for this org)</span></div>
-      <textarea className="input textarea" rows={4} value={themeCss} onChange={(e) => setThemeCss(e.target.value)} placeholder={":root { --accent: #e11d48; --bg: #0a0a0a; }"} />
+      <textarea className="input textarea" rows={4} value={themeCss} onChange={(e) => setThemeCss(e.target.value)} placeholder={":root { --accent: #F7931A; --bg: #FFFFFF; }"} />
 
       <div className="modal-actions">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>

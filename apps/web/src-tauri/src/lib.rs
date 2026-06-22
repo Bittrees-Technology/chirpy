@@ -14,5 +14,5 @@ pub fn run() {
 
     builder
         .run(tauri::generate_context!())
-        .expect("error while running Parley");
+        .expect("error while running Chirp");
 }

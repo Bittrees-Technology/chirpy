@@ -16,7 +16,7 @@ export function openGating(): GatingConfig {
 export const PERSONAL_ORG: OrgConfig = {
   id: "org_personal",
   version: 1,
-  branding: { name: "Personal", slug: "personal", accent: "#6366f1" },
+  branding: { name: "Personal", slug: "personal", accent: "#F7931A" },
   chain: { chainId: 1 },
   namespace: "personal",
   entryGate: [],
@@ -61,7 +61,7 @@ export function createOrg(input: CreateOrgInput): OrgConfig {
     branding: {
       name: input.name.trim() || "New Organization",
       slug,
-      accent: input.accent || "#6366f1",
+      accent: input.accent || "#F7931A",
       logoUrl: input.logoUrl,
       homeUrl: input.homeUrl,
       themeCss: input.themeCss,

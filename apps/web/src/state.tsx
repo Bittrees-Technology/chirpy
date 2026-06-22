@@ -74,8 +74,8 @@ export function OrgProvider({ children }: { children: React.ReactNode }) {
 
   // Apply org branding to the document theme, including optional drop-in CSS.
   useEffect(() => {
-    document.documentElement.style.setProperty("--accent", activeOrg.branding.accent || "#6366f1");
-    document.title = `${activeOrg.branding.name} · Parley`;
+    document.documentElement.style.setProperty("--accent", activeOrg.branding.accent || "#F7931A");
+    document.title = `${activeOrg.branding.name} · Chirp`;
     const ID = "org-theme-css";
     let el = document.getElementById(ID) as HTMLStyleElement | null;
     const css = activeOrg.branding.themeCss?.trim();
