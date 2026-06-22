@@ -33,13 +33,15 @@ export function Settings(
 ) {
   const { identity, setHandle, reset } = useIdentity();
   const { orgs, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
-  const { prefs, setReadReceiptsDefault, setSyncAcrossDevices } = useSettingsPrefs();
+  const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices } = useSettingsPrefs();
   const { transportId } = useChat();
   const { lang, setLang, t } = useI18n();
   const [profileEns, setProfileEns] = useState<EnsRecord | null>(null);
   const [resolverInput, setResolverInput] = useState("");
   const [resolverState, setResolverState] = useState<"idle" | "loading" | "success" | "neutral" | "error">("idle");
   const [resolverText, setResolverText] = useState("");
+  const [syncMessage, setSyncMessage] = useState("");
+  const [syncMessageKind, setSyncMessageKind] = useState<"success" | "error" | "neutral">("neutral");
 
   const profileLookup = useMemo(() => {
     const handle = identity.handle?.trim() ?? "";
@@ -126,8 +128,23 @@ export function Settings(
   const profileAvatar = profileEns?.address && profileEns.avatar ? profileEns.avatar : undefined;
   const ensManagerTarget = ensName ?? identity.address;
   const syncDescription = prefs.syncAcrossDevices
-    ? "On — preferences will sync across devices once wallet encryption is wired up."
-    : "Off — stored only on this device. Turn on to encrypt them to your wallet and sync across devices (one signature, no gas).";
+    ? syncState.walletAddress
+      ? `On - encrypted locally for ${shortAddr(syncState.walletAddress)}. Cross-device delivery starts when the sync relay is connected.`
+      : "On - encrypted locally. Cross-device delivery starts when the sync relay is connected."
+    : "Off - stored only on this device. Turn on to encrypt them to your wallet and sync across devices (one signature, no gas).";
+  const handleSyncClick = async () => {
+    setSyncMessage("");
+    setSyncMessageKind("neutral");
+    if (prefs.syncAcrossDevices) {
+      disableSyncAcrossDevices();
+      setSyncMessage("Encrypted sync is off. Preferences are local-only on this device.");
+      setSyncMessageKind("neutral");
+      return;
+    }
+    const result = await enableSyncAcrossDevices();
+    setSyncMessage(result.message);
+    setSyncMessageKind(result.ok ? "success" : "error");
+  };
 
   return (
     <div className="settings">
@@ -204,9 +221,18 @@ export function Settings(
           <div>
             <div className="pref-title">Sync across devices</div>
             <div className="muted">{syncDescription}</div>
+            {syncMessage && (
+              <div className={`muted sync-status ${syncMessageKind === "success" ? "status-positive" : syncMessageKind === "error" ? "status-error" : ""}`}>
+                {syncMessage}
+              </div>
+            )}
           </div>
-          <Button variant={prefs.syncAcrossDevices ? "ghost" : "primary"} onClick={() => setSyncAcrossDevices(!prefs.syncAcrossDevices)}>
-            {prefs.syncAcrossDevices ? "Turn off" : "Turn on"}
+          <Button
+            variant={prefs.syncAcrossDevices ? "ghost" : "primary"}
+            onClick={handleSyncClick}
+            disabled={syncState.isEncrypting}
+          >
+            {syncState.isEncrypting ? "Signing..." : prefs.syncAcrossDevices ? "Turn off" : "Turn on"}
           </Button>
         </div>
       </section>

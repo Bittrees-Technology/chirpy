@@ -200,10 +200,12 @@ input, textarea, select { font-family: inherit; }
 .profile-name { font-weight: 700; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-line { margin-top: 14px; }
 .status-positive { color: var(--positive); font-weight: 600; }
+.status-error { color: var(--danger); font-weight: 600; }
 .resolver-result { min-height: 20px; margin-top: -6px; }
 .pref-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 0; border-top: 1px solid var(--line-light); }
 .pref-row:first-of-type { border-top: none; padding-top: 4px; }
 .pref-title { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+.sync-status { margin-top: 8px; }
 .blocked-empty { border: 1px dashed var(--line); border-radius: 12px; padding: 14px; margin-top: 8px; }
 .settings-footer { margin: 0 0 28px; padding: 0 2px; }
 

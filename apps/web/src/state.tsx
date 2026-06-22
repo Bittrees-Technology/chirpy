@@ -13,6 +13,7 @@ const LS = {
     try { const v = localStorage.getItem(k); return v ? JSON.parse(v) as T : fallback; } catch { return fallback; }
   },
   set(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* */ } },
+  remove(k: string) { try { localStorage.removeItem(k); } catch { /* */ } },
 };
 const randAddr = () => {
   const hex = "0123456789abcdef"; let s = "0x";
@@ -121,30 +122,186 @@ interface SettingsPrefs {
   syncAcrossDevices: boolean;
   blocked: string[];
 }
+interface EncryptedSyncBlob {
+  version: 1;
+  algorithm: "AES-GCM";
+  kdf: "HKDF-SHA-256";
+  address: string;
+  iv: string;
+  ciphertext: string;
+  updatedAt: number;
+}
+interface SettingsSyncState {
+  walletAddress: string | null;
+  encryptedAt: number | null;
+  hasSessionKey: boolean;
+  isEncrypting: boolean;
+}
+interface SettingsSyncResult {
+  ok: boolean;
+  message: string;
+}
 interface SettingsPrefsCtx {
   prefs: SettingsPrefs;
+  syncState: SettingsSyncState;
   setReadReceiptsDefault: (on: boolean) => void;
-  setSyncAcrossDevices: (on: boolean) => void;
+  enableSyncAcrossDevices: () => Promise<SettingsSyncResult>;
+  disableSyncAcrossDevices: () => void;
 }
 const SettingsPrefsContext = createContext<SettingsPrefsCtx | null>(null);
 const SETTINGS_PREFS_KEY = "chat:settingsPrefs:v1";
+const SETTINGS_SYNC_BLOB_KEY = "chat:settingsSyncBlob:v1";
 const DEFAULT_SETTINGS_PREFS: SettingsPrefs = {
   readReceiptsDefault: true,
   syncAcrossDevices: false,
   blocked: [],
 };
 
+interface Eip1193Provider {
+  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
+}
+
+function getInjectedEthereum(): Eip1193Provider | null {
+  const maybeWindow = window as Window & { ethereum?: Eip1193Provider };
+  return maybeWindow.ethereum ?? null;
+}
+
+const textEncoder = new TextEncoder();
+const bytesToHex = (bytes: Uint8Array) =>
+  `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+const hexToBytes = (hex: string) => {
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (!clean || clean.length % 2 !== 0 || /[^a-fA-F0-9]/.test(clean)) throw new Error("Wallet returned an invalid signature.");
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
+};
+const bytesToBase64 = (bytes: Uint8Array) => {
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
+};
+
+async function deriveSyncKey(signature: string, address: string): Promise<CryptoKey> {
+  if (!crypto.subtle) throw new Error("Secure browser crypto is unavailable.");
+  const signatureKey = await crypto.subtle.importKey("raw", hexToBytes(signature), "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: textEncoder.encode(`Chirpy encrypted sync v1:${address.toLowerCase()}`),
+      info: textEncoder.encode("settings-prefs-and-saved-messages"),
+    },
+    signatureKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+async function requestWalletSyncKey(): Promise<{ address: string; key: CryptoKey }> {
+  const ethereum = getInjectedEthereum();
+  if (!ethereum) throw new Error("No injected wallet was found. Open Chirpy in a browser with a wallet extension, then try again.");
+  const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+  const address = Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : null;
+  if (!address) throw new Error("Wallet did not return an account.");
+  const message = `Chirpy: enable encrypted sync\nAddress: ${address}\nThis is a gas-free signature used only to derive your sync key.`;
+  const signature = await ethereum.request({
+    method: "personal_sign",
+    params: [bytesToHex(textEncoder.encode(message)), address],
+  });
+  if (typeof signature !== "string") throw new Error("Wallet did not return a signature.");
+  return { address, key: await deriveSyncKey(signature, address) };
+}
+
+async function encryptSettingsPayload(prefs: SettingsPrefs, key: CryptoKey, address: string): Promise<EncryptedSyncBlob> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const payload = {
+    version: 1,
+    settingsPrefs: prefs,
+    savedMessages: [],
+    updatedAt: Date.now(),
+  };
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    textEncoder.encode(JSON.stringify(payload)),
+  );
+  return {
+    version: 1,
+    algorithm: "AES-GCM",
+    kdf: "HKDF-SHA-256",
+    address,
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
+    updatedAt: payload.updatedAt,
+  };
+}
+
 export function SettingsPrefsProvider({ children }: { children: React.ReactNode }) {
   const [prefs, setPrefs] = useState<SettingsPrefs>(() =>
     ({ ...DEFAULT_SETTINGS_PREFS, ...LS.get<Partial<SettingsPrefs>>(SETTINGS_PREFS_KEY, {}) }));
+  const existingSyncBlob = useMemo(() => LS.get<EncryptedSyncBlob | null>(SETTINGS_SYNC_BLOB_KEY, null), []);
+  const syncKeyRef = useRef<CryptoKey | null>(null);
+  const syncAddressRef = useRef<string | null>(existingSyncBlob?.address ?? null);
+  const [syncState, setSyncState] = useState<SettingsSyncState>({
+    walletAddress: existingSyncBlob?.address ?? null,
+    encryptedAt: existingSyncBlob?.updatedAt ?? null,
+    hasSessionKey: false,
+    isEncrypting: false,
+  });
 
   useEffect(() => { LS.set(SETTINGS_PREFS_KEY, prefs); }, [prefs]);
+  useEffect(() => {
+    if (!prefs.syncAcrossDevices || !syncKeyRef.current || !syncAddressRef.current) return;
+    let cancelled = false;
+    encryptSettingsPayload(prefs, syncKeyRef.current, syncAddressRef.current)
+      .then((blob) => {
+        if (cancelled) return;
+        LS.set(SETTINGS_SYNC_BLOB_KEY, blob);
+        setSyncState((s) => ({ ...s, walletAddress: blob.address, encryptedAt: blob.updatedAt, hasSessionKey: true }));
+      })
+      .catch(() => {
+        if (!cancelled) setSyncState((s) => ({ ...s, hasSessionKey: Boolean(syncKeyRef.current) }));
+      });
+    return () => { cancelled = true; };
+  }, [prefs]);
 
   const value = useMemo<SettingsPrefsCtx>(() => ({
     prefs,
+    syncState,
     setReadReceiptsDefault: (readReceiptsDefault) => setPrefs((p) => ({ ...p, readReceiptsDefault })),
-    setSyncAcrossDevices: (syncAcrossDevices) => setPrefs((p) => ({ ...p, syncAcrossDevices })),
-  }), [prefs]);
+    enableSyncAcrossDevices: async () => {
+      setSyncState((s) => ({ ...s, isEncrypting: true }));
+      try {
+        const { address, key } = await requestWalletSyncKey();
+        const nextPrefs = { ...prefs, syncAcrossDevices: true };
+        const blob = await encryptSettingsPayload(nextPrefs, key, address);
+        syncKeyRef.current = key;
+        syncAddressRef.current = address;
+        LS.set(SETTINGS_SYNC_BLOB_KEY, blob);
+        setPrefs(nextPrefs);
+        setSyncState({ walletAddress: address, encryptedAt: blob.updatedAt, hasSessionKey: true, isEncrypting: false });
+        return { ok: true, message: "Encrypted sync is enabled for this browser session." };
+      } catch (err) {
+        const message = err instanceof Error && err.message
+          ? err.message
+          : "Wallet signature was rejected or unavailable. Sync stayed off.";
+        syncKeyRef.current = null;
+        syncAddressRef.current = null;
+        setPrefs((p) => ({ ...p, syncAcrossDevices: false }));
+        setSyncState((s) => ({ ...s, hasSessionKey: false, isEncrypting: false }));
+        return { ok: false, message };
+      }
+    },
+    disableSyncAcrossDevices: () => {
+      syncKeyRef.current = null;
+      syncAddressRef.current = null;
+      LS.remove(SETTINGS_SYNC_BLOB_KEY);
+      setPrefs((p) => ({ ...p, syncAcrossDevices: false }));
+      setSyncState({ walletAddress: null, encryptedAt: null, hasSessionKey: false, isEncrypting: false });
+    },
+  }), [prefs, syncState]);
 
   return <SettingsPrefsContext.Provider value={value}>{children}</SettingsPrefsContext.Provider>;
 }
