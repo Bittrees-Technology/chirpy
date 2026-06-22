@@ -15,10 +15,11 @@ export function colorFor(s: string): string {
   return `hsl(${h % 360} 55% 45%)`;
 }
 
-export function Avatar({ id, label, size = 38 }: { id: string; label?: string; size?: number }) {
+export function Avatar({ id, label, size = 38, src }: { id: string; label?: string; size?: number; src?: string }) {
   return (
     <div className="avatar" style={{ width: size, height: size, background: colorFor(id), fontSize: size * 0.36 }}>
-      {initials(label ?? id)}
+      <span>{initials(label ?? id)}</span>
+      {src && <img src={src} alt={label ?? id} onError={(e) => { e.currentTarget.style.display = "none"; }} />}
     </div>
   );
 }
@@ -39,6 +40,25 @@ export function Field(
       {children}
       {hint && <span className="field-hint">{hint}</span>}
     </label>
+  );
+}
+
+export function Toggle(
+  { checked, onChange, label, disabled }:
+  { checked: boolean; onChange: (checked: boolean) => void; label: string; disabled?: boolean },
+) {
+  return (
+    <button
+      type="button"
+      className={`toggle ${checked ? "checked" : ""}`}
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+    >
+      <span />
+    </button>
   );
 }
 

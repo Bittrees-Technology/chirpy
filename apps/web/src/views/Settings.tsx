@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { serializeOrg, type RoomRule } from "@app/core";
-import { useChat, useIdentity, useOrgs } from "../state";
-import { Avatar, Button, Field, shortAddr } from "../ui";
+import { useChat, useIdentity, useOrgs, useSettingsPrefs } from "../state";
+import { Avatar, Button, Field, Toggle, shortAddr } from "../ui";
 import { download } from "./dialogs";
 import { UpdateCard } from "./UpdateCard";
 import { useI18n, LANGS, type LangCode } from "../i18n";
@@ -11,17 +11,151 @@ function gateSummary(rules: RoomRule[]): string {
   return `${rules.length} rule${rules.length === 1 ? "" : "s"}`;
 }
 
+interface EnsRecord {
+  address?: string | null;
+  name?: string | null;
+  displayName?: string | null;
+  avatar?: string | null;
+}
+
+const ENS_API = "https://api.ensideas.com/ens/resolve";
+const isAddress = (value: string) => /^0x[a-fA-F0-9]{40}$/.test(value.trim());
+const isEnsName = (value: string) => /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth$/i.test(value.trim());
+
+async function resolveEns(input: string): Promise<EnsRecord> {
+  const res = await fetch(`${ENS_API}/${encodeURIComponent(input.trim())}`);
+  if (!res.ok) throw new Error("ENS lookup failed");
+  return await res.json() as EnsRecord;
+}
+
 export function Settings(
   { onCreateOrg, onImportOrg }: { onCreateOrg: () => void; onImportOrg: () => void },
 ) {
   const { identity, setHandle, reset } = useIdentity();
   const { orgs, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
+  const { prefs, setReadReceiptsDefault, setSyncAcrossDevices } = useSettingsPrefs();
   const { transportId } = useChat();
   const { lang, setLang, t } = useI18n();
+  const [profileEns, setProfileEns] = useState<EnsRecord | null>(null);
+  const [resolverInput, setResolverInput] = useState("");
+  const [resolverState, setResolverState] = useState<"idle" | "loading" | "success" | "neutral" | "error">("idle");
+  const [resolverText, setResolverText] = useState("");
+
+  const profileLookup = useMemo(() => {
+    const handle = identity.handle?.trim() ?? "";
+    return isEnsName(handle) ? handle : identity.address;
+  }, [identity.address, identity.handle]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setProfileEns(null);
+    (async () => {
+      try {
+        const record = await resolveEns(profileLookup);
+        if (record.address && record.avatar) {
+          try {
+            const avatarRes = await fetch(record.avatar, { method: "HEAD" });
+            if (!avatarRes.ok) record.avatar = null;
+          } catch {
+            record.avatar = null;
+          }
+        }
+        if (!cancelled) setProfileEns(record);
+      } catch {
+        if (!cancelled) setProfileEns(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [profileLookup]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const query = resolverInput.trim();
+    if (!query) {
+      setResolverState("idle");
+      setResolverText("");
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (!isEnsName(query) && !isAddress(query)) {
+        setResolverState("neutral");
+        setResolverText("Enter a .eth name or a 0x address.");
+        return;
+      }
+
+      setResolverState("loading");
+      setResolverText("Checking ENS...");
+      resolveEns(query)
+        .then((record) => {
+          if (cancelled) return;
+          if (isEnsName(query)) {
+            if (record.address) {
+              setResolverState("success");
+              setResolverText(`${record.displayName ?? record.name ?? query} resolves to ${record.address}.`);
+            } else {
+              setResolverState("neutral");
+              setResolverText(`${query} is available or does not currently resolve.`);
+            }
+            return;
+          }
+
+          if (record.name) {
+            setResolverState("success");
+            setResolverText(`${shortAddr(query)} reverse-resolves to ${record.name}.`);
+          } else {
+            setResolverState("neutral");
+            setResolverText("No primary ENS name found for this address.");
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setResolverState("error");
+          setResolverText("ENS lookup unavailable. Try again later.");
+        });
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [resolverInput]);
+
+  const ensName = profileEns?.name ?? (isEnsName(identity.handle ?? "") ? identity.handle : undefined);
+  const profileName = profileEns?.displayName ?? ensName ?? identity.handle ?? shortAddr(identity.address);
+  const profileAvatar = profileEns?.address && profileEns.avatar ? profileEns.avatar : undefined;
+  const ensManagerTarget = ensName ?? identity.address;
+  const syncDescription = prefs.syncAcrossDevices
+    ? "On — preferences will sync across devices once wallet encryption is wired up."
+    : "Off — stored only on this device. Turn on to encrypt them to your wallet and sync across devices (one signature, no gas).";
 
   return (
     <div className="settings">
       <h1>Settings</h1>
+
+      <section className="card">
+        <div className="profile-row">
+          <div className="profile-main">
+            <Avatar id={identity.address} label={profileName} src={profileAvatar} size={64} />
+            <div>
+              <h2>Profile</h2>
+              <div className="profile-name">{profileName}</div>
+              <div className="muted">{shortAddr(identity.address)}</div>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => window.open(`https://app.ens.domains/${encodeURIComponent(ensManagerTarget)}`, "_blank", "noopener,noreferrer")}
+          >
+            Change picture ↗
+          </Button>
+        </div>
+        {profileAvatar && ensName ? (
+          <p className="muted status-line status-positive">✓ Picture set on ENS — {ensName}. Shown across every app.</p>
+        ) : (
+          <p className="muted status-line">Set your profile picture on ENS to show the same avatar across apps.</p>
+        )}
+      </section>
 
       <section className="card">
         <h2>Identity</h2>
@@ -36,6 +170,45 @@ export function Settings(
           </Field>
         </div>
         <div className="row-end"><Button variant="ghost" onClick={reset}>Regenerate identity</Button></div>
+      </section>
+
+      <section className="card">
+        <h2>ENS resolver</h2>
+        <Field
+          label="Name or address"
+          hint="Type a name to check availability live, or an address to reverse-resolve."
+        >
+          <input
+            className="input"
+            value={resolverInput}
+            placeholder="name.eth or 0x address"
+            onChange={(e) => setResolverInput(e.target.value)}
+          />
+        </Field>
+        <div className={`muted resolver-result ${resolverState === "success" ? "status-positive" : ""}`}>
+          {resolverText}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="pref-row">
+          <div>
+            <div className="pref-title">Read receipts (default)</div>
+            <div className="muted">
+              The default for every chat — override it per conversation from the chat header. When on, people see when you've read their messages and you see when they've read theirs.
+            </div>
+          </div>
+          <Toggle checked={prefs.readReceiptsDefault} onChange={setReadReceiptsDefault} label="Read receipts default" />
+        </div>
+        <div className="pref-row">
+          <div>
+            <div className="pref-title">Sync across devices</div>
+            <div className="muted">{syncDescription}</div>
+          </div>
+          <Button variant={prefs.syncAcrossDevices ? "ghost" : "primary"} onClick={() => setSyncAcrossDevices(!prefs.syncAcrossDevices)}>
+            {prefs.syncAcrossDevices ? "Turn off" : "Turn on"}
+          </Button>
+        </div>
       </section>
 
       <section className="card">
@@ -89,6 +262,28 @@ export function Settings(
           <div className="muted">Roles: {activeOrg.roles.map((r) => r.label).join(", ") || "none"}</div>
         </div>
       </section>
+
+      <section className="card">
+        <h2>Blocked ({prefs.blocked.length})</h2>
+        {prefs.blocked.length === 0 ? (
+          <div className="muted blocked-empty">No one blocked.</div>
+        ) : (
+          <div className="org-table">
+            {prefs.blocked.map((addr) => (
+              <div key={addr} className="org-row">
+                <Avatar id={addr} size={34} />
+                <div className="org-row-main">
+                  <div className="org-row-name">{shortAddr(addr)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <p className="muted settings-footer">
+        Direct messages are end-to-end encrypted over XMTP. Your profile picture is your ENS avatar. Saved Messages and these preferences live on this device — and sync across your devices (encrypted) when you turn on sync above.
+      </p>
     </div>
   );
 }

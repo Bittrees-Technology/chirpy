@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { IdentityProvider, OrgProvider, ChatProvider } from "./state";
+import { IdentityProvider, OrgProvider, ChatProvider, SettingsPrefsProvider } from "./state";
 import { I18nProvider } from "./i18n";
 import { ErrorBoundary } from "./ErrorBoundary";
 import "./styles.css";
@@ -12,11 +12,13 @@ createRoot(root).render(
     <ErrorBoundary>
       <I18nProvider>
         <IdentityProvider>
-          <OrgProvider>
-            <ChatProvider>
-              <App />
-            </ChatProvider>
-          </OrgProvider>
+          <SettingsPrefsProvider>
+            <OrgProvider>
+              <ChatProvider>
+                <App />
+              </ChatProvider>
+            </OrgProvider>
+          </SettingsPrefsProvider>
         </IdentityProvider>
       </I18nProvider>
     </ErrorBoundary>

@@ -114,6 +114,47 @@ export const useOrgs = () => {
 };
 
 // ====================================================================
+// Settings preferences
+// ====================================================================
+interface SettingsPrefs {
+  readReceiptsDefault: boolean;
+  syncAcrossDevices: boolean;
+  blocked: string[];
+}
+interface SettingsPrefsCtx {
+  prefs: SettingsPrefs;
+  setReadReceiptsDefault: (on: boolean) => void;
+  setSyncAcrossDevices: (on: boolean) => void;
+}
+const SettingsPrefsContext = createContext<SettingsPrefsCtx | null>(null);
+const SETTINGS_PREFS_KEY = "chat:settingsPrefs:v1";
+const DEFAULT_SETTINGS_PREFS: SettingsPrefs = {
+  readReceiptsDefault: true,
+  syncAcrossDevices: false,
+  blocked: [],
+};
+
+export function SettingsPrefsProvider({ children }: { children: React.ReactNode }) {
+  const [prefs, setPrefs] = useState<SettingsPrefs>(() =>
+    ({ ...DEFAULT_SETTINGS_PREFS, ...LS.get<Partial<SettingsPrefs>>(SETTINGS_PREFS_KEY, {}) }));
+
+  useEffect(() => { LS.set(SETTINGS_PREFS_KEY, prefs); }, [prefs]);
+
+  const value = useMemo<SettingsPrefsCtx>(() => ({
+    prefs,
+    setReadReceiptsDefault: (readReceiptsDefault) => setPrefs((p) => ({ ...p, readReceiptsDefault })),
+    setSyncAcrossDevices: (syncAcrossDevices) => setPrefs((p) => ({ ...p, syncAcrossDevices })),
+  }), [prefs]);
+
+  return <SettingsPrefsContext.Provider value={value}>{children}</SettingsPrefsContext.Provider>;
+}
+export const useSettingsPrefs = () => {
+  const c = useContext(SettingsPrefsContext);
+  if (!c) throw new Error("useSettingsPrefs outside provider");
+  return c;
+};
+
+// ====================================================================
 // Chat  (binds a Transport to the active org + identity)
 // ====================================================================
 interface ChatCtx {
