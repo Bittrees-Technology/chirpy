@@ -35,7 +35,7 @@ export function Settings(
         <p className="muted">
           Mode: <span className="pill">{transportId}</span>{" "}
           {transportId === "mock"
-            ? "— fully offline; messages persist locally per organization. No wallet, no network."
+            ? "— fully offline. DMs persist per wallet (across all orgs + personal); rooms persist per org. No wallet, no network."
             : "— live XMTP DMs + Push gated rooms."}
         </p>
       </section>

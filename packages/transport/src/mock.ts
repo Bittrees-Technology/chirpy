@@ -1,10 +1,16 @@
 import type { Identity, OrgConfig } from "@app/core";
 import type { ChatMessage, Conversation, StartRoomInput, Transport } from "./types";
 
-// A fully local, offline transport. It persists per-org to localStorage so the
-// app is immediately viewable and clickable with no wallet, no network, no keys.
-// It implements the exact same Transport interface the real XMTP transport will,
-// so swapping it in later does not touch any UI code.
+// A fully local, offline transport. It persists so the app is immediately viewable
+// and clickable with no wallet, no network, no keys. It implements the exact same
+// Transport interface the real XMTP transport will, so swapping it in later does
+// not touch any UI code.
+//
+// Persistence model (matches the production intent):
+//   • DMs + Saved Messages  → keyed by WALLET only, so your chats persist across
+//     ALL orgs and personally (one identity = one DM history).
+//   • Rooms                 → keyed by wallet + org namespace, since gated rooms
+//     belong to the org that defines them.
 
 const store = {
   get(key: string): string | null {
@@ -27,6 +33,7 @@ const randAddr = (): string => {
   return s;
 };
 
+interface Slice { conversations: Conversation[]; messages: Record<string, ChatMessage[]>; }
 interface Snapshot { conversations: Conversation[]; messages: Record<string, ChatMessage[]>; }
 
 const DEMO_BOTS = [
@@ -37,77 +44,99 @@ const DEMO_BOTS = [
 
 export class MockTransport implements Transport {
   readonly id = "mock" as const;
-  private key: string;
+  private dmKey: string;     // wallet-global DM store
+  private roomKey: string;   // per-org room store
   private identity: Identity;
   private snap: Snapshot = { conversations: [], messages: {} };
   private listeners = new Set<() => void>();
 
   constructor(private org: OrgConfig, identity: Identity) {
     this.identity = identity;
-    this.key = `chat:mock:${org.namespace}:${identity.address}`;
+    this.dmKey = `chat:mock:dms:${identity.address}`;
+    this.roomKey = `chat:mock:rooms:${identity.address}:${org.namespace}`;
   }
 
   me(): Identity { return this.identity; }
 
+  private loadSlice(key: string): Slice | null {
+    const raw = store.get(key);
+    if (!raw) return null;
+    try { return JSON.parse(raw) as Slice; } catch { return null; }
+  }
+
   async init(): Promise<void> {
-    const raw = store.get(this.key);
-    if (raw) {
-      try { this.snap = JSON.parse(raw); return; } catch { /* reseed */ }
+    this.snap = { conversations: [], messages: {} };
+
+    // --- DMs (wallet-global) ---
+    const dms = this.loadSlice(this.dmKey);
+    if (dms) {
+      this.snap.conversations.push(...dms.conversations);
+      Object.assign(this.snap.messages, dms.messages);
+    } else {
+      this.seedDms();
     }
-    this.seed();
+
+    // --- Rooms (per-org) ---
+    const rooms = this.loadSlice(this.roomKey);
+    if (rooms) {
+      this.snap.conversations.push(...rooms.conversations);
+      Object.assign(this.snap.messages, rooms.messages);
+    }
+    this.ensureOrgRooms();
+
     this.persist();
   }
 
-  private seed() {
+  private seedDms() {
     const now = Date.now();
-    const conversations: Conversation[] = [];
-    const messages: Record<string, ChatMessage[]> = {};
-
-    // A "saved messages" self-DM.
+    // Saved messages self-DM.
     const savedId = uid("dm");
-    conversations.push({
-      id: savedId, kind: "dm", title: "Saved Messages",
-      peers: [this.identity.address], unread: 0,
-    });
-    messages[savedId] = [{
-      id: uid("m"), conversationId: savedId, sender: this.identity.address,
-      body: "Notes to self live here.", sentAt: now - 1000 * 60 * 60,
-    }];
+    this.snap.conversations.push({ id: savedId, kind: "dm", title: "Saved Messages", peers: [this.identity.address], unread: 0 });
+    this.snap.messages[savedId] = [{ id: uid("m"), conversationId: savedId, sender: this.identity.address, body: "Notes to self live here — visible in every org.", sentAt: now - 1000 * 60 * 60 }];
 
     // A couple of demo DMs so the list isn't empty.
     DEMO_BOTS.slice(0, 2).forEach((bot, i) => {
       const id = uid("dm");
       const msgs: ChatMessage[] = [
-        { id: uid("m"), conversationId: id, sender: bot.address, body: i === 0 ? `gm — welcome to ${this.org.branding.name} chat 👋` : "ping me anytime.", sentAt: now - 1000 * 60 * (30 - i * 10) },
+        { id: uid("m"), conversationId: id, sender: bot.address, body: i === 0 ? "gm — your DMs follow you across every org 👋" : "ping me anytime.", sentAt: now - 1000 * 60 * (30 - i * 10) },
       ];
-      conversations.push({
-        id, kind: "dm", title: bot.handle, peers: [this.identity.address, bot.address],
-        unread: 1, lastMessage: msgs[msgs.length - 1],
-      });
-      messages[id] = msgs;
+      this.snap.conversations.push({ id, kind: "dm", title: bot.handle, peers: [this.identity.address, bot.address], unread: 1, lastMessage: msgs[0] });
+      this.snap.messages[id] = msgs;
     });
-
-    // Seed rooms from the org config (org-agnostic: empty for Personal).
-    const rooms = this.org.defaultRooms.length
-      ? this.org.defaultRooms
-      : [{ id: uid("room"), title: "general", description: "Open room", gate: { combine: "any" as const, rules: [] } }];
-    rooms.forEach((r) => {
-      const id = r.id || uid("room");
-      const msgs: ChatMessage[] = [
-        { id: uid("m"), conversationId: id, sender: DEMO_BOTS[2].address, body: `#${r.title} created.`, sentAt: now - 1000 * 60 * 90 },
-      ];
-      conversations.push({
-        id, kind: "room", title: r.title, description: r.description,
-        peers: [this.identity.address, DEMO_BOTS[2].address], gate: r.gate,
-        unread: 0, lastMessage: msgs[msgs.length - 1],
-      });
-      messages[id] = msgs;
-    });
-
-    this.snap = { conversations, messages };
   }
 
-  private persist() { store.set(this.key, JSON.stringify(this.snap)); }
+  /** Ensure this org's seed rooms exist; if an org defines none and the user has no
+   *  rooms here yet, seed a single open "general" room. */
+  private ensureOrgRooms() {
+    const now = Date.now();
+    const have = new Set(this.snap.conversations.filter((c) => c.kind === "room").map((c) => c.id));
+    const seeds = this.org.defaultRooms.length
+      ? this.org.defaultRooms
+      : (this.snap.conversations.some((c) => c.kind === "room")
+          ? []
+          : [{ id: uid("room"), title: "general", description: "Open room", gate: { combine: "any" as const, rules: [] } }]);
+    for (const r of seeds) {
+      const id = r.id || uid("room");
+      if (have.has(id)) continue;
+      const seed: ChatMessage = { id: uid("m"), conversationId: id, sender: DEMO_BOTS[2].address, body: `#${r.title} created.`, sentAt: now - 1000 * 60 * 90 };
+      this.snap.conversations.push({ id, kind: "room", title: r.title, description: r.description, peers: [this.identity.address, DEMO_BOTS[2].address], gate: r.gate, unread: 0, lastMessage: seed });
+      this.snap.messages[id] = [seed];
+    }
+  }
+
+  /** Split the snapshot back into its DM (global) and room (per-org) slices. */
+  private persist() {
+    const dm: Slice = { conversations: [], messages: {} };
+    const room: Slice = { conversations: [], messages: {} };
+    for (const c of this.snap.conversations) {
+      const target = c.kind === "room" ? room : dm;
+      target.conversations.push(c);
+      target.messages[c.id] = this.snap.messages[c.id] || [];
+    }
+    store.set(this.dmKey, JSON.stringify(dm));
+    store.set(this.roomKey, JSON.stringify(room));
+  }
+
   private emit() { this.listeners.forEach((l) => l()); }
 
   subscribe(cb: () => void): () => void {
