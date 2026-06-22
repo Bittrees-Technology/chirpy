@@ -2,9 +2,9 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useCall
 import en from "./langs/en.json";
 import es from "./langs/es.json";
 
-// Lightweight, file-based i18n — the pattern borrowed from Parley-Chat's mura
-// (community-contributed `langs/*.json`). Add a language by dropping in a JSON
-// file and registering it here; missing keys fall back to English, then the key.
+// Lightweight, file-based i18n — community-contributed `langs/*.json`. Add a
+// language by dropping in a JSON file and registering it here; missing keys
+// fall back to English, then the key.
 
 type Dict = Record<string, string>;
 export const LANGS: Record<string, { label: string; dict: Dict }> = {

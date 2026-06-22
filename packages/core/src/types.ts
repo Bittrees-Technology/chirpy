@@ -35,7 +35,7 @@ export interface Branding {
 
 /**
  * An "action gate" (vs the token "access gate"): what may HAPPEN in a room/org,
- * independent of who may enter. Modeled on the Parley-Chat relay's policy engine.
+ * independent of who may enter. Modeled on a declarative relay-style policy engine.
  */
 export interface Policy {
   /** "active" = normal; "read-only" = posting is frozen (e.g. during an incident). */

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Interactive installer for the self-hosted gate. Prompts for config, writes
-# gate.env, and brings the stack up with Docker Compose. Modeled on the
-# Parley-Chat relay installer UX (prompt -> write config -> run as a service).
+# gate.env, and brings the stack up with Docker Compose (prompt -> write config
+# -> run as a service).
 set -euo pipefail
 cd "$(dirname "$0")"
 

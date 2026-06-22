@@ -1,8 +1,8 @@
 import React from "react";
 
-// A styled, app-wide error page (the "custom error pages" idea from Parley-Chat's
-// mura, adapted to an SPA error boundary). Catches render-time crashes so the app
-// shows a branded fallback instead of a blank screen.
+// A styled, app-wide error page (a custom error page adapted to an SPA error
+// boundary). Catches render-time crashes so the app shows a branded fallback
+// instead of a blank screen.
 interface State { error: Error | null; }
 
 export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {

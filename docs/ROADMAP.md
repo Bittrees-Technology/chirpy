@@ -10,7 +10,7 @@ Forward-looking items, separate from the shipped v0.
   to Vercel or via `selfhost/`. The action **policy** model (read-only / attachments /
   size caps) is already enforced client-side and should be mirrored server-side.
 
-## Imported from Parley-Chat research (`docs/RESEARCH-parley-chat.md`)
+## Imported in v0
 - ✅ **Action policy layer** (read-only rooms, block attachments, size caps) — done.
 - ✅ **File-based i18n**, **drop-in CSS theming**, **custom error page** — done.
 - ◐ **Self-host bundle + installer** — scaffolded in `selfhost/`; completes with the gate.
@@ -20,4 +20,4 @@ Forward-looking items, separate from the shipped v0.
 - **Voice calls (WebRTC)** — neither XMTP nor Push do voice natively, so this is a separate
   build (signaling server + media). A clear differentiator; sequence after the XMTP phase.
 - **Per-org relay** — optional reverse proxy in front of the gate for path/method policy +
-  censorship-resistance (the Parley-Chat `relay` pattern), for orgs that want it.
+  censorship-resistance (a reverse-proxy relay pattern), for orgs that want it.

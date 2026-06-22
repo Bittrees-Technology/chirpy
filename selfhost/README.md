@@ -2,8 +2,8 @@
 
 An org can run its own **gate service** (the serverless token/action gate) instead of
 deploying it to Vercel — on-brand for a decentralized product. This directory is the
-ops bundle for that, modeled on the Parley-Chat installer ethos (interactive prompt →
-write config → run as a service).
+ops bundle for that: an interactive installer (prompt → write config → run as a
+service).
 
 > **Status:** scaffold. The gate *logic* already exists, framework-agnostic, in
 > `@app/core` (`evalGate` + the `ChainReader` interface). The thin HTTP wrapper that
@@ -30,5 +30,5 @@ Then point an org's `OrgConfig.gateUrl` at `https://<your-domain>/api/gate`.
 
 - **No Vercel dependency** — run the gate on your own box, behind your own nginx/SSL.
 - **Data locality** — the roles/rooms KV registry stays on infrastructure you control.
-- **Censorship-resistance** — optionally front it with a relay (see the Parley-Chat
-  `relay` pattern in `docs/RESEARCH-parley-chat.md`) for path/method policy + proxying.
+- **Censorship-resistance** — optionally front it with a reverse-proxy relay for
+  path/method policy + proxying.

@@ -1,7 +1,6 @@
 // Action policy — the "what may happen" gate, complementing the token "who may
-// enter" gate. Imported from the Parley-Chat relay's declarative policy idea
-// (per-route proxy/block/redirect, read-only mode, attachment + size limits),
-// adapted to our room/org model. Pure logic, fail-closed-ish, no dependencies.
+// enter" gate. A declarative policy model (read-only mode, attachment + size
+// limits) applied to our room/org model. Pure logic, fail-closed-ish, no dependencies.
 
 import type { Policy } from "./types";
 
