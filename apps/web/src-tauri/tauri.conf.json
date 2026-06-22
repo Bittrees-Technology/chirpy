@@ -41,7 +41,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ5NUYxQkE5MjM3NUExNzEKUldSeG9YVWpxUnRmU1F4b0hmY1lrR2xOK0dCUHNTbFZtcThiZUo4VjhxdUFYRktjNnpCRGQzQVAK",
       "endpoints": [
-        "https://github.com/Bittrees-Technology/chat/releases/latest/download/latest.json"
+        "https://github.com/Bittrees-Technology/chirpy/releases/latest/download/latest.json"
       ]
     }
   }

@@ -67,7 +67,7 @@ The desktop app self-updates via the Tauri **updater** plugin: on launch (and fr
 exists it downloads, verifies the signature, installs, and relaunches.
 
 - **Manifest endpoint** (`tauri.conf.json` → `plugins.updater.endpoints`):
-  `https://github.com/Bittrees-Technology/chat/releases/latest/download/latest.json`
+  `https://github.com/Bittrees-Technology/chirpy/releases/latest/download/latest.json`
 - **Signature:** every build is signed with an ed25519 key. The **public** key is in
   `tauri.conf.json`; the **private** key is **never committed** (gitignored under
   `src-tauri/.tauri/`). Updates with a bad/missing signature are rejected.
