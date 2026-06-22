@@ -2195,7 +2195,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "chirp"
+name = "chirpy"
 version = "0.1.0"
 dependencies = [
  "serde",

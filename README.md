@@ -4,7 +4,7 @@
 
 🌐 **Live:** [chirpy.bittrees.org](https://chirpy.bittrees.org) · skinned with the **Bittrees** brand theme (light surface, Bitcoin-orange accent, treasury-green positives, serif headings).
 
-Chirp is an **org-agnostic** chat client. It ships with *no* organization baked in:
+Chirpy is an **org-agnostic** chat client. It ships with *no* organization baked in:
 you start in a personal space, and you can **import** an existing organization's config
 or **create** your own — each org brings its own branding, chains, token-gating rules,
 roles, and rooms. The chat itself (1:1 DMs + token-gated community rooms) lives inside
@@ -40,7 +40,7 @@ See **[docs/NATIVE.md](docs/NATIVE.md)**. In short:
 
 ```bash
 pnpm tauri dev          # run the macOS desktop app (needs Rust)
-pnpm tauri build        # build Chirp.app / .dmg
+pnpm tauri build        # build Chirpy.app / .dmg
 pnpm tauri ios init     # scaffold the iOS project (needs Xcode)
 pnpm tauri ios dev      # run in the iOS Simulator
 ```
