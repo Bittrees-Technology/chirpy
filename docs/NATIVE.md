@@ -59,3 +59,47 @@ The real transport relies on browser primitives inside WKWebView:
   the app's URL scheme so wallet round-trips return to Parley.
 
 These are integration concerns for the XMTP phase, not the current mock build.
+
+## Auto-updates (desktop)
+
+The desktop app self-updates via the Tauri **updater** plugin: on launch (and from
+**Settings → Software update**) it fetches a signed `latest.json`, and if a newer version
+exists it downloads, verifies the signature, installs, and relaunches.
+
+- **Manifest endpoint** (`tauri.conf.json` → `plugins.updater.endpoints`):
+  `https://github.com/Bittrees-Technology/chat/releases/latest/download/latest.json`
+- **Signature:** every build is signed with an ed25519 key. The **public** key is in
+  `tauri.conf.json`; the **private** key is **never committed** (gitignored under
+  `src-tauri/.tauri/`). Updates with a bad/missing signature are rejected.
+- **Frontend glue:** `apps/web/src/update.ts` (`autoUpdateOnLaunch`, `runUpdate`,
+  `relaunchApp`). All of it is a no-op on the web build and on mobile.
+
+### Releasing an update
+
+CI does it — `.github/workflows/release.yml` builds, signs, and publishes on a tag:
+
+```bash
+# bump version in apps/web/src-tauri/tauri.conf.json AND apps/web/src/app.config.ts, then:
+git tag app-v0.1.1 && git push origin app-v0.1.1
+```
+
+One-time CI setup — add repo **Actions secrets**:
+- `TAURI_SIGNING_PRIVATE_KEY` — contents of `src-tauri/.tauri/parley-updater.key`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the key password (empty for the current key)
+- (optional) Apple notarization vars for Gatekeeper-clean downloads.
+
+Build + sign locally instead:
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat apps/web/src-tauri/.tauri/parley-updater.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+pnpm tauri build            # emits the bundle + .sig + latest.json
+```
+
+### iOS / Android
+
+App stores own updates on mobile — Apple disallows self-updating binaries. The updater
+plugin is compiled out on mobile targets (`#[cfg(desktop)]` in `src-tauri/src/lib.rs`),
+and the in-app UI shows "managed by the App Store." Ship iOS updates via TestFlight / the
+App Store; the web build updates on reload.
+

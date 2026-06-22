@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useIdentity, useOrgs } from "./state";
+import { autoUpdateOnLaunch } from "./update";
 import { Avatar, shortAddr } from "./ui";
 import { APP_NAME } from "./app.config";
 import { ConversationColumn } from "./views/List";
@@ -71,6 +72,9 @@ export function App() {
   const [view, setView] = useState<View>("chats");
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = () => setDialog(null);
+
+  // Silent auto-update check on launch (desktop only; no-op on web/mobile).
+  useEffect(() => { void autoUpdateOnLaunch(); }, []);
 
   return (
     <div className="app">

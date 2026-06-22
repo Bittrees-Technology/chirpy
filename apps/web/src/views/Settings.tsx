@@ -3,6 +3,7 @@ import { serializeOrg, type RoomRule } from "@app/core";
 import { useChat, useIdentity, useOrgs } from "../state";
 import { Avatar, Button, Field, shortAddr } from "../ui";
 import { download } from "./dialogs";
+import { UpdateCard } from "./UpdateCard";
 
 function gateSummary(rules: RoomRule[]): string {
   if (!rules.length) return "open";
@@ -39,6 +40,8 @@ export function Settings(
             : "— live XMTP DMs + Push gated rooms."}
         </p>
       </section>
+
+      <UpdateCard />
 
       <section className="card">
         <div className="row-between">
