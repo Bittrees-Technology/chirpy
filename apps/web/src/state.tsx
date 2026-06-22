@@ -6,6 +6,7 @@ import {
   createTransport, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
 } from "@app/transport";
 import { DEFAULT_TRANSPORT } from "./app.config";
+import { resolveEns, type EnsRecord } from "./ens";
 
 // ---------- storage helpers ----------
 const LS = {
@@ -22,21 +23,155 @@ const randAddr = () => {
 };
 
 // ====================================================================
+// Wallet provider
+// ====================================================================
+interface Eip1193Provider {
+  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
+  on?(event: "accountsChanged", listener: (accounts: string[]) => void): void;
+  removeListener?(event: "accountsChanged", listener: (accounts: string[]) => void): void;
+}
+
+function getInjectedEthereum(): Eip1193Provider | null {
+  if (typeof window === "undefined") return null;
+  const maybeWindow = window as Window & { ethereum?: Eip1193Provider };
+  return maybeWindow.ethereum ?? null;
+}
+
+const accountFromResponse = (accounts: unknown): string | null =>
+  Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : null;
+
+// ====================================================================
 // Identity
 // ====================================================================
-interface IdentityCtx { identity: Identity; setHandle: (h: string) => void; reset: () => void; }
+type IdentityMode = "stub" | "wallet";
+interface IdentityCtx {
+  identity: Identity;
+  mode: IdentityMode;
+  hasInjectedWallet: boolean;
+  isConnecting: boolean;
+  ensProfile: EnsRecord | null;
+  walletError: string | null;
+  setHandle: (h: string) => void;
+  reset: () => void;
+  connectWallet: () => Promise<void>;
+  disconnectWallet: () => void;
+}
 const IdentityContext = createContext<IdentityCtx | null>(null);
 const IDENTITY_KEY = "chat:identity:v1";
+const WALLET_CONNECTED_KEY = "chat:walletConnected:v1";
+
+const normalizeAddress = (address: string) => address.trim();
+const identityFromWallet = (address: string, profile?: EnsRecord | null): Identity => ({
+  address: normalizeAddress(address),
+  handle: profile?.displayName ?? profile?.name ?? undefined,
+});
 
 export function IdentityProvider({ children }: { children: React.ReactNode }) {
-  const [identity, setIdentity] = useState<Identity>(() =>
+  const [stubIdentity, setStubIdentity] = useState<Identity>(() =>
     LS.get<Identity>(IDENTITY_KEY, { address: randAddr(), handle: "you" }));
-  useEffect(() => { LS.set(IDENTITY_KEY, identity); }, [identity]);
+  const [walletIdentity, setWalletIdentity] = useState<Identity | null>(null);
+  const [mode, setMode] = useState<IdentityMode>("stub");
+  const [hasInjectedWallet, setHasInjectedWallet] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [ensProfile, setEnsProfile] = useState<EnsRecord | null>(null);
+  const [walletError, setWalletError] = useState<string | null>(null);
+
+  const applyWalletAccount = useCallback(async (address: string) => {
+    const normalized = normalizeAddress(address);
+    let profile: EnsRecord | null = null;
+    try {
+      profile = await resolveEns(normalized);
+    } catch {
+      profile = null;
+    }
+    setEnsProfile(profile);
+    setWalletIdentity(identityFromWallet(normalized, profile));
+    setMode("wallet");
+    LS.set(WALLET_CONNECTED_KEY, true);
+  }, []);
+
+  useEffect(() => { LS.set(IDENTITY_KEY, stubIdentity); }, [stubIdentity]);
+  useEffect(() => {
+    const ethereum = getInjectedEthereum();
+    setHasInjectedWallet(Boolean(ethereum));
+    if (!ethereum) return undefined;
+
+    let cancelled = false;
+    if (LS.get<boolean>(WALLET_CONNECTED_KEY, false)) {
+      ethereum.request({ method: "eth_accounts" })
+        .then((accounts) => {
+          if (cancelled) return;
+          const address = accountFromResponse(accounts);
+          if (address) void applyWalletAccount(address);
+          else LS.remove(WALLET_CONNECTED_KEY);
+        })
+        .catch(() => {
+          if (!cancelled) LS.remove(WALLET_CONNECTED_KEY);
+        });
+    }
+
+    const onAccountsChanged = (accounts: string[]) => {
+      const address = accountFromResponse(accounts);
+      if (address) {
+        setWalletError(null);
+        void applyWalletAccount(address);
+        return;
+      }
+      LS.remove(WALLET_CONNECTED_KEY);
+      setWalletIdentity(null);
+      setEnsProfile(null);
+      setMode("stub");
+    };
+    ethereum.on?.("accountsChanged", onAccountsChanged);
+    return () => {
+      cancelled = true;
+      ethereum.removeListener?.("accountsChanged", onAccountsChanged);
+    };
+  }, [applyWalletAccount]);
+
+  const identity = walletIdentity ?? stubIdentity;
   const value = useMemo<IdentityCtx>(() => ({
     identity,
-    setHandle: (h) => setIdentity((p) => ({ ...p, handle: h.trim() || "you" })),
-    reset: () => setIdentity({ address: randAddr(), handle: "you" }),
-  }), [identity]);
+    mode,
+    hasInjectedWallet,
+    isConnecting,
+    ensProfile,
+    walletError,
+    setHandle: (h) => {
+      const handle = h.trim() || "you";
+      if (mode === "wallet") setWalletIdentity((p) => (p ? { ...p, handle } : p));
+      else setStubIdentity((p) => ({ ...p, handle }));
+    },
+    reset: () => setStubIdentity({ address: randAddr(), handle: "you" }),
+    connectWallet: async () => {
+      const ethereum = getInjectedEthereum();
+      if (!ethereum) {
+        setHasInjectedWallet(false);
+        setWalletError("No injected wallet was found. Local identity mode is still available.");
+        return;
+      }
+      setIsConnecting(true);
+      setWalletError(null);
+      try {
+        const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+        const address = accountFromResponse(accounts);
+        if (!address) throw new Error("Wallet did not return an account.");
+        await applyWalletAccount(address);
+      } catch (err) {
+        const message = err instanceof Error && err.message ? err.message : "Wallet connection was rejected or unavailable.";
+        setWalletError(message);
+      } finally {
+        setIsConnecting(false);
+      }
+    },
+    disconnectWallet: () => {
+      LS.remove(WALLET_CONNECTED_KEY);
+      setWalletIdentity(null);
+      setEnsProfile(null);
+      setMode("stub");
+      setWalletError(null);
+    },
+  }), [applyWalletAccount, ensProfile, hasInjectedWallet, identity, isConnecting, mode, walletError]);
   return <IdentityContext.Provider value={value}>{children}</IdentityContext.Provider>;
 }
 export const useIdentity = () => {
@@ -157,15 +292,6 @@ const DEFAULT_SETTINGS_PREFS: SettingsPrefs = {
   blocked: [],
 };
 
-interface Eip1193Provider {
-  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
-}
-
-function getInjectedEthereum(): Eip1193Provider | null {
-  const maybeWindow = window as Window & { ethereum?: Eip1193Provider };
-  return maybeWindow.ethereum ?? null;
-}
-
 const textEncoder = new TextEncoder();
 const bytesToHex = (bytes: Uint8Array) =>
   `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
@@ -199,11 +325,16 @@ async function deriveSyncKey(signature: string, address: string): Promise<Crypto
   );
 }
 
-async function requestWalletSyncKey(): Promise<{ address: string; key: CryptoKey }> {
+async function requestWalletSyncKey(preferredAddress?: string): Promise<{ address: string; key: CryptoKey }> {
   const ethereum = getInjectedEthereum();
   if (!ethereum) throw new Error("No injected wallet was found. Open Chirpy in a browser with a wallet extension, then try again.");
-  const accounts = await ethereum.request({ method: "eth_requestAccounts" });
-  const address = Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : null;
+  const accounts = preferredAddress
+    ? await ethereum.request({ method: "eth_accounts" })
+    : await ethereum.request({ method: "eth_requestAccounts" });
+  const account = accountFromResponse(accounts);
+  const address = preferredAddress && account?.toLowerCase() === preferredAddress.toLowerCase()
+    ? preferredAddress
+    : account;
   if (!address) throw new Error("Wallet did not return an account.");
   const message = `Chirpy: enable encrypted sync\nAddress: ${address}\nThis is a gas-free signature used only to derive your sync key.`;
   const signature = await ethereum.request({
@@ -239,6 +370,7 @@ async function encryptSettingsPayload(prefs: SettingsPrefs, key: CryptoKey, addr
 }
 
 export function SettingsPrefsProvider({ children }: { children: React.ReactNode }) {
+  const { identity, mode } = useIdentity();
   const [prefs, setPrefs] = useState<SettingsPrefs>(() =>
     ({ ...DEFAULT_SETTINGS_PREFS, ...LS.get<Partial<SettingsPrefs>>(SETTINGS_PREFS_KEY, {}) }));
   const existingSyncBlob = useMemo(() => LS.get<EncryptedSyncBlob | null>(SETTINGS_SYNC_BLOB_KEY, null), []);
@@ -274,7 +406,7 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
     enableSyncAcrossDevices: async () => {
       setSyncState((s) => ({ ...s, isEncrypting: true }));
       try {
-        const { address, key } = await requestWalletSyncKey();
+        const { address, key } = await requestWalletSyncKey(mode === "wallet" ? identity.address : undefined);
         const nextPrefs = { ...prefs, syncAcrossDevices: true };
         const blob = await encryptSettingsPayload(nextPrefs, key, address);
         syncKeyRef.current = key;

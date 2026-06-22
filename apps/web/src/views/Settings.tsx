@@ -5,33 +5,20 @@ import { Avatar, Button, Field, Toggle, shortAddr } from "../ui";
 import { download } from "./dialogs";
 import { UpdateCard } from "./UpdateCard";
 import { useI18n, LANGS, type LangCode } from "../i18n";
+import { isAddress, isEnsName, resolveEns, type EnsRecord } from "../ens";
 
 function gateSummary(rules: RoomRule[]): string {
   if (!rules.length) return "open";
   return `${rules.length} rule${rules.length === 1 ? "" : "s"}`;
 }
 
-interface EnsRecord {
-  address?: string | null;
-  name?: string | null;
-  displayName?: string | null;
-  avatar?: string | null;
-}
-
-const ENS_API = "https://api.ensideas.com/ens/resolve";
-const isAddress = (value: string) => /^0x[a-fA-F0-9]{40}$/.test(value.trim());
-const isEnsName = (value: string) => /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth$/i.test(value.trim());
-
-async function resolveEns(input: string): Promise<EnsRecord> {
-  const res = await fetch(`${ENS_API}/${encodeURIComponent(input.trim())}`);
-  if (!res.ok) throw new Error("ENS lookup failed");
-  return await res.json() as EnsRecord;
-}
-
 export function Settings(
   { onCreateOrg, onImportOrg }: { onCreateOrg: () => void; onImportOrg: () => void },
 ) {
-  const { identity, setHandle, reset } = useIdentity();
+  const {
+    identity, mode, hasInjectedWallet, isConnecting, ensProfile, walletError,
+    setHandle, reset, connectWallet, disconnectWallet,
+  } = useIdentity();
   const { orgs, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices } = useSettingsPrefs();
   const { transportId } = useChat();
@@ -123,9 +110,10 @@ export function Settings(
     };
   }, [resolverInput]);
 
-  const ensName = profileEns?.name ?? (isEnsName(identity.handle ?? "") ? identity.handle : undefined);
-  const profileName = profileEns?.displayName ?? ensName ?? identity.handle ?? shortAddr(identity.address);
-  const profileAvatar = profileEns?.address && profileEns.avatar ? profileEns.avatar : undefined;
+  const activeProfile = mode === "wallet" ? ensProfile ?? profileEns : profileEns;
+  const ensName = activeProfile?.name ?? (isEnsName(identity.handle ?? "") ? identity.handle : undefined);
+  const profileName = activeProfile?.displayName ?? ensName ?? identity.handle ?? shortAddr(identity.address);
+  const profileAvatar = activeProfile?.address && activeProfile.avatar ? activeProfile.avatar : undefined;
   const ensManagerTarget = ensName ?? identity.address;
   const syncDescription = prefs.syncAcrossDevices
     ? syncState.walletAddress
@@ -176,7 +164,13 @@ export function Settings(
 
       <section className="card">
         <h2>Identity</h2>
-        <p className="muted">In this preview build your identity is a local wallet stub. Connecting a real wallet (XMTP/Push) is the next phase.</p>
+        <p className="muted">
+          {mode === "wallet"
+            ? "Connected wallet identity. ENS name and avatar are resolved from the active account when available."
+            : hasInjectedWallet
+              ? "Connect an injected wallet to use your real address, ENS name, and ENS avatar. Local identity remains available offline."
+              : "Local identity mode is active because no injected wallet was found in this browser."}
+        </p>
         <div className="grid2">
           <Field label="Display name"><input className="input" value={identity.handle ?? ""} onChange={(e) => setHandle(e.target.value)} /></Field>
           <Field label="Address"><input className="input" value={identity.address} readOnly /></Field>
@@ -186,7 +180,18 @@ export function Settings(
             </select>
           </Field>
         </div>
-        <div className="row-end"><Button variant="ghost" onClick={reset}>Regenerate identity</Button></div>
+        {walletError && <div className="muted status-line status-error">{walletError}</div>}
+        <div className="row-end">
+          {mode === "wallet" ? (
+            <Button variant="ghost" onClick={disconnectWallet}>Disconnect</Button>
+          ) : hasInjectedWallet ? (
+            <Button variant="primary" onClick={connectWallet} disabled={isConnecting}>
+              {isConnecting ? "Connecting..." : "Connect wallet"}
+            </Button>
+          ) : (
+            <Button variant="ghost" onClick={reset}>Regenerate identity</Button>
+          )}
+        </div>
       </section>
 
       <section className="card">
