@@ -1,4 +1,4 @@
-# Chirp
+# Chirpy
 
 **Wallet-native chat for any community — one codebase, a Mac desktop app and an iOS app.**
 
