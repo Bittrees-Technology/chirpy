@@ -9,7 +9,16 @@ export { XmtpTransport } from "./xmtp";
 
 export type TransportMode = "mock" | "xmtp";
 
+export interface Eip1193Provider {
+  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
+}
+
 /** Build the transport for an org. Defaults to the offline mock transport. */
-export function createTransport(mode: TransportMode, org: OrgConfig, identity: Identity): Transport {
-  return mode === "xmtp" ? new XmtpTransport(org, identity) : new MockTransport(org, identity);
+export function createTransport(
+  mode: TransportMode,
+  org: OrgConfig,
+  identity: Identity,
+  provider?: Eip1193Provider | null,
+): Transport {
+  return mode === "xmtp" ? new XmtpTransport(org, identity, provider ?? null) : new MockTransport(org, identity);
 }

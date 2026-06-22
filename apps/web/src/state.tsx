@@ -615,10 +615,13 @@ export const useSettingsPrefs = () => {
 // ====================================================================
 interface ChatCtx {
   transportId: string;
+  transportStatus: string;
+  transportError: string | null;
   conversations: Conversation[];
   activeId: string | null;
   activeConversation: Conversation | null;
   messages: ChatMessage[];
+  enableMessaging: () => Promise<void>;
   select: (id: string | null) => void;
   send: (body: string, replyTo?: string) => Promise<void>;
   react: (messageId: string, emoji: string) => Promise<void>;
@@ -629,10 +632,12 @@ interface ChatCtx {
 const ChatContext = createContext<ChatCtx | null>(null);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const { identity } = useIdentity();
+  const { identity, mode } = useIdentity();
   const { activeOrg } = useOrgs();
   const transportRef = useRef<Transport | null>(null);
   const [transportId, setTransportId] = useState("mock");
+  const [transportStatus, setTransportStatus] = useState("idle");
+  const [transportError, setTransportError] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -653,11 +658,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     let unsub = () => {};
     let cancelled = false;
     (async () => {
-      const t = createTransport(DEFAULT_TRANSPORT, activeOrg, identity);
-      await t.init();
+      const provider = mode === "wallet" ? getInjectedEthereum() : null;
+      const t = createTransport(DEFAULT_TRANSPORT, activeOrg, identity, provider);
+      setTransportError(null);
+      await t.init().catch((err) => {
+        setTransportError(err instanceof Error ? err.message : "Transport failed to initialize.");
+      });
       if (cancelled) return;
       transportRef.current = t;
       setTransportId(t.id);
+      setTransportStatus(t.status ?? "ready");
       setActiveId(null);
       setMessages([]);
       await reloadConversations();
@@ -667,7 +677,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       });
     })();
     return () => { cancelled = true; unsub(); };
-  }, [activeOrg.id, identity.address]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeOrg.id, identity.address, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { reloadMessages(activeId); }, [activeId, reloadMessages]);
 
@@ -675,6 +685,21 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setActiveId(id);
     if (id) transportRef.current?.markRead(id);
   }, []);
+
+  const enableMessaging = useCallback(async () => {
+    const t = transportRef.current;
+    if (!t?.enable) return;
+    setTransportError(null);
+    setTransportStatus("enabling");
+    try {
+      await t.enable();
+      setTransportStatus(t.status ?? "ready");
+      await reloadConversations();
+    } catch (err) {
+      setTransportStatus(t.status ?? "error");
+      setTransportError(err instanceof Error ? err.message : "Messaging could not be enabled.");
+    }
+  }, [reloadConversations]);
 
   const send = useCallback(async (body: string, replyTo?: string) => {
     if (!activeId || !body.trim()) return;
@@ -712,9 +737,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo<ChatCtx>(() => ({
-    transportId, conversations, activeId, activeConversation, messages,
-    select, send, react, startDm, createRoom, setRoomPolicy,
-  }), [transportId, conversations, activeId, activeConversation, messages, select, send, react, startDm, createRoom, setRoomPolicy]);
+    transportId, transportStatus, transportError, conversations, activeId, activeConversation, messages,
+    enableMessaging, select, send, react, startDm, createRoom, setRoomPolicy,
+  }), [transportId, transportStatus, transportError, conversations, activeId, activeConversation, messages, enableMessaging, select, send, react, startDm, createRoom, setRoomPolicy]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

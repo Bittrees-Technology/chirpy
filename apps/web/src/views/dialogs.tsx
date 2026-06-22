@@ -20,18 +20,33 @@ export function NewDmDialog({ onClose }: { onClose: () => void }) {
   const { startDm } = useChat();
   const [address, setAddress] = useState("");
   const [handle, setHandle] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const valid = /^0x[a-fA-F0-9]{40}$/.test(address.trim()) || /\.eth$/.test(address.trim());
   return (
     <Modal title="New direct message" onClose={onClose}>
       <Field label="Address or ENS name" hint="0x… or name.eth">
-        <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="0x… or vitalik.eth" autoFocus />
+        <input className="input" value={address} onChange={(e) => { setAddress(e.target.value); setError(null); }} placeholder="0x… or vitalik.eth" autoFocus />
       </Field>
       <Field label="Display name (optional)">
         <input className="input" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="alice" />
       </Field>
+      {error && <div className="error-banner">{error}</div>}
       <div className="modal-actions">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!valid} onClick={async () => { await startDm(address.trim(), handle.trim() || undefined); onClose(); }}>Start chat</Button>
+        <Button
+          variant="primary"
+          disabled={!valid}
+          onClick={async () => {
+            try {
+              await startDm(address.trim(), handle.trim() || undefined);
+              onClose();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Could not start that conversation.");
+            }
+          }}
+        >
+          Start chat
+        </Button>
       </div>
     </Modal>
   );

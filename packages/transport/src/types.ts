@@ -36,12 +36,16 @@ export interface StartRoomInput {
   policy?: Partial<Policy>;
 }
 
+export type TransportStatus = "idle" | "enabling" | "ready" | "error";
+
 /** The interface the UI talks to. Backed by MockTransport today, XmtpTransport later. */
 export interface Transport {
   readonly id: "mock" | "xmtp";
+  readonly status?: TransportStatus;
   /** Identity this transport is acting as. */
   me(): Identity;
   init(): Promise<void>;
+  enable?(): Promise<void>;
   listConversations(): Promise<Conversation[]>;
   listMessages(conversationId: string): Promise<ChatMessage[]>;
   send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage>;

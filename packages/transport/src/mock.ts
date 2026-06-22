@@ -57,6 +57,7 @@ export class MockTransport implements Transport {
   }
 
   me(): Identity { return this.identity; }
+  async enable(): Promise<void> {}
 
   private loadSlice(key: string): Slice | null {
     const raw = store.get(key);

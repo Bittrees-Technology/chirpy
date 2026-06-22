@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useIdentity, useOrgs } from "./state";
+import { useChat, useIdentity, useOrgs } from "./state";
 import { useI18n } from "./i18n";
 import { autoUpdateOnLaunch } from "./update";
 import { Avatar, shortAddr } from "./ui";
@@ -71,9 +71,12 @@ function Sidebar(
 }
 
 export function App() {
+  const { transportId, transportStatus, transportError, enableMessaging } = useChat();
+  const { mode, hasInjectedWallet, connectWallet, isConnecting } = useIdentity();
   const [view, setView] = useState<View>("chats");
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = () => setDialog(null);
+  const xmtpNeedsEnable = transportId === "xmtp" && transportStatus !== "ready";
 
   // Silent auto-update check on launch (desktop only; no-op on web/mobile).
   useEffect(() => { void autoUpdateOnLaunch(); }, []);
@@ -82,6 +85,24 @@ export function App() {
     <div className="app">
       <Sidebar view={view} setView={setView} onCreateOrg={() => setDialog("createOrg")} />
       <main className="main">
+        {xmtpNeedsEnable && (
+          <div className="error-banner" style={{ margin: 12 }}>
+            {mode === "wallet"
+              ? "XMTP messaging is off for this wallet. Sign once to enable DMs on this browser."
+              : hasInjectedWallet
+                ? "Connect a wallet to enable XMTP DMs."
+                : "Open Chirpy in a browser with an injected wallet to enable XMTP DMs."}
+            <button
+              className="btn btn-primary btn-sm"
+              style={{ marginLeft: 12 }}
+              disabled={transportStatus === "enabling" || isConnecting || (!hasInjectedWallet && mode !== "wallet")}
+              onClick={() => { void (mode === "wallet" ? enableMessaging() : connectWallet()); }}
+            >
+              {mode === "wallet" ? (transportStatus === "enabling" ? "Enabling..." : "Enable messaging") : "Connect wallet"}
+            </button>
+            {transportError && <span style={{ marginLeft: 12 }}>{transportError}</span>}
+          </div>
+        )}
         {view === "chats" && (
           <div className="split">
             <ConversationColumn kind="dm" title="Chats" newLabel="+ New" onNew={() => setDialog("newDm")} />
@@ -90,7 +111,9 @@ export function App() {
         )}
         {view === "rooms" && (
           <div className="split">
-            <ConversationColumn kind="room" title="Rooms" newLabel="+ Room" onNew={() => setDialog("newRoom")} />
+            <ConversationColumn kind="room" title="Rooms" newLabel="+ Room" onNew={() => {
+              if (transportId !== "xmtp") setDialog("newRoom");
+            }} />
             <Thread />
           </div>
         )}
@@ -100,7 +123,7 @@ export function App() {
       </main>
 
       {dialog === "newDm" && <NewDmDialog onClose={close} />}
-      {dialog === "newRoom" && <NewRoomDialog onClose={close} />}
+      {dialog === "newRoom" && transportId !== "xmtp" && <NewRoomDialog onClose={close} />}
       {dialog === "createOrg" && <CreateOrgDialog onClose={close} />}
       {dialog === "importOrg" && <ImportOrgDialog onClose={close} />}
     </div>

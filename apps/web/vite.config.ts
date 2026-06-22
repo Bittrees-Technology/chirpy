@@ -19,5 +19,15 @@ export default defineConfig({
     host: true,
     fs: { allow: [r("../..")] },  // serve from the monorepo root (workspace packages)
   },
-  build: { target: "es2022", outDir: "dist" },
+  // XMTP browser SDK runs WASM bindings in a Web Worker with an OPFS SQLite store.
+  // Keep it out of dep prebundling and target esnext for the SDK glue's top-level
+  // await. The SDK is dynamically imported by the transport, so mock mode stays
+  // on the small default bundle.
+  optimizeDeps: {
+    exclude: ["@xmtp/browser-sdk", "@xmtp/wasm-bindings"],
+    include: ["@xmtp/proto"],
+    esbuildOptions: { target: "esnext" },
+  },
+  worker: { format: "es" },
+  build: { target: "esnext", outDir: "dist" },
 });
