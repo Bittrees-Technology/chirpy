@@ -21,6 +21,7 @@ export const bittreesResearchPreset: OrgConfig = {
     roleCascade: { partner: 3, "junior partner": 2, associate: 1 },
     powerTier: null,
   },
+  policy: { mode: "active", attachments: "allow" },
   roles: [
     { label: "Partner", color: "#f59e0b" },
     { label: "Junior Partner", color: "#3b82f6" },
@@ -51,6 +52,7 @@ export const bittreesIncPreset: OrgConfig = {
     // BGOV voting-power tiers (the original "bgov" rule generalized).
     powerTier: { label: "BGOV", resolver: "snapshot", tiers: [1, 69, 210, 420], params: { space: "gov.bittrees.eth" } },
   },
+  policy: { mode: "active", attachments: "allow" },
   roles: [{ label: "Operations", color: "#ef4444" }],
   defaultRooms: [
     { id: "inc-shareholders", title: "shareholders", description: "≥ 1 BGOV", gate: { combine: "any", rules: [{ kind: "power", tier: 1 }] } },

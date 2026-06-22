@@ -1,4 +1,5 @@
-import type { GatingConfig, OrgConfig, RoomRule } from "./types";
+import type { GatingConfig, OrgConfig, Policy, RoomRule } from "./types";
+import { DEFAULT_POLICY, mergePolicy } from "./policy";
 
 /** A safe, fully-open default gating config. */
 export function openGating(): GatingConfig {
@@ -20,6 +21,7 @@ export const PERSONAL_ORG: OrgConfig = {
   namespace: "personal",
   entryGate: [],
   gating: openGating(),
+  policy: { ...DEFAULT_POLICY },
   defaultRooms: [],
   roles: [],
   admins: [],
@@ -44,6 +46,8 @@ export interface CreateOrgInput {
   rpcUrl?: string;
   entryGate?: RoomRule[];
   gating?: Partial<GatingConfig>;
+  policy?: Partial<Policy>;
+  themeCss?: string;
   admins?: string[];
   gateUrl?: string;
 }
@@ -60,11 +64,13 @@ export function createOrg(input: CreateOrgInput): OrgConfig {
       accent: input.accent || "#6366f1",
       logoUrl: input.logoUrl,
       homeUrl: input.homeUrl,
+      themeCss: input.themeCss,
     },
     chain: { chainId: input.chainId ?? 1, rpcUrl: input.rpcUrl },
     namespace: slug,
     entryGate: input.entryGate ?? [],
     gating: { ...openGating(), ...(input.gating || {}) },
+    policy: mergePolicy(DEFAULT_POLICY, input.policy),
     defaultRooms: [],
     roles: [],
     admins: (input.admins || []).map((a) => a.toLowerCase()),
@@ -99,5 +105,7 @@ export function parseOrg(text: string): OrgConfig {
   if (!v.ok) throw new Error(`Invalid org config: ${v.errors.join("; ")}`);
   // Ensure an id exists.
   if (!parsed.id) parsed.id = `org_${slugify(parsed.branding.name)}_${rid()}`;
+  // Backward-compat: policy was added after v1 shipped; default it if absent.
+  parsed.policy = mergePolicy(DEFAULT_POLICY, parsed.policy);
   return parsed as OrgConfig;
 }

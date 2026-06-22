@@ -1,4 +1,4 @@
-import type { Gate, Identity } from "@app/core";
+import type { Gate, Identity, Policy } from "@app/core";
 
 export interface ChatMessage {
   id: string;
@@ -21,6 +21,8 @@ export interface Conversation {
   description?: string;
   /** Room gate (rooms only). */
   gate?: Gate;
+  /** Effective action policy (rooms only) — org default merged with room override. */
+  policy?: Policy;
   lastMessage?: ChatMessage;
   unread: number;
   /** A DM that the peer has not yet accepted (request state). */
@@ -31,6 +33,7 @@ export interface StartRoomInput {
   title: string;
   description?: string;
   gate: Gate;
+  policy?: Partial<Policy>;
 }
 
 /** The interface the UI talks to. Backed by MockTransport today, XmtpTransport later. */
@@ -46,6 +49,8 @@ export interface Transport {
   markRead(conversationId: string): Promise<void>;
   startDm(address: string, handle?: string): Promise<Conversation>;
   createRoom(input: StartRoomInput): Promise<Conversation>;
+  /** Update a room's effective policy (admin action — e.g. freeze posting). */
+  setRoomPolicy(conversationId: string, policy: Policy): Promise<void>;
   /** Subscribe to any change (new message, new conversation, read state). */
   subscribe(cb: () => void): () => void;
 }

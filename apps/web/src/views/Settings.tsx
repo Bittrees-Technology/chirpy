@@ -4,6 +4,7 @@ import { useChat, useIdentity, useOrgs } from "../state";
 import { Avatar, Button, Field, shortAddr } from "../ui";
 import { download } from "./dialogs";
 import { UpdateCard } from "./UpdateCard";
+import { useI18n, LANGS, type LangCode } from "../i18n";
 
 function gateSummary(rules: RoomRule[]): string {
   if (!rules.length) return "open";
@@ -16,6 +17,7 @@ export function Settings(
   const { identity, setHandle, reset } = useIdentity();
   const { orgs, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { transportId } = useChat();
+  const { lang, setLang, t } = useI18n();
 
   return (
     <div className="settings">
@@ -27,6 +29,11 @@ export function Settings(
         <div className="grid2">
           <Field label="Display name"><input className="input" value={identity.handle ?? ""} onChange={(e) => setHandle(e.target.value)} /></Field>
           <Field label="Address"><input className="input" value={identity.address} readOnly /></Field>
+          <Field label={t("settings.language")}>
+            <select className="input" value={lang} onChange={(e) => setLang(e.target.value as LangCode)}>
+              {Object.entries(LANGS).map(([code, l]) => <option key={code} value={code}>{l.label}</option>)}
+            </select>
+          </Field>
         </div>
         <div className="row-end"><Button variant="ghost" onClick={reset}>Regenerate identity</Button></div>
       </section>

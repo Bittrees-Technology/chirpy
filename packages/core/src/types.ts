@@ -29,6 +29,21 @@ export interface Branding {
   logoUrl?: string;
   /** Optional home/marketing URL. */
   homeUrl?: string;
+  /** Optional raw CSS injected when this org is active — drop-in re-skin without a rebuild. */
+  themeCss?: string;
+}
+
+/**
+ * An "action gate" (vs the token "access gate"): what may HAPPEN in a room/org,
+ * independent of who may enter. Modeled on the Parley-Chat relay's policy engine.
+ */
+export interface Policy {
+  /** "active" = normal; "read-only" = posting is frozen (e.g. during an incident). */
+  mode: "active" | "read-only";
+  /** Whether file attachments are permitted. */
+  attachments: "allow" | "block";
+  /** Max upload size in bytes (undefined / 0 = no cap). */
+  maxUploadBytes?: number;
 }
 
 export interface ChainConfig {
@@ -69,6 +84,8 @@ export interface RoomSeed {
   description?: string;
   /** Gate for the room. Empty rules = open room. */
   gate: Gate;
+  /** Optional per-room policy override (merged over the org default). */
+  policy?: Partial<Policy>;
 }
 
 /** The single object that captures everything org-specific. Importing an org =
@@ -85,6 +102,8 @@ export interface OrgConfig {
   /** Membership gate required to enter the org at all. [] = open. */
   entryGate: RoomRule[];
   gating: GatingConfig;
+  /** Org-wide default action policy (rooms may override). */
+  policy: Policy;
   defaultRooms: RoomSeed[];
   roles: RoleDef[];
   /** Bootstrap admin addresses (lowercased). */

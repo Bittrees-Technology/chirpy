@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
-  createOrg, parseOrg, serializeOrg, ruleSummary,
-  type GatingConfig, type RoomRule,
+  createOrg, parseOrg, serializeOrg,
+  type GatingConfig, type Policy, type RoomRule,
 } from "@app/core";
 import { useChat, useOrgs } from "../state";
 import { Button, Field, Modal } from "../ui";
@@ -94,6 +94,22 @@ export function GateRuleEditor(
   );
 }
 
+// ---------------- Policy editor (the "action gate") ----------------
+export function PolicyEditor(
+  { value, onChange }: { value: Partial<Policy>; onChange: (p: Partial<Policy>) => void },
+) {
+  const maxMb = value.maxUploadBytes ? Math.round(value.maxUploadBytes / (1024 * 1024)) : 0;
+  return (
+    <div className="checks">
+      <label className="check"><input type="checkbox" checked={value.mode === "read-only"} onChange={(e) => onChange({ ...value, mode: e.target.checked ? "read-only" : "active" })} /> Read-only (freeze posting)</label>
+      <label className="check"><input type="checkbox" checked={value.attachments === "block"} onChange={(e) => onChange({ ...value, attachments: e.target.checked ? "block" : "allow" })} /> Block attachments</label>
+      <Field label="Max upload size (MB · 0 = no limit)">
+        <input className="input input-sm input-xs" type="number" min={0} value={maxMb} onChange={(e) => onChange({ ...value, maxUploadBytes: (Number(e.target.value) || 0) * 1024 * 1024 })} />
+      </Field>
+    </div>
+  );
+}
+
 // ---------------- New Room ----------------
 export function NewRoomDialog({ onClose }: { onClose: () => void }) {
   const { createRoom } = useChat();
@@ -102,6 +118,7 @@ export function NewRoomDialog({ onClose }: { onClose: () => void }) {
   const [description, setDescription] = useState("");
   const [combine, setCombine] = useState<"any" | "all">("any");
   const [rules, setRules] = useState<RoomRule[]>([]);
+  const [policy, setPolicy] = useState<Partial<Policy>>({});
   return (
     <Modal title="New room" onClose={onClose} wide>
       <Field label="Room name"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="general" autoFocus /></Field>
@@ -113,9 +130,11 @@ export function NewRoomDialog({ onClose }: { onClose: () => void }) {
         </select>
       </Field>
       <GateRuleEditor rules={rules} onChange={setRules} gating={activeOrg.gating} />
+      <div className="section-title">Policy <span className="field-hint">(what may happen — overrides the org default)</span></div>
+      <PolicyEditor value={policy} onChange={setPolicy} />
       <div className="modal-actions">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!title.trim()} onClick={async () => { await createRoom({ title: title.trim(), description: description.trim() || undefined, gate: { combine, rules } }); onClose(); }}>Create room</Button>
+        <Button variant="primary" disabled={!title.trim()} onClick={async () => { await createRoom({ title: title.trim(), description: description.trim() || undefined, gate: { combine, rules }, policy }); onClose(); }}>Create room</Button>
       </div>
     </Modal>
   );
@@ -134,6 +153,8 @@ export function CreateOrgDialog({ onClose }: { onClose: () => void }) {
   const [powerLabel, setPowerLabel] = useState("Power");
   const [powerTiers, setPowerTiers] = useState("1,10,100");
   const [entryGate, setEntryGate] = useState<RoomRule[]>([]);
+  const [policy, setPolicy] = useState<Partial<Policy>>({});
+  const [themeCss, setThemeCss] = useState("");
 
   const gating: GatingConfig = {
     enableTokenRules: true,
@@ -146,7 +167,7 @@ export function CreateOrgDialog({ onClose }: { onClose: () => void }) {
   };
 
   const create = () => {
-    const org = createOrg({ name, accent, chainId, gateUrl: gateUrl.trim() || undefined, entryGate, gating });
+    const org = createOrg({ name, accent, chainId, gateUrl: gateUrl.trim() || undefined, entryGate, gating, policy, themeCss: themeCss.trim() || undefined });
     addOrg(org);
     onClose();
   };
@@ -176,6 +197,12 @@ export function CreateOrgDialog({ onClose }: { onClose: () => void }) {
 
       <div className="section-title">Membership entry gate <span className="field-hint">(optional — blank = open org)</span></div>
       <GateRuleEditor rules={entryGate} onChange={setEntryGate} gating={gating} />
+
+      <div className="section-title">Default room policy <span className="field-hint">(rooms can override)</span></div>
+      <PolicyEditor value={policy} onChange={setPolicy} />
+
+      <div className="section-title">Custom theme CSS <span className="field-hint">(optional — re-skins the app for this org)</span></div>
+      <textarea className="input textarea" rows={4} value={themeCss} onChange={(e) => setThemeCss(e.target.value)} placeholder={":root { --accent: #e11d48; --bg: #0a0a0a; }"} />
 
       <div className="modal-actions">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>

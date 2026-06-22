@@ -32,5 +32,6 @@ export class XmtpTransport implements Transport {
   async markRead(): Promise<void> { this.notWired(); }
   async startDm(): Promise<Conversation> { this.notWired(); }
   async createRoom(_input: StartRoomInput): Promise<Conversation> { this.notWired(); }
+  async setRoomPolicy(): Promise<void> { this.notWired(); }
   subscribe(_cb: () => void): () => void { return () => {}; }
 }

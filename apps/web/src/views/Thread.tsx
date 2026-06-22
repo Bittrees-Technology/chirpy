@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
+import { policySummary, type Policy } from "@app/core";
 import { useChat, useIdentity } from "../state";
-import { Avatar, Empty, fmtTime, shortAddr } from "../ui";
+import { Avatar, Button, Empty, fmtTime, shortAddr } from "../ui";
 
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
 export function Thread() {
-  const { activeConversation, messages, send, react } = useChat();
+  const { activeConversation, messages, send, react, setRoomPolicy } = useChat();
   const { identity } = useIdentity();
   const [draft, setDraft] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -26,6 +27,13 @@ export function Thread() {
   };
 
   const replyTarget = replyTo ? messages.find((m) => m.id === replyTo) : null;
+  const isRoom = activeConversation.kind === "room";
+  const policy: Policy | null = isRoom ? (activeConversation.policy ?? null) : null;
+  const readOnly = policy?.mode === "read-only";
+  const toggleFreeze = () => {
+    if (!policy) return;
+    void setRoomPolicy({ ...policy, mode: readOnly ? "active" : "read-only" });
+  };
 
   return (
     <div className="thread">
@@ -33,14 +41,21 @@ export function Thread() {
         <Avatar id={activeConversation.id} label={activeConversation.title} size={34} />
         <div className="thread-head-meta">
           <div className="thread-title">
-            {activeConversation.kind === "room" ? `# ${activeConversation.title}` : activeConversation.title}
+            {isRoom ? `# ${activeConversation.title}` : activeConversation.title}
           </div>
           <div className="thread-sub">
-            {activeConversation.kind === "room"
-              ? `${activeConversation.peers.length} member${activeConversation.peers.length === 1 ? "" : "s"}${activeConversation.gate?.rules.length ? " · gated" : " · open"}`
+            {isRoom
+              ? `${activeConversation.peers.length} member${activeConversation.peers.length === 1 ? "" : "s"}${activeConversation.gate?.rules.length ? " · gated" : " · open"}${policy ? ` · ${policySummary(policy)}` : ""}`
               : shortAddr(activeConversation.peers.find((p) => p !== identity.address) ?? activeConversation.peers[0])}
           </div>
         </div>
+        {isRoom && policy && (
+          <div style={{ marginLeft: "auto" }}>
+            <Button variant={readOnly ? "primary" : "ghost"} onClick={toggleFreeze}>
+              {readOnly ? "Unfreeze" : "Freeze"}
+            </Button>
+          </div>
+        )}
       </header>
 
       <div className="messages">
@@ -86,16 +101,20 @@ export function Thread() {
         </div>
       )}
 
-      <form className="composer" onSubmit={submit}>
-        <input
-          className="composer-input"
-          placeholder={`Message ${activeConversation.kind === "room" ? "#" + activeConversation.title : activeConversation.title}`}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          autoFocus
-        />
-        <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>Send</button>
-      </form>
+      {readOnly ? (
+        <div className="composer readonly-note">🔒 This room is read-only. Posting is frozen.</div>
+      ) : (
+        <form className="composer" onSubmit={submit}>
+          <input
+            className="composer-input"
+            placeholder={`Message ${isRoom ? "#" + activeConversation.title : activeConversation.title}`}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            autoFocus
+          />
+          <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>Send</button>
+        </form>
+      )}
     </div>
   );
 }

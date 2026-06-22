@@ -1,4 +1,4 @@
-import type { Identity, OrgConfig } from "@app/core";
+import { mergePolicy, evaluatePolicy, type Identity, type OrgConfig, type Policy } from "@app/core";
 import type { ChatMessage, Conversation, StartRoomInput, Transport } from "./types";
 
 // A fully local, offline transport. It persists so the app is immediately viewable
@@ -119,7 +119,7 @@ export class MockTransport implements Transport {
       const id = r.id || uid("room");
       if (have.has(id)) continue;
       const seed: ChatMessage = { id: uid("m"), conversationId: id, sender: DEMO_BOTS[2].address, body: `#${r.title} created.`, sentAt: now - 1000 * 60 * 90 };
-      this.snap.conversations.push({ id, kind: "room", title: r.title, description: r.description, peers: [this.identity.address, DEMO_BOTS[2].address], gate: r.gate, unread: 0, lastMessage: seed });
+      this.snap.conversations.push({ id, kind: "room", title: r.title, description: r.description, peers: [this.identity.address, DEMO_BOTS[2].address], gate: r.gate, policy: mergePolicy(this.org.policy, r.policy), unread: 0, lastMessage: seed });
       this.snap.messages[id] = [seed];
     }
   }
@@ -155,6 +155,12 @@ export class MockTransport implements Transport {
   }
 
   async send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage> {
+    // Enforce the room's action policy (read-only freeze). DMs are unaffected.
+    const target = this.snap.conversations.find((c) => c.id === conversationId);
+    if (target?.kind === "room" && target.policy) {
+      const decision = evaluatePolicy(target.policy, { type: "send" });
+      if (!decision.allowed) throw new Error(decision.reason || "Blocked by room policy.");
+    }
     const msg: ChatMessage = {
       id: uid("m"), conversationId, sender: this.identity.address,
       body: body.trim(), sentAt: Date.now(), replyTo: opts?.replyTo,
@@ -218,7 +224,8 @@ export class MockTransport implements Transport {
   async createRoom(input: StartRoomInput): Promise<Conversation> {
     const conv: Conversation = {
       id: uid("room"), kind: "room", title: input.title, description: input.description,
-      peers: [this.identity.address], gate: input.gate, unread: 0,
+      peers: [this.identity.address], gate: input.gate,
+      policy: mergePolicy(this.org.policy, input.policy), unread: 0,
     };
     this.snap.conversations.push(conv);
     this.snap.messages[conv.id] = [{
@@ -228,5 +235,12 @@ export class MockTransport implements Transport {
     conv.lastMessage = this.snap.messages[conv.id][0];
     this.persist(); this.emit();
     return conv;
+  }
+
+  async setRoomPolicy(conversationId: string, policy: Policy): Promise<void> {
+    const conv = this.snap.conversations.find((c) => c.id === conversationId && c.kind === "room");
+    if (!conv) return;
+    conv.policy = policy;
+    this.persist(); this.emit();
   }
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useIdentity, useOrgs } from "./state";
+import { useI18n } from "./i18n";
 import { autoUpdateOnLaunch } from "./update";
 import { Avatar, shortAddr } from "./ui";
 import { APP_NAME } from "./app.config";
@@ -36,10 +37,11 @@ function Sidebar(
 ) {
   const { identity } = useIdentity();
   const { activeOrg } = useOrgs();
+  const { t } = useI18n();
   const nav: { id: View; label: string; icon: string }[] = [
-    { id: "chats", label: "Chats", icon: "💬" },
-    { id: "rooms", label: "Rooms", icon: "🏛️" },
-    { id: "settings", label: "Settings", icon: "⚙️" },
+    { id: "chats", label: t("nav.chats"), icon: "💬" },
+    { id: "rooms", label: t("nav.rooms"), icon: "🏛️" },
+    { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
   return (
     <aside className="sidebar">

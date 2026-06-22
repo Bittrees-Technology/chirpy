@@ -64,8 +64,11 @@ docs/          PLAN.md · ARCHITECTURE.md · NATIVE.md
 - ✅ Chat UI: DMs + rooms, threads, replies, reactions, read state.
 - ✅ Cross-org persistence: DMs follow your wallet across all orgs + personal; rooms per org.
 - ✅ Generalized gating model + evaluator (token / Safe / ENS / role-cascade / power-tier).
+- ✅ **Action policy** layer (read-only rooms, block attachments, size caps) — freeze a room live.
+- ✅ Per-org **drop-in CSS theming**, file-based **i18n**, and a styled **error page**.
 - ✅ macOS + iOS project (Tauri 2) with generated icons.
 - ✅ Desktop **auto-update** (signed, GitHub Releases manifest) — see `docs/NATIVE.md`.
+- ◐ **Self-host** gate bundle scaffolded in `selfhost/` (completes with the gate service).
 - ⏳ **Next:** wire the real `XmtpTransport` (XMTP DMs + Push rooms) + WalletConnect/ENS, and
   deploy the serverless gate. The UI does not change when this lands — only the transport.
   See `docs/PRODUCTION.md`.

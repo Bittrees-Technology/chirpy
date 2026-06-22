@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
-  PERSONAL_ORG, type Identity, type OrgConfig,
+  PERSONAL_ORG, type Identity, type OrgConfig, type Policy,
 } from "@app/core";
 import {
   createTransport, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
@@ -72,10 +72,19 @@ export function OrgProvider({ children }: { children: React.ReactNode }) {
     [orgs, activeOrgId],
   );
 
-  // Apply org branding to the document theme.
+  // Apply org branding to the document theme, including optional drop-in CSS.
   useEffect(() => {
     document.documentElement.style.setProperty("--accent", activeOrg.branding.accent || "#6366f1");
     document.title = `${activeOrg.branding.name} · Parley`;
+    const ID = "org-theme-css";
+    let el = document.getElementById(ID) as HTMLStyleElement | null;
+    const css = activeOrg.branding.themeCss?.trim();
+    if (css) {
+      if (!el) { el = document.createElement("style"); el.id = ID; document.head.appendChild(el); }
+      el.textContent = css;
+    } else if (el) {
+      el.remove();
+    }
   }, [activeOrg]);
 
   const addOrg = useCallback((org: OrgConfig) => {
@@ -118,6 +127,7 @@ interface ChatCtx {
   react: (messageId: string, emoji: string) => Promise<void>;
   startDm: (address: string, handle?: string) => Promise<void>;
   createRoom: (input: StartRoomInput) => Promise<void>;
+  setRoomPolicy: (policy: Policy) => Promise<void>;
 }
 const ChatContext = createContext<ChatCtx | null>(null);
 
@@ -193,6 +203,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (conv) select(conv.id);
   }, [reloadConversations, select]);
 
+  const setRoomPolicy = useCallback(async (policy: Policy) => {
+    if (!activeId) return;
+    await transportRef.current?.setRoomPolicy(activeId, policy);
+    await reloadConversations();
+  }, [activeId, reloadConversations]);
+
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
     [conversations, activeId],
@@ -200,8 +216,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ChatCtx>(() => ({
     transportId, conversations, activeId, activeConversation, messages,
-    select, send, react, startDm, createRoom,
-  }), [transportId, conversations, activeId, activeConversation, messages, select, send, react, startDm, createRoom]);
+    select, send, react, startDm, createRoom, setRoomPolicy,
+  }), [transportId, conversations, activeId, activeConversation, messages, select, send, react, startDm, createRoom, setRoomPolicy]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

@@ -1,0 +1,23 @@
+# Self-hosted gate stack. `gate` wraps @app/core's evalGate behind HTTP; it builds
+# from ../ (the monorepo) once the gate service lands in the XMTP/gate phase.
+services:
+  gate:
+    build:
+      context: ..
+      dockerfile: selfhost/gate.Dockerfile
+    env_file: ./gate.env
+    ports:
+      - "${GATE_PORT:-8788}:8788"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  redis-data:
