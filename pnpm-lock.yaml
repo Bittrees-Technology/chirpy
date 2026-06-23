@@ -14,8 +14,14 @@ importers:
 
   api:
     dependencies:
+      '@app/core':
+        specifier: workspace:*
+        version: link:../packages/core
+      '@xmtp/node-sdk':
+        specifier: ^6.0.0
+        version: 6.0.0
       viem:
-        specifier: ^2.28.1
+        specifier: ^2.53.1
         version: 2.53.1(typescript@5.9.3)
 
   apps/web:
@@ -539,8 +545,16 @@ packages:
   '@xmtp/content-type-primitives@3.0.0':
     resolution: {integrity: sha512-gxK6+k0ywOz39LFJjrUF3fOXWXR3aAmIkF7e0rFz7c27izDimZC5E2oja9iz/CYyzDS6lf9Pm31qRcGTMSYaHg==}
 
+  '@xmtp/node-bindings@1.10.0':
+    resolution: {integrity: sha512-US/YvMP7RL1DkNeiZ75ZjEyvMwLIrEPn12dBj5h7lAesM2N5snwnstJ2NNk3LpW3kCNDdzwhe/G0ZSb0PhwNeg==}
+    engines: {node: '>=22'}
+
   '@xmtp/node-bindings@1.8.0':
     resolution: {integrity: sha512-dyppg1pQNsEdGH13RfsbkbXdnUdjufak6ea1YahjCROgmaJClDpMHcMcSfMzoJzASanU58MwEdCgYUF638NKgw==}
+    engines: {node: '>=22'}
+
+  '@xmtp/node-sdk@6.0.0':
+    resolution: {integrity: sha512-UMClg1+WkC3pfeHffJoZMYzhqsUa2wZpSJtIrpvBqUD+n1VYVQTfhTqGyaavVIPgITxjHBi/uMS/K18E4qDbPA==}
     engines: {node: '>=22'}
 
   '@xmtp/wasm-bindings@1.10.0':
@@ -1153,7 +1167,14 @@ snapshots:
     dependencies:
       '@xmtp/node-bindings': 1.8.0
 
+  '@xmtp/node-bindings@1.10.0': {}
+
   '@xmtp/node-bindings@1.8.0': {}
+
+  '@xmtp/node-sdk@6.0.0':
+    dependencies:
+      '@xmtp/content-type-primitives': 3.0.0
+      '@xmtp/node-bindings': 1.10.0
 
   '@xmtp/wasm-bindings@1.10.0': {}
 

@@ -51,6 +51,8 @@ const PEER_KEY = "chirpy.xmtp.peers";
 const ETH_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const ROOM_META_VERSION = 1;
 const OPEN_GATE: Gate = { combine: "any", rules: [] };
+const JOIN_MESSAGE =
+  "Chirpy room join — authorize gated room request (v1)\n\nSign to ask the gatekeeper to add your XMTP inbox to a gated room. Gas-free; proves wallet ownership only.";
 
 const readyKey = (address: string) => `${READY_PREFIX}${address.toLowerCase()}`;
 const roomSeedKey = (address: string, namespace: string) =>
@@ -130,6 +132,14 @@ function roomMetaDescription(input: RoomMeta) {
     policy: input.policy,
   });
 }
+
+function hasGate(gate: Gate) {
+  return (gate.rules?.length ?? 0) > 0;
+}
+
+const textEncoder = new TextEncoder();
+const bytesToHex = (bytes: Uint8Array) =>
+  `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 
 function parseRoomMeta(description: string | undefined, orgPolicy: Policy): RoomMeta {
   const fallback: RoomMeta = {
@@ -265,6 +275,12 @@ export class XmtpTransport implements Transport {
   private async identifier(address = this.myAddress) {
     const sdk = await this.loadSdk();
     return { identifier: address.toLowerCase(), identifierKind: sdk.IdentifierKind.Ethereum };
+  }
+
+  private gatekeeperAddress() {
+    const value = getImportMetaEnv().VITE_GATEKEEPER_ADDRESS?.trim();
+    if (!value) return null;
+    return normalizeAddress(value);
   }
 
   private chainReader() {
@@ -669,15 +685,27 @@ export class XmtpTransport implements Transport {
       description: input.description,
       namespace: this.org.namespace,
     };
-    const group = await client.conversations.createGroup([], {
-      permissions: sdk.GroupPermissionsOptions.AdminOnly,
+    const gatekeeperAddress = hasGate(gate) ? this.gatekeeperAddress() : null;
+    const gatekeeperInboxId = gatekeeperAddress
+      ? await client.fetchInboxIdByIdentifier(await this.identifier(gatekeeperAddress))
+      : null;
+    if (gatekeeperAddress && !gatekeeperInboxId) {
+      throw new Error("Gatekeeper wallet has not activated XMTP messaging yet.");
+    }
+
+    const group = await client.conversations.createGroup(gatekeeperInboxId ? [gatekeeperInboxId] : [], {
+      permissions: hasGate(gate)
+        ? sdk.GroupPermissionsOptions.AdminOnly
+        : sdk.GroupPermissionsOptions.Default,
     });
 
-    await Promise.all([
+    const updates = [
       group.updateName(input.title),
       group.updateDescription(roomMetaDescription(meta)),
       group.addSuperAdmin(this.requireInboxId()).catch(() => undefined),
-    ]);
+    ];
+    if (gatekeeperInboxId) updates.push(group.addSuperAdmin(gatekeeperInboxId));
+    await Promise.all(updates);
     this.conversations.set(group.id, group);
     this.roomMeta.set(group.id, meta);
 
@@ -693,6 +721,47 @@ export class XmtpTransport implements Transport {
         sentAt: Date.now(),
       },
     };
+  }
+
+  async requestRoomJoin(conversationId: string): Promise<void> {
+    const conversation = this.conversations.get(conversationId);
+    const meta = this.roomMeta.get(conversationId);
+    if (!conversation || !meta) throw new Error("Room not found.");
+    if (!hasGate(meta.gate)) throw new Error("This room is open.");
+    if (!this.provider) throw new Error("Connect a wallet to request access.");
+
+    const signature = await this.provider.request({
+      method: "personal_sign",
+      params: [bytesToHex(textEncoder.encode(JOIN_MESSAGE)), this.myAddress],
+    });
+    if (typeof signature !== "string") throw new Error("Wallet did not return a join signature.");
+
+    const response = await fetch("/api/room-join", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        convId: conversation.id,
+        address: this.myAddress,
+        signature,
+        inboxId: this.requireInboxId(),
+        gate: encodeGate(meta.gate),
+        gating: {
+          roleCascade: this.org.gating.roleCascade,
+          powerTier: this.org.gating.powerTier,
+        },
+      }),
+    });
+    if (response.status === 503) {
+      throw new Error("Self-serve joins are not configured. Ask a room admin to add you.");
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || "Join request failed.");
+    }
+
+    await this.requireClient().conversations.sync();
+    await this.requireClient().conversations.syncAll();
+    this.changeCallback?.();
   }
 
   async setRoomPolicy(conversationId: string, policy: Policy): Promise<void> {

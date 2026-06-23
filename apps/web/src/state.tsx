@@ -627,6 +627,7 @@ interface ChatCtx {
   react: (messageId: string, emoji: string) => Promise<void>;
   startDm: (address: string, handle?: string) => Promise<void>;
   createRoom: (input: StartRoomInput) => Promise<void>;
+  requestRoomJoin: (conversationId: string) => Promise<{ ok: boolean; message: string }>;
   setRoomPolicy: (policy: Policy) => Promise<void>;
 }
 const ChatContext = createContext<ChatCtx | null>(null);
@@ -725,6 +726,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (conv) select(conv.id);
   }, [reloadConversations, select]);
 
+  const requestRoomJoin = useCallback(async (conversationId: string) => {
+    try {
+      await transportRef.current?.requestRoomJoin?.(conversationId);
+      await reloadConversations();
+      return { ok: true, message: "Join request approved. Syncing room membership." };
+    } catch (err) {
+      const message = err instanceof Error && err.message
+        ? err.message
+        : "Self-serve join failed. Ask a room admin to add you.";
+      return { ok: false, message };
+    }
+  }, [reloadConversations]);
+
   const setRoomPolicy = useCallback(async (policy: Policy) => {
     if (!activeId) return;
     await transportRef.current?.setRoomPolicy(activeId, policy);
@@ -738,8 +752,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ChatCtx>(() => ({
     transportId, transportStatus, transportError, conversations, activeId, activeConversation, messages,
-    enableMessaging, select, send, react, startDm, createRoom, setRoomPolicy,
-  }), [transportId, transportStatus, transportError, conversations, activeId, activeConversation, messages, enableMessaging, select, send, react, startDm, createRoom, setRoomPolicy]);
+    enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy,
+  }), [transportId, transportStatus, transportError, conversations, activeId, activeConversation, messages, enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

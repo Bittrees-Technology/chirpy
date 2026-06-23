@@ -238,6 +238,10 @@ export class MockTransport implements Transport {
     return conv;
   }
 
+  async requestRoomJoin(): Promise<void> {
+    throw new Error("Self-serve gated joins are only available with XMTP transport.");
+  }
+
   async setRoomPolicy(conversationId: string, policy: Policy): Promise<void> {
     const conv = this.snap.conversations.find((c) => c.id === conversationId && c.kind === "room");
     if (!conv) return;

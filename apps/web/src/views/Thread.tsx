@@ -6,14 +6,16 @@ import { Avatar, Button, Empty, fmtTime, shortAddr } from "../ui";
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
 export function Thread() {
-  const { activeConversation, messages, send, react, setRoomPolicy } = useChat();
+  const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin } = useChat();
   const { identity } = useIdentity();
   const [draft, setDraft] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const [joinPending, setJoinPending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length, activeConversation?.id]);
-  useEffect(() => { setReplyTo(null); setDraft(""); }, [activeConversation?.id]);
+  useEffect(() => { setReplyTo(null); setDraft(""); setJoinStatus(null); }, [activeConversation?.id]);
 
   if (!activeConversation) {
     return <div className="thread"><Empty icon="💬" title="Select a conversation" hint="or start a new one from the left" /></div>;
@@ -30,9 +32,17 @@ export function Thread() {
   const isRoom = activeConversation.kind === "room";
   const policy: Policy | null = isRoom ? (activeConversation.policy ?? null) : null;
   const readOnly = policy?.mode === "read-only";
+  const isGatedRoom = isRoom && Boolean(activeConversation.gate?.rules.length);
+  const isMember = activeConversation.peers.some((peer) => peer.toLowerCase() === identity.address.toLowerCase());
   const toggleFreeze = () => {
     if (!policy) return;
     void setRoomPolicy({ ...policy, mode: readOnly ? "active" : "read-only" });
+  };
+  const requestJoin = async () => {
+    setJoinPending(true);
+    const result = await requestRoomJoin(activeConversation.id);
+    setJoinStatus(result);
+    setJoinPending(false);
   };
 
   return (
@@ -49,14 +59,27 @@ export function Thread() {
               : shortAddr(activeConversation.peers.find((p) => p !== identity.address) ?? activeConversation.peers[0])}
           </div>
         </div>
-        {isRoom && policy && (
-          <div style={{ marginLeft: "auto" }}>
-            <Button variant={readOnly ? "primary" : "ghost"} onClick={toggleFreeze}>
-              {readOnly ? "Unfreeze" : "Freeze"}
-            </Button>
+        {(isRoom && policy) || isGatedRoom ? (
+          <div className="thread-actions">
+            {isGatedRoom && !isMember && (
+              <Button variant="primary" disabled={joinPending} onClick={requestJoin}>
+                {joinPending ? "Requesting..." : "Request to join"}
+              </Button>
+            )}
+            {isRoom && policy && (
+              <Button variant={readOnly ? "primary" : "ghost"} onClick={toggleFreeze}>
+                {readOnly ? "Unfreeze" : "Freeze"}
+              </Button>
+            )}
           </div>
-        )}
+        ) : null}
       </header>
+
+      {joinStatus && (
+        <div className={`join-banner ${joinStatus.ok ? "ok" : "error"}`}>
+          {joinStatus.message}
+        </div>
+      )}
 
       <div className="messages">
         {messages.length === 0 && <Empty icon="✍️" title="No messages yet" hint="Say hello" />}
