@@ -3,7 +3,11 @@ import type { OrgConfig } from "@app/core";
 // IMPORTANT: the app itself is org-agnostic — nothing here is loaded by default.
 // These are *importable* example org configs that demonstrate how the two real
 // Bittrees apps map onto a single OrgConfig. A user picks one in Import → it
-// becomes just another org in their switcher. Addresses are illustrative.
+// becomes just another org in their switcher.
+//
+// ⚠️ PLACEHOLDER ADDRESSES: contract/token addresses below are ILLUSTRATIVE (e.g. the
+// Research membership token is the 0x…dEaD burn address). A gate against them admits no one —
+// replace with real on-chain addresses before using these presets to actually gate rooms.
 
 export const bittreesResearchPreset: OrgConfig = {
   id: "org_bittrees_research",
@@ -12,6 +16,7 @@ export const bittreesResearchPreset: OrgConfig = {
   chain: { chainId: 1 },
   namespace: "bittrees:research",
   // Membership NFT required to enter the org (ERC-1155, any id).
+  // ⚠️ PLACEHOLDER (burn address) — replace with the real membership NFT to gate for real.
   entryGate: [{ kind: "token", standard: "erc1155", token: "0x000000000000000000000000000000000000dEaD", min: "1" }],
   gating: {
     enableTokenRules: true,

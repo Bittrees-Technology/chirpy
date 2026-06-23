@@ -3,12 +3,14 @@ import { policySummary, type Policy } from "@app/core";
 import { useChat, useIdentity } from "../state";
 import { Avatar, Button, Empty, fmtTime, shortAddr } from "../ui";
 import { nameFor, useEnsProfiles } from "../useEns";
+import { useI18n } from "../i18n";
 
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
 export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) {
   const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin } = useChat();
   const { identity } = useIdentity();
+  const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
@@ -27,7 +29,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   useEffect(() => { setReplyTo(null); setDraft(""); setJoinStatus(null); }, [activeConversation?.id]);
 
   if (!activeConversation) {
-    return <div className="thread"><Empty icon="💬" title="Select a conversation" hint="or start a new one from the left" /></div>;
+    return (
+      <div className="thread">
+        <Empty icon="💬" title={t("thread.selectTitle", "Select a conversation")} hint={t("thread.selectHint", "or start a new one from the left")} />
+      </div>
+    );
   }
 
   const peerRecord = peerAddress ? profiles.get(peerAddress.toLowerCase()) : undefined;
@@ -83,12 +89,12 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           <div className="thread-actions">
             {isGatedRoom && !isMember && (
               <Button variant="primary" disabled={joinPending} onClick={requestJoin}>
-                {joinPending ? "Requesting..." : "Request to join"}
+                {joinPending ? t("thread.requesting", "Requesting...") : t("thread.requestJoin", "Request to join")}
               </Button>
             )}
             {isRoom && policy && (
               <Button variant={readOnly ? "primary" : "ghost"} onClick={toggleFreeze}>
-                {readOnly ? "Unfreeze" : "Freeze"}
+                {readOnly ? t("thread.unfreeze", "Unfreeze") : t("thread.freeze", "Freeze")}
               </Button>
             )}
           </div>
@@ -102,7 +108,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       )}
 
       <div className={`messages ${messages.length ? "has-msgs" : ""}`}>
-        {messages.length === 0 && <Empty icon="✍️" title="No messages yet" hint="Say hello" />}
+        {messages.length === 0 && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
         {messages.map((m) => {
           const mine = m.sender.toLowerCase() === selfAddress;
           const senderRecord = profiles.get(m.sender.toLowerCase());
@@ -140,23 +146,23 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
       {replyTarget && (
         <div className="reply-banner">
-          Replying to: <em>{replyTarget.body.slice(0, 80)}</em>
+          {t("thread.replyingTo", "Replying to:")} <em>{replyTarget.body.slice(0, 80)}</em>
           <button className="icon-btn" onClick={() => setReplyTo(null)}>✕</button>
         </div>
       )}
 
       {readOnly ? (
-        <div className="composer readonly-note">🔒 This room is read-only. Posting is frozen.</div>
+        <div className="composer readonly-note">{t("thread.readOnly", "🔒 This room is read-only. Posting is frozen.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>
           <input
             className="composer-input"
-            placeholder={`Message ${isRoom ? "#" + activeConversation.title : activeConversation.title}`}
+            placeholder={`${t("thread.messagePrefix", "Message")} ${isRoom ? "#" + activeConversation.title : activeConversation.title}`}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             autoFocus
           />
-          <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>Send</button>
+          <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>{t("thread.send", "Send")}</button>
         </form>
       )}
     </div>

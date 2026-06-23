@@ -3,6 +3,7 @@ import type { Conversation } from "@app/transport";
 import { useChat, useIdentity } from "../state";
 import { Avatar, Empty, fmtTime } from "../ui";
 import { nameFor, useEnsProfiles } from "../useEns";
+import { useI18n } from "../i18n";
 
 export function ConversationColumn(
   { title, mode, onNewDm, onNewRoom, needsConnect, onOpenSettings, onOpenConversation }:
@@ -18,6 +19,7 @@ export function ConversationColumn(
 ) {
   const { conversations, activeId, select, startDm } = useChat();
   const { identity } = useIdentity();
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const selfAddress = identity.address.toLowerCase();
   const isRooms = mode === "rooms";
@@ -46,6 +48,8 @@ export function ConversationColumn(
     });
   }, [items, normalizedQuery]);
   const showConnectEmpty = needsConnect && items.length === 0;
+  const savedLabel = t("list.savedMessages", "Saved Messages");
+  const searchLabel = isRooms ? t("list.searchRooms", "Search rooms") : t("list.searchChats", "Search chats");
   const openSavedMessages = async () => {
     if (savedConversation) {
       select(savedConversation.id);
@@ -56,7 +60,7 @@ export function ConversationColumn(
       onOpenSettings();
       return;
     }
-    await startDm(identity.address, "Saved Messages");
+    await startDm(identity.address, savedLabel);
     onOpenConversation();
   };
   const openConversation = (id: string) => {
@@ -68,11 +72,11 @@ export function ConversationColumn(
     <div className="list-col">
       <div className="list-head-wrap">
         <div className="list-head">
-          <h1>{title}</h1>
+          <h1>{t(isRooms ? "nav.rooms" : "nav.chats", title)}</h1>
           <div className="list-actions">
             {isRooms
-              ? <button className="btn btn-primary btn-sm" onClick={onNewRoom}>+ Room</button>
-              : <button className="btn btn-primary btn-sm" onClick={onNewDm}>+ Chat</button>}
+              ? <button className="btn btn-primary btn-sm" onClick={onNewRoom}>{t("list.newRoom", "+ Room")}</button>
+              : <button className="btn btn-primary btn-sm" onClick={onNewDm}>{t("list.newChat", "+ Chat")}</button>}
           </div>
         </div>
         {!isRooms && (
@@ -80,14 +84,14 @@ export function ConversationColumn(
             className={`list-item saved-row ${savedConversation?.id === activeId ? "active" : ""}`}
             onClick={() => { void openSavedMessages(); }}
           >
-            <Avatar id={savedConversation?.id ?? identity.address} label="Saved Messages" />
+            <Avatar id={savedConversation?.id ?? identity.address} label={savedLabel} />
             <div className="list-item-main">
               <div className="list-item-top">
-                <span className="list-item-title">Saved Messages</span>
+                <span className="list-item-title">{savedLabel}</span>
                 {savedConversation?.lastMessage && <span className="list-item-time">{fmtTime(savedConversation.lastMessage.sentAt)}</span>}
               </div>
               <div className="list-item-bottom">
-                <span className="list-item-preview">{savedConversation?.lastMessage?.body ?? "Notes to self"}</span>
+                <span className="list-item-preview">{savedConversation?.lastMessage?.body ?? t("list.notesToSelf", "Notes to self")}</span>
               </div>
             </div>
           </button>
@@ -95,8 +99,8 @@ export function ConversationColumn(
         <input
           className="input list-search"
           value={query}
-          placeholder={isRooms ? "Search rooms" : "Search chats"}
-          aria-label={isRooms ? "Search rooms" : "Search chats"}
+          placeholder={searchLabel}
+          aria-label={searchLabel}
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
@@ -104,20 +108,20 @@ export function ConversationColumn(
         {showConnectEmpty && (
           <div className="empty">
             <div className="empty-icon">💬</div>
-            <div className="empty-title">Start messaging</div>
-            <div className="empty-hint">Connect your wallet in Settings to enable encrypted chats.</div>
-            <button className="empty-link" onClick={onOpenSettings}>Open Settings →</button>
+            <div className="empty-title">{t("list.connectTitle", "Start messaging")}</div>
+            <div className="empty-hint">{t("list.connectHint", "Connect your wallet in Settings to enable encrypted chats.")}</div>
+            <button className="empty-link" onClick={onOpenSettings}>{t("list.openSettings", "Open Settings →")}</button>
           </div>
         )}
         {!showConnectEmpty && items.length === 0 && (
           <Empty
             icon={isRooms ? "🏛️" : "📭"}
-            title={isRooms ? "No rooms yet" : "No chats yet"}
-            hint={isRooms ? "+ Room to create one" : "+ Chat to start one"}
+            title={isRooms ? t("list.emptyRoomsTitle", "No rooms yet") : t("list.emptyChatsTitle", "No chats yet")}
+            hint={isRooms ? t("list.emptyRoomsHint", "+ Room to create one") : t("list.emptyChatsHint", "+ Chat to start one")}
           />
         )}
         {items.length > 0 && filteredItems.length === 0 && (
-          <Empty icon="🔎" title="No results" hint="Try another search" />
+          <Empty icon="🔎" title={t("list.noResultsTitle", "No results")} hint={t("list.noResultsHint", "Try another search")} />
         )}
         {filteredItems.map((c) => {
           const peer = c.kind === "dm" ? peerOf(c) : undefined;
