@@ -4,7 +4,10 @@ build/
 .DS_Store
 *.log
 .env
-.env.local
+.env.*
+!.env.example
+# Self-hosted gate secrets (holds the gatekeeper private key)
+selfhost/gate.env
 .turbo/
 # Tauri native build artifacts
 apps/web/src-tauri/target/
