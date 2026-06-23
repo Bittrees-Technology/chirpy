@@ -7,12 +7,21 @@
     "build": "pnpm --filter @app/web build",
     "preview": "pnpm --filter @app/web preview",
     "typecheck": "tsc -p tsconfig.base.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test --grep-invert @xmtp",
+    "e2e:xmtp": "XMTP_E2E=1 VITE_TRANSPORT=xmtp VITE_XMTP_ENV=dev playwright test --grep @xmtp",
     "tauri": "pnpm --filter @app/web tauri"
   },
   "devDependencies": {
-    "typescript": "^5.6.3"
+    "@playwright/test": "1.61.0",
+    "jsdom": "29.1.1",
+    "typescript": "^5.6.3",
+    "vitest": "4.1.9"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

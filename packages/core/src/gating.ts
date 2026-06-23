@@ -157,10 +157,17 @@ export function encodeGate(gate: Gate): string {
 }
 
 export function decodeGate(b64url: string): Gate {
-  const b64 = String(b64url || "").replace(/-/g, "+").replace(/_/g, "/");
-  const json = new TextDecoder().decode(base64ToBytes(b64));
-  const parsed = JSON.parse(json);
-  return { combine: parsed.combine === "all" ? "all" : "any", rules: parsed.rules || [] };
+  try {
+    const b64 = String(b64url || "").replace(/-/g, "+").replace(/_/g, "/");
+    const json = new TextDecoder().decode(base64ToBytes(b64));
+    const parsed = JSON.parse(json);
+    return {
+      combine: parsed.combine === "all" ? "all" : "any",
+      rules: Array.isArray(parsed.rules) ? parsed.rules : [],
+    };
+  } catch {
+    return { combine: "any", rules: [] };
+  }
 }
 
 /** Human-readable one-line summary of a rule (for the room builder UI). */

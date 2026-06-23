@@ -76,17 +76,23 @@ export function mergePayload(
   remote: SettingsSyncPayload,
 ): SettingsSyncPayload {
   const savedMessages = new Map<string, SavedMessageSnapshot>();
+  const isNewerMessage = (next: SavedMessageSnapshot, prev: SavedMessageSnapshot) => {
+    const nextUpdated = typeof next.updatedAt === "number" ? next.updatedAt : remote.updatedAt;
+    const prevUpdated = typeof prev.updatedAt === "number" ? prev.updatedAt : local.updatedAt;
+    return nextUpdated >= prevUpdated;
+  };
   for (const msg of local.savedMessages) {
     if (msg?.id) savedMessages.set(msg.id, msg);
   }
   for (const msg of remote.savedMessages) {
-    if (msg?.id) savedMessages.set(msg.id, msg);
+    const prev = msg?.id ? savedMessages.get(msg.id) : undefined;
+    if (msg?.id && (!prev || isNewerMessage(msg, prev))) savedMessages.set(msg.id, msg);
   }
 
   const blocked = Array.from(new Set([
-    ...local.settingsPrefs.blocked,
-    ...remote.settingsPrefs.blocked,
-  ]));
+    ...local.settingsPrefs.blocked.map((address) => address.toLowerCase()),
+    ...remote.settingsPrefs.blocked.map((address) => address.toLowerCase()),
+  ].filter(Boolean)));
   const newer = remote.updatedAt > local.updatedAt ? remote : local;
 
   return {
@@ -96,6 +102,6 @@ export function mergePayload(
       blocked,
     },
     savedMessages: Array.from(savedMessages.values()),
-    updatedAt: Math.max(local.updatedAt, remote.updatedAt, Date.now()),
+    updatedAt: Math.max(local.updatedAt, remote.updatedAt),
   };
 }

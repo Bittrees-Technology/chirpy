@@ -42,6 +42,11 @@ interface RoomMeta {
   namespace?: string;
 }
 
+export interface ConversationClassificationMeta {
+  metadata?: { conversationType?: unknown };
+  name?: unknown;
+}
+
 let SDK: Sdk | null = null;
 let sharedXmtp: { address: string; client: XmtpClient } | null = null;
 
@@ -64,8 +69,9 @@ const normalizeAddress = (address: string) => {
 };
 
 const nsToMs = (ns: bigint | undefined) => Number((ns ?? 0n) / 1_000_000n);
+const xmtpEnv = () => getImportMetaEnv().VITE_XMTP_ENV === "dev" ? "dev" : "production";
 const xmtpOptions = (sdk: Sdk) => ({
-  env: "production",
+  env: xmtpEnv(),
   loggingLevel: sdk.LogLevel.Off,
 }) as unknown;
 
@@ -204,6 +210,15 @@ function aggregateReactions(
     byEmoji[entry.emoji] = [...(byEmoji[entry.emoji] ?? []), address];
   }
   return Object.keys(byEmoji).length ? byEmoji : undefined;
+}
+
+export function classifyConversation(
+  conversation: ConversationClassificationMeta,
+  groupType?: unknown,
+): "dm" | "room" {
+  return conversation.metadata?.conversationType === groupType || "name" in conversation
+    ? "room"
+    : "dm";
 }
 
 function toChatMessage(
@@ -399,7 +414,7 @@ export class XmtpTransport implements Transport {
   }
 
   private isRoomConversation(sdk: Sdk, conversation: XmtpConversation) {
-    return conversation.metadata?.conversationType === sdk.ConversationType.Group || "name" in conversation;
+    return classifyConversation(conversation, sdk.ConversationType.Group) === "room";
   }
 
   private async addressesForMembers(conversation: XmtpConversation) {
