@@ -1,11 +1,12 @@
 # Production go-live spec
 
-Requirements captured for the live release. Today the app runs on the offline
-`MockTransport`; this doc is the contract for the XMTP/Push + wallet phase.
+Requirements for the live release. The XMTP transport, wallet/ENS, and the serverless gate
+are **implemented**; what remains is provisioning the server env below and building with
+`VITE_TRANSPORT=xmtp`. (The offline `MockTransport` stays the no-wallet default.)
 
 ## 1. Alchemy key, uploaded through Vercel
 
-- The serverless **token-gate** (`/api/gate`) and any server-side ENS/Safe reads use an
+- The serverless **token-gate** (`api/room-join.js`) and any server-side ENS/Safe reads use an
   **unrestricted** Alchemy RPC, set as `MAINNET_RPC_URL` in the Vercel project
   (Dashboard → Settings → Environment Variables, or `vercel env add MAINNET_RPC_URL`).
 - The **browser** uses a **separate, domain-allowlisted** key as `VITE_MAINNET_RPC_URL`
@@ -17,14 +18,15 @@ Requirements captured for the live release. Today the app runs on the offline
 
 ## 2. WalletConnect login + ENS sync (like the Bittrees Inc app)
 
-- **Login:** RainbowKit + wagmi v2 with WalletConnect v2 (`VITE_WALLETCONNECT_PROJECT_ID`),
-  matching `Bittrees-Inc/src/lib/wagmi.ts`. Injected wallets (MetaMask) work without the id.
-- **ENS sync:** on connect, resolve the address → primary ENS name + avatar via the browser
-  Alchemy RPC, mirroring `Bittrees-Inc/src/lib/ens.ts`. This populates `Identity.handle`
-  app-wide (sidebar, DM titles, member lists) and is used by the `ens` gate rule.
-- **Where it plugs in:** the `IdentityProvider` (`apps/web/src/state.tsx`) swaps its local
-  stub for the wagmi account + an `ens.ts` resolver. No other UI changes — components already
-  read `identity.handle`.
+- **Login (implemented):** injected EIP-1193 wallets (MetaMask) plus **WalletConnect v2** via
+  `@walletconnect/ethereum-provider` (`VITE_WALLETCONNECT_PROJECT_ID`) — see
+  `apps/web/src/walletProviders.ts`. Hand-rolled EIP-1193, **not** RainbowKit/wagmi. Injected
+  wallets work without the project id.
+- **ENS (implemented):** on connect the address resolves to its primary ENS name + avatar, with
+  reverse lookup cached app-wide (sidebar, DM titles, thread header, message-bubble avatars) —
+  `apps/web/src/ens.ts` + `useEns.ts`. Also feeds the `ens` gate rule.
+- **Where it plugs in:** `IdentityProvider` (`apps/web/src/state.tsx`) holds the connected
+  account; components read `identity.handle` and the ENS hook — no other UI changes.
 - **Mobile (iOS):** WalletConnect deep-links back to Chirpy; register the app URL scheme so
   the wallet round-trip returns to the app (see `docs/NATIVE.md`).
 
@@ -36,7 +38,7 @@ are scoped to the org** that defines them (they are token-gated communities).
 | Surface | Scope | Why |
 |---|---|---|
 | **Chats (1:1 DMs) + Saved Messages** | **wallet-global** — same in every org and personal | one XMTP inbox per wallet; chats shouldn't silo by org |
-| **Rooms (gated)** | per-org | Push groups gated by that org's rules |
+| **Rooms (gated)** | per-org | XMTP-MLS groups gated by that org's rules |
 
 - **Already implemented in the mock** (`packages/transport/src/mock.ts`): DMs persist under
   `chat:mock:dms:<wallet>` (org-independent); rooms under `chat:mock:rooms:<wallet>:<namespace>`.
@@ -50,12 +52,14 @@ are scoped to the org** that defines them (they are token-gated communities).
 
 ## Rollout checklist
 
-1. Wire `XmtpTransport` (XMTP DMs + Push rooms) behind the existing `Transport` interface;
-   flip `DEFAULT_TRANSPORT` / per-build flag from `mock` to `xmtp`. **No UI changes.**
-2. Add wagmi/RainbowKit + ENS resolver to `IdentityProvider`.
-3. Deploy `/api/gate` (+ community/rooms/usersync) as Vercel functions; the gate evaluator is
-   already in `@app/core` — provide a viem-backed `ChainReader` using `MAINNET_RPC_URL`.
-4. Set Vercel env: `MAINNET_RPC_URL`, `VITE_MAINNET_RPC_URL`/`VITE_ALCHEMY_API_KEY`,
-   `VITE_WALLETCONNECT_PROJECT_ID`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
-5. Verify ENS resolves on connect; verify a gated room admits/denies correctly; verify DMs
-   appear unchanged after switching orgs and on a second device.
+1. ✅ `XmtpTransport` (XMTP DMs + MLS rooms) behind the `Transport` interface — built; select it
+   per-build with `VITE_TRANSPORT=xmtp`. **No UI changes vs mock.**
+2. ✅ Injected + WalletConnect v2 login and ENS resolver wired into `IdentityProvider`.
+3. ✅ Gate deployed as `api/room-join.js` (+ `api/usersync.js`) Vercel functions; the evaluator
+   is `@app/core`'s `evalGate` with a viem `ChainReader` using `MAINNET_RPC_URL`.
+4. ☐ Set Vercel env: **`XMTP_GATEKEEPER_PRIVATE_KEY`** (signs the gatekeeper bot's room adds —
+   the linchpin), `MAINNET_RPC_URL`, `VITE_MAINNET_RPC_URL`/`VITE_ALCHEMY_API_KEY`,
+   `VITE_WALLETCONNECT_PROJECT_ID`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and
+   `VITE_TRANSPORT=xmtp`.
+5. ☐ Verify ENS resolves on connect; a gated room admits/denies correctly; DMs persist across
+   org switches and on a second device.

@@ -23,8 +23,8 @@ tiers vs Research's role cascade + membership NFT) and a KV namespace. Those col
 
 @app/transport    the chat engine boundary
   types.ts        Transport interface (DMs + rooms + reactions + read state + streams)
-  mock.ts         MockTransport — offline, localStorage-backed, per-org. Default today.
-  xmtp.ts         XmtpTransport — scaffold; maps 1:1 onto Bittrees xmtp.ts + push.ts
+  mock.ts         MockTransport — offline, localStorage-backed, per-org. Default (no wallet).
+  xmtp.ts         XmtpTransport — full impl: encrypted DMs + XMTP-MLS gated group rooms
 
 @app/web          Vite + React 19
   state.tsx       IdentityProvider · OrgProvider · ChatProvider (binds Transport to org)
@@ -35,12 +35,12 @@ tiers vs Research's role cascade + membership NFT) and a KV namespace. Those col
 
 ## Why a Transport interface
 
-The UI never imports XMTP or Push directly — it talks to `Transport`. Today that's
-`MockTransport` (so the app is fully viewable offline with no wallet). Wiring the real
-`XmtpTransport` (XMTP DMs + Push gated rooms, ported from the Bittrees apps) is a single
-line in `createTransport()` and **changes no UI code**. The gate evaluator in `@app/core`
-is already the production logic — the serverless deploy just provides a viem-backed
-`ChainReader`.
+The UI never imports XMTP directly — it talks to `Transport`. `MockTransport` keeps the app
+fully viewable offline with no wallet; `XmtpTransport` (encrypted DMs + XMTP-MLS gated rooms)
+is selected by `createTransport()` when `VITE_TRANSPORT=xmtp`, and **changes no UI code**.
+The gate evaluator in `@app/core` is the production logic; the serverless deploy
+(`api/room-join.js`) wraps it with a viem-backed `ChainReader` plus an XMTP gatekeeper bot
+that adds the joining inbox to the room.
 
 ## Gating model (generalized from Bittrees `api/gate.js`)
 
