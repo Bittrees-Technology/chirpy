@@ -189,7 +189,7 @@ input, textarea, select { font-family: inherit; }
 .card h2 { margin: 0 0 8px; font-size: 15px; }
 .muted { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .pill { background: var(--bg-3); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--text); }
-.row-end { display: flex; justify-content: flex-end; margin-top: 8px; }
+.row-end { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .row-between { display: flex; align-items: center; justify-content: space-between; }
 .org-table { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .org-row { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }

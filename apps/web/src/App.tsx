@@ -72,7 +72,9 @@ function Sidebar(
 
 export function App() {
   const { transportId, transportStatus, transportError, enableMessaging } = useChat();
-  const { mode, hasInjectedWallet, connectWallet, isConnecting } = useIdentity();
+  const {
+    mode, hasInjectedWallet, walletConnectAvailable, connectWallet, connectWalletConnect, isConnecting,
+  } = useIdentity();
   const [view, setView] = useState<View>("chats");
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = () => setDialog(null);
@@ -91,14 +93,22 @@ export function App() {
               ? "XMTP messaging is off for this wallet. Sign once to enable DMs on this browser."
               : hasInjectedWallet
                 ? "Connect a wallet to enable XMTP DMs."
-                : "Open Chirpy in a browser with an injected wallet to enable XMTP DMs."}
+                : walletConnectAvailable
+                  ? "Connect with WalletConnect to enable XMTP DMs."
+                  : "Open Chirpy in a browser with an injected wallet to enable XMTP DMs."}
             <button
               className="btn btn-primary btn-sm"
               style={{ marginLeft: 12 }}
-              disabled={transportStatus === "enabling" || isConnecting || (!hasInjectedWallet && mode !== "wallet")}
-              onClick={() => { void (mode === "wallet" ? enableMessaging() : connectWallet()); }}
+              disabled={transportStatus === "enabling" || isConnecting || (!hasInjectedWallet && !walletConnectAvailable && mode !== "wallet")}
+              onClick={() => {
+                void (mode === "wallet"
+                  ? enableMessaging()
+                  : hasInjectedWallet ? connectWallet() : connectWalletConnect());
+              }}
             >
-              {mode === "wallet" ? (transportStatus === "enabling" ? "Enabling..." : "Enable messaging") : "Connect wallet"}
+              {mode === "wallet"
+                ? (transportStatus === "enabling" ? "Enabling..." : "Enable messaging")
+                : hasInjectedWallet ? "Connect wallet" : "WalletConnect"}
             </button>
             {transportError && <span style={{ marginLeft: 12 }}>{transportError}</span>}
           </div>

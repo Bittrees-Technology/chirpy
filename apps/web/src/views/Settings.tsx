@@ -16,8 +16,8 @@ export function Settings(
   { onCreateOrg, onImportOrg }: { onCreateOrg: () => void; onImportOrg: () => void },
 ) {
   const {
-    identity, mode, hasInjectedWallet, isConnecting, ensProfile, walletError,
-    setHandle, reset, connectWallet, disconnectWallet,
+    identity, mode, hasInjectedWallet, walletConnectAvailable, isConnecting, ensProfile, walletError,
+    setHandle, reset, connectWallet, connectWalletConnect, disconnectWallet,
   } = useIdentity();
   const { orgs, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices } = useSettingsPrefs();
@@ -169,7 +169,9 @@ export function Settings(
             ? "Connected wallet identity. ENS name and avatar are resolved from the active account when available."
             : hasInjectedWallet
               ? "Connect an injected wallet to use your real address, ENS name, and ENS avatar. Local identity remains available offline."
-              : "Local identity mode is active because no injected wallet was found in this browser."}
+              : walletConnectAvailable
+                ? "Connect with WalletConnect to use your real address, ENS name, and ENS avatar. Local identity remains available offline."
+                : "Local identity mode is active because no injected wallet was found in this browser."}
         </p>
         <div className="grid2">
           <Field label="Display name"><input className="input" value={identity.handle ?? ""} onChange={(e) => setHandle(e.target.value)} /></Field>
@@ -183,13 +185,23 @@ export function Settings(
         {walletError && <div className="muted status-line status-error">{walletError}</div>}
         <div className="row-end">
           {mode === "wallet" ? (
-            <Button variant="ghost" onClick={disconnectWallet}>Disconnect</Button>
-          ) : hasInjectedWallet ? (
-            <Button variant="primary" onClick={connectWallet} disabled={isConnecting}>
-              {isConnecting ? "Connecting..." : "Connect wallet"}
-            </Button>
+            <Button variant="ghost" onClick={() => { void disconnectWallet(); }}>Disconnect</Button>
           ) : (
-            <Button variant="ghost" onClick={reset}>Regenerate identity</Button>
+            <>
+              {walletConnectAvailable && (
+                <Button variant={hasInjectedWallet ? "ghost" : "primary"} onClick={connectWalletConnect} disabled={isConnecting}>
+                  {isConnecting ? "Connecting..." : "WalletConnect"}
+                </Button>
+              )}
+              {hasInjectedWallet && (
+                <Button variant="primary" onClick={connectWallet} disabled={isConnecting}>
+                  {isConnecting ? "Connecting..." : "Connect wallet"}
+                </Button>
+              )}
+              {!hasInjectedWallet && !walletConnectAvailable && (
+                <Button variant="ghost" onClick={reset}>Regenerate identity</Button>
+              )}
+            </>
           )}
         </div>
       </section>
