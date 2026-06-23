@@ -16,7 +16,7 @@ function download(filename: string, text: string) {
 }
 
 // ---------------- New DM ----------------
-export function NewDmDialog({ onClose }: { onClose: () => void }) {
+export function NewDmDialog({ onClose, onCreated }: { onClose: () => void; onCreated?: () => void }) {
   const { startDm } = useChat();
   const [address, setAddress] = useState("");
   const [handle, setHandle] = useState("");
@@ -39,6 +39,7 @@ export function NewDmDialog({ onClose }: { onClose: () => void }) {
           onClick={async () => {
             try {
               await startDm(address.trim(), handle.trim() || undefined);
+              onCreated?.();
               onClose();
             } catch (err) {
               setError(err instanceof Error ? err.message : "Could not start that conversation.");
@@ -126,7 +127,7 @@ export function PolicyEditor(
 }
 
 // ---------------- New Room ----------------
-export function NewRoomDialog({ onClose }: { onClose: () => void }) {
+export function NewRoomDialog({ onClose, onCreated }: { onClose: () => void; onCreated?: () => void }) {
   const { createRoom } = useChat();
   const { activeOrg } = useOrgs();
   const [title, setTitle] = useState("");
@@ -149,7 +150,7 @@ export function NewRoomDialog({ onClose }: { onClose: () => void }) {
       <PolicyEditor value={policy} onChange={setPolicy} />
       <div className="modal-actions">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!title.trim()} onClick={async () => { await createRoom({ title: title.trim(), description: description.trim() || undefined, gate: { combine, rules }, policy }); onClose(); }}>Create room</Button>
+        <Button variant="primary" disabled={!title.trim()} onClick={async () => { await createRoom({ title: title.trim(), description: description.trim() || undefined, gate: { combine, rules }, policy }); onCreated?.(); onClose(); }}>Create room</Button>
       </div>
     </Modal>
   );

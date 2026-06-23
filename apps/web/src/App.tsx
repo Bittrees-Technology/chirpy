@@ -9,8 +9,9 @@ import { Thread } from "./views/Thread";
 import { Settings } from "./views/Settings";
 import { NewDmDialog, NewRoomDialog, CreateOrgDialog, ImportOrgDialog } from "./views/dialogs";
 
-type View = "chats" | "rooms" | "settings";
+type View = "chats" | "settings";
 type Dialog = null | "newDm" | "newRoom" | "createOrg" | "importOrg";
+type MobilePane = "list" | "thread";
 
 function OrgRail({ onCreateOrg }: { onCreateOrg: () => void }) {
   const { orgs, activeOrgId, setActiveOrg } = useOrgs();
@@ -40,7 +41,6 @@ function Sidebar(
   const { t } = useI18n();
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chats", label: t("nav.chats"), icon: "💬" },
-    { id: "rooms", label: t("nav.rooms"), icon: "🏛️" },
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
   return (
@@ -70,55 +70,64 @@ function Sidebar(
   );
 }
 
+function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }) {
+  const { t } = useI18n();
+  const nav: { id: View; label: string; icon: string }[] = [
+    { id: "chats", label: t("nav.chats"), icon: "💬" },
+    { id: "settings", label: t("nav.settings"), icon: "⚙️" },
+  ];
+  return (
+    <nav className="mobile-nav" aria-label="Primary">
+      {nav.map((n) => (
+        <button key={n.id} className={`mobile-nav-item ${view === n.id ? "active" : ""}`} onClick={() => setView(n.id)}>
+          <span className="nav-icon">{n.icon}</span>
+          <span>{n.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 export function App() {
   const { transportId, transportStatus } = useChat();
   const [view, setView] = useState<View>("chats");
+  const [mobilePane, setMobilePane] = useState<MobilePane>("list");
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = () => setDialog(null);
   const needsConnect = transportId === "xmtp" && transportStatus !== "ready";
+  const openView = (next: View) => {
+    setView(next);
+    if (next === "chats") setMobilePane("list");
+  };
 
   // Silent auto-update check on launch (desktop only; no-op on web/mobile).
   useEffect(() => { void autoUpdateOnLaunch(); }, []);
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={setView} onCreateOrg={() => setDialog("createOrg")} />
+      <Sidebar view={view} setView={openView} onCreateOrg={() => setDialog("createOrg")} />
       <main className="main">
         {view === "chats" && (
-          <div className="split">
+          <div className={`split mobile-${mobilePane}`}>
             <ConversationColumn
-              kind="dm"
               title="Chats"
-              newLabel="+ New"
               needsConnect={needsConnect}
-              onNew={() => setDialog("newDm")}
-              onOpenSettings={() => setView("settings")}
+              onNewDm={() => setDialog("newDm")}
+              onNewRoom={() => setDialog("newRoom")}
+              onOpenSettings={() => openView("settings")}
+              onOpenConversation={() => setMobilePane("thread")}
             />
-            <Thread />
-          </div>
-        )}
-        {view === "rooms" && (
-          <div className="split">
-            <ConversationColumn
-              kind="room"
-              title="Rooms"
-              newLabel="+ Room"
-              needsConnect={needsConnect}
-              onNew={() => {
-                setDialog("newRoom");
-              }}
-              onOpenSettings={() => setView("settings")}
-            />
-            <Thread />
+            <Thread showBack onBack={() => setMobilePane("list")} />
           </div>
         )}
         {view === "settings" && (
           <Settings onCreateOrg={() => setDialog("createOrg")} onImportOrg={() => setDialog("importOrg")} />
         )}
       </main>
+      <MobileNav view={view} setView={openView} />
 
-      {dialog === "newDm" && <NewDmDialog onClose={close} />}
-      {dialog === "newRoom" && <NewRoomDialog onClose={close} />}
+      {dialog === "newDm" && <NewDmDialog onClose={close} onCreated={() => setMobilePane("thread")} />}
+      {dialog === "newRoom" && <NewRoomDialog onClose={close} onCreated={() => setMobilePane("thread")} />}
       {dialog === "createOrg" && <CreateOrgDialog onClose={close} />}
       {dialog === "importOrg" && <ImportOrgDialog onClose={close} />}
     </div>

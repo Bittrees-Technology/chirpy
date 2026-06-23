@@ -9,7 +9,7 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await expect(page.getByText(walletAddress.slice(0, 6), { exact: false }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Chats" }).click();
-  await page.getByRole("button", { name: "+ New" }).click();
+  await page.getByRole("button", { name: "+ Chat" }).click();
   await page.getByLabel("Address or ENS name").fill("0x000000000000000000000000000000000000dEaD");
   await page.getByLabel("Display name (optional)").fill("e2e peer");
   await page.getByRole("button", { name: "Start chat" }).click();
@@ -21,7 +21,6 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await page.getByRole("button", { name: "👍" }).first().click();
   await expect(page.getByText("👍 1")).toBeVisible();
 
-  await page.getByRole("button", { name: "Rooms" }).click();
   await page.getByRole("button", { name: "+ Room" }).click();
   await page.getByLabel("Room name").fill("e2e-room");
   await page.getByLabel("Description (optional)").fill("mock browser policy test");

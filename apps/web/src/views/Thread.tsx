@@ -5,7 +5,7 @@ import { Avatar, Button, Empty, fmtTime, shortAddr } from "../ui";
 
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
-export function Thread() {
+export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) {
   const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin } = useChat();
   const { identity } = useIdentity();
   const [draft, setDraft] = useState("");
@@ -48,6 +48,11 @@ export function Thread() {
   return (
     <div className="thread">
       <header className="thread-head">
+        {showBack && (
+          <button className="thread-back" onClick={onBack} aria-label="Back to chats">
+            ‹
+          </button>
+        )}
         <Avatar id={activeConversation.id} label={activeConversation.title} size={34} />
         <div className="thread-head-meta">
           <div className="thread-title">

@@ -1,22 +1,30 @@
 import React, { useMemo, useState } from "react";
-import type { ConversationKind } from "@app/transport";
-import { useChat } from "../state";
+import type { Conversation } from "@app/transport";
+import { useChat, useIdentity } from "../state";
 import { Avatar, Empty, fmtTime } from "../ui";
 
 export function ConversationColumn(
-  { kind, title, onNew, newLabel, needsConnect, onOpenSettings }:
+  { title, onNewDm, onNewRoom, needsConnect, onOpenSettings, onOpenConversation }:
   {
-    kind: ConversationKind;
     title: string;
-    onNew: () => void;
-    newLabel: string;
+    onNewDm: () => void;
+    onNewRoom: () => void;
     needsConnect: boolean;
     onOpenSettings: () => void;
+    onOpenConversation: () => void;
   },
 ) {
-  const { conversations, activeId, select } = useChat();
+  const { conversations, activeId, select, startDm } = useChat();
+  const { identity } = useIdentity();
   const [query, setQuery] = useState("");
-  const items = conversations.filter((c) => c.kind === kind);
+  const selfAddress = identity.address.toLowerCase();
+  const isSelfConversation = (conversation: Conversation) => {
+    if (conversation.kind !== "dm") return false;
+    const peers = conversation.peers.map((peer) => peer.toLowerCase());
+    return peers.length > 0 && peers.every((peer) => peer === selfAddress);
+  };
+  const savedConversation = conversations.find(isSelfConversation);
+  const items = conversations.filter((conversation) => !isSelfConversation(conversation));
   const normalizedQuery = query.trim().toLowerCase();
   const filteredItems = useMemo(() => {
     if (!normalizedQuery) return items;
@@ -31,19 +39,54 @@ export function ConversationColumn(
     });
   }, [items, normalizedQuery]);
   const showConnectEmpty = needsConnect && items.length === 0;
+  const openSavedMessages = async () => {
+    if (savedConversation) {
+      select(savedConversation.id);
+      onOpenConversation();
+      return;
+    }
+    if (needsConnect) {
+      onOpenSettings();
+      return;
+    }
+    await startDm(identity.address, "Saved Messages");
+    onOpenConversation();
+  };
+  const openConversation = (id: string) => {
+    select(id);
+    onOpenConversation();
+  };
 
   return (
     <div className="list-col">
       <div className="list-head-wrap">
         <div className="list-head">
           <h1>{title}</h1>
-          <button className="btn btn-primary btn-sm" onClick={onNew}>{newLabel}</button>
+          <div className="list-actions">
+            <button className="btn btn-primary btn-sm" onClick={onNewDm}>+ Chat</button>
+            <button className="btn btn-sm" onClick={onNewRoom}>+ Room</button>
+          </div>
         </div>
+        <button
+          className={`list-item saved-row ${savedConversation?.id === activeId ? "active" : ""}`}
+          onClick={() => { void openSavedMessages(); }}
+        >
+          <Avatar id={savedConversation?.id ?? identity.address} label="Saved Messages" />
+          <div className="list-item-main">
+            <div className="list-item-top">
+              <span className="list-item-title">Saved Messages</span>
+              {savedConversation?.lastMessage && <span className="list-item-time">{fmtTime(savedConversation.lastMessage.sentAt)}</span>}
+            </div>
+            <div className="list-item-bottom">
+              <span className="list-item-preview">{savedConversation?.lastMessage?.body ?? "Notes to self"}</span>
+            </div>
+          </div>
+        </button>
         <input
           className="input list-search"
           value={query}
-          placeholder={`Search ${title.toLowerCase()}`}
-          aria-label={`Search ${title.toLowerCase()}`}
+          placeholder="Search chats and rooms"
+          aria-label="Search chats and rooms"
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
@@ -58,21 +101,21 @@ export function ConversationColumn(
         )}
         {!showConnectEmpty && items.length === 0 && (
           <Empty
-            icon={kind === "room" ? "🏛️" : "📭"}
-            title={`No ${kind === "room" ? "rooms" : "chats"} yet`}
-            hint={newLabel}
+            icon="📭"
+            title="No chats yet"
+            hint="+ Chat or + Room"
           />
         )}
         {items.length > 0 && filteredItems.length === 0 && (
           <Empty icon="🔎" title="No results" hint="Try another search" />
         )}
         {filteredItems.map((c) => {
-          const peerLabel = kind === "room" ? `# ${c.title}` : c.title;
+          const peerLabel = c.kind === "room" ? `# ${c.title}` : c.title;
           return (
             <button
               key={c.id}
               className={`list-item ${c.id === activeId ? "active" : ""}`}
-              onClick={() => select(c.id)}
+              onClick={() => openConversation(c.id)}
             >
               <Avatar id={c.id} label={c.title} />
               <div className="list-item-main">
