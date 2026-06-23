@@ -34,7 +34,8 @@ export const bittreesResearchPreset: OrgConfig = {
     { id: "research-researchers", title: "researchers", description: "Researcher role", gate: { combine: "any", rules: [{ kind: "role", role: "researcher" }] } },
   ],
   admins: [],
-  gateUrl: "https://research.bittrees.org/api/gate",
+  // gateUrl omitted → uses this deployment's own /api/room-join. Set it to a self-hosted
+  // gate (e.g. https://gate.research.bittrees.org/api/room-join) to route joins elsewhere.
 };
 
 export const bittreesIncPreset: OrgConfig = {
@@ -61,7 +62,7 @@ export const bittreesIncPreset: OrgConfig = {
     { id: "inc-board", title: "board", description: "≥ 420 BGOV", gate: { combine: "any", rules: [{ kind: "power", tier: 420 }] } },
   ],
   admins: [],
-  gateUrl: "https://gov.bittrees.org/api/gate",
+  // gateUrl omitted → uses this deployment's own /api/room-join (see the Research preset).
 };
 
 export const PRESETS: { label: string; org: OrgConfig }[] = [

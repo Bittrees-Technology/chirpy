@@ -19,6 +19,5 @@
     { "id": "inc-partners", "title": "partners", "description": "≥ 210 BGOV", "gate": { "combine": "any", "rules": [{ "kind": "power", "tier": 210 }] } },
     { "id": "inc-board", "title": "board", "description": "≥ 420 BGOV", "gate": { "combine": "any", "rules": [{ "kind": "power", "tier": 420 }] } }
   ],
-  "admins": [],
-  "gateUrl": "https://gov.bittrees.org/api/gate"
+  "admins": []
 }

@@ -218,7 +218,7 @@ export function CreateOrgDialog({ onClose }: { onClose: () => void }) {
         <Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme DAO" autoFocus /></Field>
         <Field label="Accent color"><input className="input input-color" type="color" value={accent} onChange={(e) => setAccent(e.target.value)} /></Field>
         <Field label="Chain ID"><input className="input" type="number" value={chainId} onChange={(e) => setChainId(Number(e.target.value) || 1)} /></Field>
-        <Field label="Gate URL (optional)" hint="serverless gate endpoint"><input className="input" value={gateUrl} onChange={(e) => setGateUrl(e.target.value)} placeholder="https://acme.org/api/gate" /></Field>
+        <Field label="Gate URL (optional)" hint="self-hosted gate endpoint; blank = this app's /api/room-join"><input className="input" value={gateUrl} onChange={(e) => setGateUrl(e.target.value)} placeholder="https://gate.acme.org/api/room-join" /></Field>
       </div>
 
       <div className="section-title">Capabilities</div>

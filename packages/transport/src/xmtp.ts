@@ -304,6 +304,14 @@ export class XmtpTransport implements Transport {
     return normalizeAddress(value);
   }
 
+  /** Where gated-room joins are sent. An org can run its own gate service and point
+   *  `OrgConfig.gateUrl` at it (e.g. a self-hosted container, since the XMTP gatekeeper
+   *  bot needs a runtime that supports @xmtp/node-sdk's native bindings); otherwise we
+   *  use this deployment's own same-origin `/api/room-join`. */
+  private gateEndpoint() {
+    return this.org.gateUrl?.trim() || "/api/room-join";
+  }
+
   private chainReader() {
     return (this.reader ??= makeViemChainReader(
       this.org.chain.rpcUrl || getImportMetaEnv().VITE_MAINNET_RPC_URL,
@@ -814,7 +822,7 @@ export class XmtpTransport implements Transport {
     });
     if (typeof signature !== "string") throw new Error("Wallet did not return a join signature.");
 
-    const response = await fetch("/api/room-join", {
+    const response = await fetch(this.gateEndpoint(), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
