@@ -19,8 +19,8 @@ import type {
   StartRoomInput,
   Transport,
   TransportStatus,
-} from "./types";
-import { makeInjectedSigner } from "./xmtpSigner";
+} from "./types.js";
+import { makeInjectedSigner } from "./xmtpSigner.js";
 
 type Sdk = typeof import("@xmtp/browser-sdk");
 type XmtpClient = Awaited<ReturnType<Sdk["Client"]["create"]>>;

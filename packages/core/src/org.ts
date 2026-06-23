@@ -1,5 +1,5 @@
-import type { GatingConfig, OrgConfig, Policy, RoomRule } from "./types";
-import { DEFAULT_POLICY, mergePolicy } from "./policy";
+import type { GatingConfig, OrgConfig, Policy, RoomRule } from "./types.js";
+import { DEFAULT_POLICY, mergePolicy } from "./policy.js";
 
 /** A safe, fully-open default gating config. */
 export function openGating(): GatingConfig {

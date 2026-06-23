@@ -1,5 +1,5 @@
 import { mergePolicy, evaluatePolicy, type Identity, type OrgConfig, type Policy } from "@app/core";
-import type { ChatMessage, Conversation, StartRoomInput, Transport } from "./types";
+import type { ChatMessage, Conversation, StartRoomInput, Transport } from "./types.js";
 
 // A fully local, offline transport. It persists so the app is immediately viewable
 // and clickable with no wallet, no network, no keys. It implements the exact same

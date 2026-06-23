@@ -1,11 +1,11 @@
 import type { Identity, OrgConfig } from "@app/core";
-import { MockTransport } from "./mock";
-import { XmtpTransport } from "./xmtp";
-import type { Transport } from "./types";
+import { MockTransport } from "./mock.js";
+import { XmtpTransport } from "./xmtp.js";
+import type { Transport } from "./types.js";
 
-export * from "./types";
-export { MockTransport } from "./mock";
-export { XmtpTransport } from "./xmtp";
+export * from "./types.js";
+export { MockTransport } from "./mock.js";
+export { XmtpTransport } from "./xmtp.js";
 
 export type TransportMode = "mock" | "xmtp";
 

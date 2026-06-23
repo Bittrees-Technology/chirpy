@@ -4,7 +4,7 @@
 // or a test runner unchanged. The production gate provides a viem-backed reader;
 // the app provides a mock reader for previews.
 
-import type { Combine, Gate, GatingConfig, RoomRule } from "./types";
+import type { Combine, Gate, GatingConfig, RoomRule } from "./types.js";
 
 export interface ChainReader {
   erc20Balance(token: string, user: string): Promise<bigint>;

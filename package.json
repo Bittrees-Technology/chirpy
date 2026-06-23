@@ -7,6 +7,7 @@
     "build": "pnpm --filter @app/web build",
     "preview": "pnpm --filter @app/web preview",
     "typecheck": "tsc -p tsconfig.base.json --noEmit",
+    "typecheck:api": "tsc -p tsconfig.api.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test --grep-invert @xmtp",

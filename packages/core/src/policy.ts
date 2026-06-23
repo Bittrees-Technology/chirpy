@@ -2,7 +2,7 @@
 // enter" gate. A declarative policy model (read-only mode, attachment + size
 // limits) applied to our room/org model. Pure logic, fail-closed-ish, no dependencies.
 
-import type { Policy } from "./types";
+import type { Policy } from "./types.js";
 
 export const DEFAULT_POLICY: Policy = { mode: "active", attachments: "allow" };
 
