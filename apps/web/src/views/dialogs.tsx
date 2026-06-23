@@ -6,6 +6,7 @@ import {
 import { useChat, useOrgs } from "../state";
 import { Button, Field, Modal } from "../ui";
 import { PRESETS } from "../presets";
+import { isAddress, isEnsName, resolveEns } from "../ens";
 
 function download(filename: string, text: string) {
   const blob = new Blob([text], { type: "application/json" });
@@ -21,11 +22,46 @@ export function NewDmDialog({ onClose, onCreated }: { onClose: () => void; onCre
   const [address, setAddress] = useState("");
   const [handle, setHandle] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const valid = /^0x[a-fA-F0-9]{40}$/.test(address.trim()) || /\.eth$/.test(address.trim());
+  const [busy, setBusy] = useState(false);
+  const input = address.trim();
+  const valid = isAddress(input) || isEnsName(input);
+  const start = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // The transport only speaks 0x addresses, so resolve ENS names here first.
+      let target = input;
+      let displayName = handle.trim() || undefined;
+      if (!isAddress(input)) {
+        const record = await resolveEns(input);
+        if (!record.address) {
+          setError(`${input} doesn't resolve to an address.`);
+          return;
+        }
+        target = record.address;
+        if (!displayName) displayName = record.displayName ?? record.name ?? input;
+      }
+      await startDm(target, displayName);
+      onCreated?.();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start that conversation.");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Modal title="New direct message" onClose={onClose}>
       <Field label="Address or ENS name" hint="0x… or name.eth">
-        <input className="input" value={address} onChange={(e) => { setAddress(e.target.value); setError(null); }} placeholder="0x… or vitalik.eth" autoFocus />
+        <input
+          className="input"
+          value={address}
+          onChange={(e) => { setAddress(e.target.value); setError(null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") void start(); }}
+          placeholder="0x… or vitalik.eth"
+          autoFocus
+        />
       </Field>
       <Field label="Display name (optional)">
         <input className="input" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="alice" />
@@ -33,20 +69,8 @@ export function NewDmDialog({ onClose, onCreated }: { onClose: () => void; onCre
       {error && <div className="error-banner">{error}</div>}
       <div className="modal-actions">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button
-          variant="primary"
-          disabled={!valid}
-          onClick={async () => {
-            try {
-              await startDm(address.trim(), handle.trim() || undefined);
-              onCreated?.();
-              onClose();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Could not start that conversation.");
-            }
-          }}
-        >
-          Start chat
+        <Button variant="primary" disabled={!valid || busy} onClick={() => { void start(); }}>
+          {busy ? "Resolving…" : "Start chat"}
         </Button>
       </div>
     </Modal>
