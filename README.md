@@ -1,6 +1,6 @@
 # Chirpy
 
-**Wallet-native chat for any community — one codebase, a Mac desktop app and an iOS app.**
+**Wallet-native chat for any community — one codebase across web, a Mac desktop app, and iOS (Tauri 2).**
 
 🌐 **Live:** [chirpy.bittrees.org](https://chirpy.bittrees.org) · skinned with the **Bittrees** brand theme (light surface, Bitcoin-orange accent, treasury-green positives, serif headings).
 
@@ -11,8 +11,9 @@ roles, and rooms. The chat itself (1:1 DMs + token-gated community rooms) lives 
 every org.
 
 It is built from the chat functionality already shipping in the Bittrees Inc and Bittrees
-Research apps (XMTP DMs + Push gated rooms), generalized so those two become nothing more
-than **importable presets** (see `apps/web/src/presets.ts` and `examples/`).
+Research apps (XMTP DMs + token-gated rooms — XMTP-MLS groups joined via a gatekeeper bot),
+generalized so those two become nothing more than **importable presets**
+(see `apps/web/src/presets.ts` and `examples/`).
 
 > Same web frontend → **web**, **macOS desktop**, and **iOS** via Tauri 2.
 
@@ -25,9 +26,13 @@ pnpm install
 pnpm dev            # → http://localhost:1420
 ```
 
-Everything works offline in this preview build: the transport is a local mock that
-persists per-org to `localStorage`, so you can click around (create an org, import the
+Everything works offline in this preview build: the **default** transport is a local mock
+that persists per-org to `localStorage`, so you can click around (create an org, import the
 Bittrees presets, DM, create gated rooms, react/reply) with **no wallet and no network**.
+
+To run against **real XMTP** (encrypted DMs + MLS rooms), build/serve with
+`VITE_TRANSPORT=xmtp` and connect a wallet. Gated-room joins and cross-device sync
+additionally require the server env in [docs/PRODUCTION.md](docs/PRODUCTION.md).
 
 ```bash
 pnpm build          # production web build → apps/web/dist
@@ -51,29 +56,59 @@ pnpm tauri ios dev      # run in the iOS Simulator
 
 ```
 packages/
-  core/        @app/core      org config model + dependency-free token-gate (ported from Bittrees api/gate.js)
-  transport/   @app/transport Transport interface + MockTransport (offline) + XmtpTransport (scaffold)
+  core/        @app/core      org config model + dependency-free token-gate + action policy
+  transport/   @app/transport Transport interface + MockTransport (offline) + XmtpTransport (full XMTP-MLS impl)
 apps/
   web/         @app/web        Vite + React 19 frontend (used by web + Tauri Mac/iOS)
     src-tauri/                 Tauri 2 native shell (macOS + iOS)
+api/           room-join.js (serverless token-gate), usersync.js (encrypted device sync) — Vercel functions
+selfhost/      Docker self-host bundle for the gate (scaffold — see "What's left")
 examples/      bittrees-inc.org.json, bittrees-research.org.json  (importable org presets)
-docs/          PLAN.md · ARCHITECTURE.md · NATIVE.md
+docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROADMAP.md · NATIVE.md
 ```
 
-## Status (v0)
+## Status
+
+### Done
 
 - ✅ Org-agnostic app shell: personal default, **import org**, **create org** wizard.
-- ✅ Chat UI: DMs + rooms, threads, replies, reactions, read state.
+- ✅ Chat UI: DMs + rooms, threads, replies, reactions, read state — with bottom-anchored
+  messages, sent/received bubble alignment, and ENS-resolved names + avatars.
+- ✅ **Real XMTP transport** (`packages/transport/src/xmtp.ts`): encrypted DMs + XMTP-MLS
+  group rooms, including one-click recovery from XMTP's 10-installation inbox limit.
+- ✅ **Wallet + identity**: injected EIP-1193 wallets and **WalletConnect v2**
+  (`walletProviders.ts`); **ENS** name + avatar resolution and reverse lookup
+  (`ens.ts`, `useEns.ts`).
 - ✅ Cross-org persistence: DMs follow your wallet across all orgs + personal; rooms per org.
-- ✅ Generalized gating model + evaluator (token / Safe / ENS / role-cascade / power-tier).
+- ✅ Generalized gating model + evaluator (token / Safe / ENS / role-cascade / power-tier) — `packages/core`.
 - ✅ **Action policy** layer (read-only rooms, block attachments, size caps) — freeze a room live.
-- ✅ Per-org **drop-in CSS theming**, file-based **i18n**, and a styled **error page**.
-- ✅ macOS + iOS project (Tauri 2) with generated icons.
-- ⚠️ App icons are placeholder Chirpy artwork using the reusable Bittrees tree mark until final brand artwork is available.
-- ✅ Desktop **auto-update** (signed, GitHub Releases manifest) — see `docs/NATIVE.md`.
-- ◐ **Self-host** gate bundle scaffolded in `selfhost/` (completes with the gate service).
-- ⏳ **Next:** wire the real `XmtpTransport` (XMTP DMs + Push rooms) + WalletConnect/ENS, and
-  deploy the serverless gate. The UI does not change when this lands — only the transport.
-  See `docs/PRODUCTION.md`.
+- ✅ **Serverless token-gate** (`api/room-join.js`): signature-verified `evalGate` + viem chain
+  reader + an XMTP gatekeeper bot that adds the inbox to a gated room. Deployed on Vercel.
+- ✅ **Encrypted cross-device sync** (`api/usersync.js`): settings + saved messages, key derived
+  from a wallet signature, stored in Upstash/Vercel KV (last-write-wins with a stale guard).
+- ✅ Per-org **drop-in CSS theming**, a styled **error page**, and an i18n framework (EN/ES).
+- ✅ **macOS desktop app** (Tauri 2) with generated icons and signed **auto-update** (ed25519
+  updater key + GitHub Releases `latest.json`); release CI in `.github/workflows/release.yml`.
+
+### What's left
+
+- ⏳ **Provision prod secrets** so the live deploy exercises the gate/sync (not just mock):
+  `XMTP_GATEKEEPER_PRIVATE_KEY`, `MAINNET_RPC_URL`, and `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
+  Until set, `/api/room-join` and `/api/usersync` return 503. Build with `VITE_TRANSPORT=xmtp`
+  to select the XMTP transport. See [docs/PRODUCTION.md](docs/PRODUCTION.md).
+- ⏳ **iOS**: the Rust shell and icons are ready, but the Xcode project isn't generated yet
+  (`pnpm tauri ios init` / `ios dev`). See [docs/NATIVE.md](docs/NATIVE.md).
+- ◐ **Self-host bundle** (`selfhost/`): `install.sh` + `docker-compose.yml` are scaffolded but
+  still need `selfhost/gate.Dockerfile` + an HTTP entrypoint wrapping `evalGate`. Per-org
+  `OrgConfig.gateUrl` is shown in Settings but **not yet consumed** — the client currently
+  hardcodes its own origin's `/api/*`.
+- ◐ **Release hardening**: macOS-only release job (no Windows/Linux yet despite
+  `bundle.targets: "all"`), and no Apple notarization (auto-update is updater-signed, not
+  Gatekeeper-notarized). Push an `app-v*` tag to cut the first release.
+- ⚠️ App icons are interim Chirpy artwork (the reusable Bittrees tree mark) pending final brand art.
+- ⚠️ Preset token addresses in `examples/` are **illustrative placeholders** (e.g. the Research
+  membership token is the burn address) — set real addresses before gating against them.
+- ◐ i18n: framework + EN/ES are wired, but only a handful of strings are extracted through `t()`
+  so far — broaden coverage.
 
 MIT.
