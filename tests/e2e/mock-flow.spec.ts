@@ -3,12 +3,12 @@ import { expect, test } from "./fixtures/wallet";
 test("synthetic wallet drives mock DM, room, and read-only policy", async ({ page, walletAddress }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.locator(".nav-item", { hasText: "Settings" }).click();
   await page.getByRole("button", { name: "Connect wallet" }).click();
   await expect(page.getByText("test.eth").first()).toBeVisible();
   await expect(page.getByText(walletAddress.slice(0, 6), { exact: false }).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Chats" }).click();
+  await page.locator(".nav-item", { hasText: "Chats" }).click();
   await page.getByRole("button", { name: "+ Chat" }).click();
   await page.getByLabel("Address or ENS name").fill("0x000000000000000000000000000000000000dEaD");
   await page.getByLabel("Display name (optional)").fill("e2e peer");
@@ -21,6 +21,9 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await page.getByRole("button", { name: "👍" }).first().click();
   await expect(page.getByText("👍 1")).toBeVisible();
 
+  if (await page.getByRole("button", { name: "+ Room" }).count() === 0) {
+    await page.locator(".nav-item", { hasText: "Rooms" }).click();
+  }
   await page.getByRole("button", { name: "+ Room" }).click();
   await page.getByLabel("Room name").fill("e2e-room");
   await page.getByLabel("Description (optional)").fill("mock browser policy test");
