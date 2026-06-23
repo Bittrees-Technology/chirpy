@@ -9,7 +9,7 @@ import { Thread } from "./views/Thread";
 import { Settings } from "./views/Settings";
 import { NewDmDialog, NewRoomDialog, CreateOrgDialog, ImportOrgDialog } from "./views/dialogs";
 
-type View = "chats" | "settings";
+type View = "chats" | "rooms" | "settings";
 type Dialog = null | "newDm" | "newRoom" | "createOrg" | "importOrg";
 type MobilePane = "list" | "thread";
 
@@ -41,6 +41,7 @@ function Sidebar(
   const { t } = useI18n();
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chats", label: t("nav.chats"), icon: "💬" },
+    { id: "rooms", label: t("nav.rooms", "Rooms"), icon: "👥" },
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
   return (
@@ -74,6 +75,7 @@ function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }
   const { t } = useI18n();
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chats", label: t("nav.chats"), icon: "💬" },
+    { id: "rooms", label: t("nav.rooms", "Rooms"), icon: "👥" },
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
   return (
@@ -97,7 +99,7 @@ export function App() {
   const needsConnect = transportId === "xmtp" && transportStatus !== "ready";
   const openView = (next: View) => {
     setView(next);
-    if (next === "chats") setMobilePane("list");
+    if (next === "chats" || next === "rooms") setMobilePane("list");
   };
 
   // Silent auto-update check on launch (desktop only; no-op on web/mobile).
@@ -107,10 +109,11 @@ export function App() {
     <div className="app">
       <Sidebar view={view} setView={openView} onCreateOrg={() => setDialog("createOrg")} />
       <main className="main">
-        {view === "chats" && (
+        {(view === "chats" || view === "rooms") && (
           <div className={`split mobile-${mobilePane}`}>
             <ConversationColumn
-              title="Chats"
+              title={view === "rooms" ? "Rooms" : "Chats"}
+              mode={view === "rooms" ? "rooms" : "chats"}
               needsConnect={needsConnect}
               onNewDm={() => setDialog("newDm")}
               onNewRoom={() => setDialog("newRoom")}

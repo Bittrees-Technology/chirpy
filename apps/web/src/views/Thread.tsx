@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { policySummary, type Policy } from "@app/core";
 import { useChat, useIdentity } from "../state";
 import { Avatar, Button, Empty, fmtTime, shortAddr } from "../ui";
+import { nameFor, useEnsProfiles } from "../useEns";
 
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
@@ -13,6 +14,14 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [joinPending, setJoinPending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const selfAddress = identity.address.toLowerCase();
+
+  const isRoomConv = activeConversation?.kind === "room";
+  const peerAddress = activeConversation && !isRoomConv
+    ? (activeConversation.peers.find((p) => p.toLowerCase() !== selfAddress) ?? activeConversation.peers[0])
+    : undefined;
+  // Resolve the peer + every message sender to ENS (name + avatar), cached app-wide.
+  const profiles = useEnsProfiles([peerAddress, ...messages.map((m) => m.sender)]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length, activeConversation?.id]);
   useEffect(() => { setReplyTo(null); setDraft(""); setJoinStatus(null); }, [activeConversation?.id]);
@@ -20,6 +29,12 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   if (!activeConversation) {
     return <div className="thread"><Empty icon="💬" title="Select a conversation" hint="or start a new one from the left" /></div>;
   }
+
+  const peerRecord = peerAddress ? profiles.get(peerAddress.toLowerCase()) : undefined;
+  const headerName = isRoomConv
+    ? `# ${activeConversation.title}`
+    : nameFor(peerAddress ?? activeConversation.title, peerRecord, activeConversation.title);
+  const headerAvatar = !isRoomConv ? peerRecord?.avatar ?? undefined : undefined;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,10 +68,10 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
             ‹
           </button>
         )}
-        <Avatar id={activeConversation.id} label={activeConversation.title} size={34} />
+        <Avatar id={activeConversation.id} label={headerName} src={headerAvatar} size={34} />
         <div className="thread-head-meta">
           <div className="thread-title">
-            {isRoom ? `# ${activeConversation.title}` : activeConversation.title}
+            {headerName}
           </div>
           <div className="thread-sub">
             {isRoom
@@ -86,14 +101,15 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         </div>
       )}
 
-      <div className="messages">
+      <div className={`messages ${messages.length ? "has-msgs" : ""}`}>
         {messages.length === 0 && <Empty icon="✍️" title="No messages yet" hint="Say hello" />}
         {messages.map((m) => {
-          const mine = m.sender === identity.address;
+          const mine = m.sender.toLowerCase() === selfAddress;
+          const senderRecord = profiles.get(m.sender.toLowerCase());
           const parent = m.replyTo ? messages.find((x) => x.id === m.replyTo) : null;
           return (
             <div key={m.id} className={`msg-row ${mine ? "mine" : ""}`}>
-              {!mine && <Avatar id={m.sender} size={28} />}
+              {!mine && <Avatar id={m.sender} size={28} label={nameFor(m.sender, senderRecord)} src={senderRecord?.avatar ?? undefined} />}
               <div className="msg-bubble-wrap">
                 {parent && (
                   <div className="msg-reply-ref">↩ {parent.body.slice(0, 60)}</div>
