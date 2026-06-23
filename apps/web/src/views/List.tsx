@@ -7,22 +7,21 @@ export function ConversationColumn(
   { kind, title, onNew, newLabel }:
   { kind: ConversationKind; title: string; onNew: () => void; newLabel: string },
 ) {
-  const { conversations, activeId, select, transportId } = useChat();
+  const { conversations, activeId, select } = useChat();
   const items = conversations.filter((c) => c.kind === kind);
-  const roomsDisabled = transportId === "xmtp" && kind === "room";
 
   return (
     <div className="list-col">
       <div className="list-head">
         <h1>{title}</h1>
-        {!roomsDisabled && <button className="btn btn-primary btn-sm" onClick={onNew}>{newLabel}</button>}
+        <button className="btn btn-primary btn-sm" onClick={onNew}>{newLabel}</button>
       </div>
       <div className="list-scroll">
         {items.length === 0 && (
           <Empty
             icon={kind === "room" ? "🏛️" : "📭"}
             title={`No ${kind === "room" ? "rooms" : "chats"} yet`}
-            hint={roomsDisabled ? "Rooms are coming soon for XMTP mode." : newLabel}
+            hint={newLabel}
           />
         )}
         {items.map((c) => {

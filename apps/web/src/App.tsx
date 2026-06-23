@@ -112,7 +112,7 @@ export function App() {
         {view === "rooms" && (
           <div className="split">
             <ConversationColumn kind="room" title="Rooms" newLabel="+ Room" onNew={() => {
-              if (transportId !== "xmtp") setDialog("newRoom");
+              setDialog("newRoom");
             }} />
             <Thread />
           </div>
@@ -123,7 +123,7 @@ export function App() {
       </main>
 
       {dialog === "newDm" && <NewDmDialog onClose={close} />}
-      {dialog === "newRoom" && transportId !== "xmtp" && <NewRoomDialog onClose={close} />}
+      {dialog === "newRoom" && <NewRoomDialog onClose={close} />}
       {dialog === "createOrg" && <CreateOrgDialog onClose={close} />}
       {dialog === "importOrg" && <ImportOrgDialog onClose={close} />}
     </div>

@@ -248,7 +248,7 @@ export function Settings(
           Mode: <span className="pill">{transportId}</span>{" "}
           {transportId === "mock"
             ? "— fully offline. DMs persist per wallet (across all orgs + personal); rooms persist per org. No wallet, no network."
-            : "— live XMTP DMs + Push gated rooms."}
+            : "— live XMTP DMs + MLS rooms."}
         </p>
       </section>
 

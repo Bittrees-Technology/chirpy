@@ -55,7 +55,11 @@ importers:
         specifier: ^6.0.0
         version: 6.4.3
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      viem:
+        specifier: ^2.53.1
+        version: 2.53.1(typescript@5.9.3)
 
   packages/transport:
     dependencies:

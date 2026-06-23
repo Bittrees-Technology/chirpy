@@ -8,6 +8,6 @@ export const APP_TAGLINE = "Wallet-native chat for any community";
 export const APP_VERSION = "0.1.0";
 
 // "mock" = fully offline local transport (default, no wallet needed).
-// "xmtp" = real XMTP DMs only. Rooms stay mock-only until Push is added.
+// "xmtp" = real XMTP DMs and XMTP MLS rooms.
 export const DEFAULT_TRANSPORT: TransportMode =
   import.meta.env.VITE_TRANSPORT === "xmtp" ? "xmtp" : "mock";

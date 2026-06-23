@@ -1,4 +1,17 @@
-import type { Identity, OrgConfig, Policy } from "@app/core";
+import {
+  decodeGate,
+  encodeGate,
+  evalGate,
+  evaluatePolicy,
+  makeViemChainReader,
+  mergePolicy,
+  type ChainReader,
+  type Gate,
+  type Identity,
+  type OrgConfig,
+  type Policy,
+  type RoomSeed,
+} from "@app/core";
 import type { DecodedMessage, EnrichedReply, Reaction } from "@xmtp/browser-sdk";
 import type {
   ChatMessage,
@@ -11,7 +24,7 @@ import { makeInjectedSigner } from "./xmtpSigner";
 
 type Sdk = typeof import("@xmtp/browser-sdk");
 type XmtpClient = Awaited<ReturnType<Sdk["Client"]["create"]>>;
-type XmtpConversation = Awaited<ReturnType<XmtpClient["conversations"]["createDmWithIdentifier"]>>;
+type XmtpConversation = Awaited<ReturnType<XmtpClient["conversations"]["list"]>>[number];
 type StreamHandle = AsyncIterable<DecodedMessage> & { return?: () => void };
 
 interface Eip1193Provider {
@@ -22,14 +35,26 @@ interface PeerState {
   accountIdentifiers?: { identifier?: string }[];
 }
 
+interface RoomMeta {
+  gate: Gate;
+  policy: Policy;
+  description?: string;
+  namespace?: string;
+}
+
 let SDK: Sdk | null = null;
 let sharedXmtp: { address: string; client: XmtpClient } | null = null;
 
 const READY_PREFIX = "chirpy.xmtp.ready.";
+const ROOM_SEED_PREFIX = "chirpy.xmtp.rooms.seeded.";
 const PEER_KEY = "chirpy.xmtp.peers";
 const ETH_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
+const ROOM_META_VERSION = 1;
+const OPEN_GATE: Gate = { combine: "any", rules: [] };
 
 const readyKey = (address: string) => `${READY_PREFIX}${address.toLowerCase()}`;
+const roomSeedKey = (address: string, namespace: string) =>
+  `${ROOM_SEED_PREFIX}${address.toLowerCase()}.${namespace}`;
 const normalizeAddress = (address: string) => {
   const next = address.trim().toLowerCase();
   if (!ETH_ADDRESS.test(next)) throw new Error("Enter a valid 0x address.");
@@ -53,6 +78,14 @@ function markEnabled(address: string) {
 function forgetEnabled(address: string) {
   if (sharedXmtp?.address.toLowerCase() === address.toLowerCase()) sharedXmtp = null;
   try { localStorage.removeItem(readyKey(address)); } catch { /* ignore */ }
+}
+
+function roomsWereSeeded(address: string, namespace: string) {
+  try { return localStorage.getItem(roomSeedKey(address, namespace)) === "1"; } catch { return false; }
+}
+
+function markRoomsSeeded(address: string, namespace: string) {
+  try { localStorage.setItem(roomSeedKey(address, namespace), "1"); } catch { /* ignore */ }
 }
 
 function isUnregisteredIdentity(error: unknown) {
@@ -86,6 +119,50 @@ function previewOf(sdk: Sdk, message: DecodedMessage) {
     return String((message.content as EnrichedReply<string> | undefined)?.content ?? "");
   }
   return "Message";
+}
+
+function roomMetaDescription(input: RoomMeta) {
+  return JSON.stringify({
+    chirpyRoom: ROOM_META_VERSION,
+    namespace: input.namespace,
+    description: input.description,
+    gate: encodeGate(input.gate),
+    policy: input.policy,
+  });
+}
+
+function parseRoomMeta(description: string | undefined, orgPolicy: Policy): RoomMeta {
+  const fallback: RoomMeta = {
+    gate: OPEN_GATE,
+    policy: mergePolicy(orgPolicy),
+    description: description || undefined,
+  };
+  if (!description) return fallback;
+  try {
+    const parsed = JSON.parse(description) as {
+      chirpyRoom?: number;
+      namespace?: string;
+      description?: string;
+      gate?: string | Gate;
+      policy?: Policy;
+    };
+    if (parsed.chirpyRoom !== ROOM_META_VERSION) return fallback;
+    const gate = typeof parsed.gate === "string"
+      ? decodeGate(parsed.gate)
+      : parsed.gate ?? OPEN_GATE;
+    return {
+      gate,
+      policy: mergePolicy(orgPolicy, parsed.policy),
+      description: parsed.description,
+      namespace: parsed.namespace,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function getImportMetaEnv(): Record<string, string | undefined> {
+  return (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
 }
 
 function aggregateReactions(
@@ -157,9 +234,11 @@ export class XmtpTransport implements Transport {
   private sdk: Sdk | null = null;
   private client: XmtpClient | null = null;
   private conversations = new Map<string, XmtpConversation>();
+  private roomMeta = new Map<string, RoomMeta>();
   private peerByConversation = loadPeerCache();
   private peerInboxByConversation = new Map<string, string>();
   private senderInboxByMessage = new Map<string, string>();
+  private reader: ChainReader | null = null;
   private stream: StreamHandle | null = null;
   private streamStopped = false;
   private streamRunning = false;
@@ -188,11 +267,23 @@ export class XmtpTransport implements Transport {
     return { identifier: address.toLowerCase(), identifierKind: sdk.IdentifierKind.Ethereum };
   }
 
+  private chainReader() {
+    return (this.reader ??= makeViemChainReader(
+      this.org.chain.rpcUrl || getImportMetaEnv().VITE_MAINNET_RPC_URL,
+    ));
+  }
+
   private requireClient() {
     if (!this.client || this.status !== "ready") {
       throw new Error("XMTP messaging is not enabled yet.");
     }
     return this.client;
+  }
+
+  private requireInboxId() {
+    const inboxId = this.requireClient().inboxId;
+    if (!inboxId) throw new Error("XMTP inbox is not ready yet.");
+    return inboxId;
   }
 
   private async adopt(client: XmtpClient) {
@@ -261,7 +352,8 @@ export class XmtpTransport implements Transport {
     if (cached) return cached;
 
     try {
-      const peerInboxId = await conversation.peerInboxId();
+      const dm = conversation as XmtpConversation & { peerInboxId: () => Promise<string> };
+      const peerInboxId = await dm.peerInboxId();
       this.peerInboxByConversation.set(id, peerInboxId);
       const client = this.requireClient();
       let states: PeerState[] = await client.preferences.getInboxStates([peerInboxId]) as PeerState[];
@@ -290,7 +382,115 @@ export class XmtpTransport implements Transport {
     return this.peerByConversation.get(conversationId) ?? inboxId;
   }
 
+  private isRoomConversation(sdk: Sdk, conversation: XmtpConversation) {
+    return conversation.metadata?.conversationType === sdk.ConversationType.Group || "name" in conversation;
+  }
+
+  private async addressesForMembers(conversation: XmtpConversation) {
+    const client = this.requireClient();
+    const myInboxId = this.requireInboxId();
+    const members = await conversation.members().catch(() => []);
+    const inboxIds = [...new Set(members
+      .map((member) => {
+        const value = member as { inboxId?: string; inbox_id?: string };
+        return value.inboxId ?? value.inbox_id;
+      })
+      .filter((inboxId): inboxId is string => Boolean(inboxId)))];
+
+    if (!inboxIds.includes(myInboxId)) inboxIds.push(myInboxId);
+    if (!inboxIds.length) return [this.myAddress];
+
+    let states: PeerState[] = await client.preferences.getInboxStates(inboxIds) as PeerState[];
+    if (states.some((state) => !state?.accountIdentifiers?.length)) {
+      states = await client.preferences.fetchInboxStates(inboxIds) as PeerState[];
+    }
+
+    const peers = inboxIds.map((inboxId, index) => {
+      if (inboxId === myInboxId) return this.myAddress;
+      const identifiers = states[index]?.accountIdentifiers ?? [];
+      const eth = identifiers.find((entry) => entry.identifier && ETH_ADDRESS.test(entry.identifier)) ?? identifiers[0];
+      return eth?.identifier?.toLowerCase() ?? inboxId;
+    });
+    return [...new Set(peers)];
+  }
+
+  private async isCurrentUserAdmin(conversation: XmtpConversation) {
+    const myInboxId = this.requireInboxId();
+    const group = conversation as XmtpConversation & { isAdmin?: (inboxId: string) => Promise<boolean> };
+    return await group.isAdmin?.(myInboxId).catch(() => false) ?? false;
+  }
+
+  private async assertGateAllows(meta: RoomMeta) {
+    if ((meta.gate.rules?.length ?? 0) === 0) return;
+    const passes = await evalGate(meta.gate, this.myAddress, this.chainReader(), this.org.gating);
+    if (!passes) throw new Error("This wallet does not satisfy the room gate.");
+  }
+
+  private async mapRoomConversation(conversation: XmtpConversation): Promise<Conversation> {
+    this.conversations.set(conversation.id, conversation);
+    await conversation.sync().catch(() => undefined);
+
+    const group = conversation as XmtpConversation & { name?: string; description?: string };
+    const meta = parseRoomMeta(group.description, this.org.policy);
+    this.roomMeta.set(conversation.id, meta);
+
+    let lastMessage: ChatMessage | undefined;
+    try {
+      const sdk = await this.loadSdk();
+      const last = await conversation.lastMessage();
+      if (last) {
+        lastMessage = toChatMessage(
+          sdk,
+          last,
+          conversation.id,
+          (inboxId) => this.addressForInbox(conversation.id, inboxId),
+          (messageId, senderInboxId) => this.senderInboxByMessage.set(messageId, senderInboxId),
+        ) ?? undefined;
+      }
+    } catch {
+      lastMessage = undefined;
+    }
+
+    return {
+      id: conversation.id,
+      kind: "room",
+      title: group.name || "Room",
+      description: meta.description,
+      peers: await this.addressesForMembers(conversation).catch(() => [this.myAddress]),
+      gate: meta.gate,
+      policy: meta.policy,
+      lastMessage,
+      unread: 0,
+    };
+  }
+
+  private async ensureOrgRooms(conversations: Conversation[]) {
+    const existingRooms = conversations.filter((conversation) =>
+      conversation.kind === "room" &&
+      this.roomMeta.get(conversation.id)?.namespace === this.org.namespace
+    );
+    if (existingRooms.length || roomsWereSeeded(this.myAddress, this.org.namespace)) return conversations;
+
+    const seeds: Array<Pick<RoomSeed, "title" | "description" | "gate" | "policy">> = this.org.defaultRooms.length
+      ? this.org.defaultRooms
+      : [{ title: "general", description: "Open room", gate: OPEN_GATE }];
+    const created: Conversation[] = [];
+    for (const seed of seeds) {
+      created.push(await this.createRoom({
+        title: seed.title,
+        description: seed.description,
+        gate: seed.gate,
+        policy: seed.policy,
+      }));
+    }
+    markRoomsSeeded(this.myAddress, this.org.namespace);
+    return [...conversations, ...created];
+  }
+
   private async mapConversation(conversation: XmtpConversation): Promise<Conversation> {
+    const sdk = await this.loadSdk();
+    if (this.isRoomConversation(sdk, conversation)) return this.mapRoomConversation(conversation);
+
     this.conversations.set(conversation.id, conversation);
     const peer = await this.resolvePeer(conversation);
     let lastMessage: ChatMessage | undefined;
@@ -337,10 +537,12 @@ export class XmtpTransport implements Transport {
     try {
       await client.conversations.sync();
       await client.conversations.syncAll();
-      const list = await client.conversations.listDms();
+      const list = await client.conversations.list();
       this.conversations = new Map(list.map((conversation) => [conversation.id, conversation]));
+      this.roomMeta.clear();
       const mapped = await Promise.all(list.map((conversation) => this.mapConversation(conversation)));
-      return mapped.sort((a, b) => (b.lastMessage?.sentAt ?? 0) - (a.lastMessage?.sentAt ?? 0));
+      const withSeeds = await this.ensureOrgRooms(mapped);
+      return withSeeds.sort((a, b) => (b.lastMessage?.sentAt ?? 0) - (a.lastMessage?.sentAt ?? 0));
     } catch (error) {
       if (isUnregisteredIdentity(error)) {
         forgetEnabled(this.myAddress);
@@ -381,6 +583,15 @@ export class XmtpTransport implements Transport {
     const text = body.trim();
     if (!text) throw new Error("Message cannot be empty.");
     const sdk = await this.loadSdk();
+    const room = this.roomMeta.get(conversationId);
+
+    if (room) {
+      await this.assertGateAllows(room);
+      const decision = evaluatePolicy(room.policy, { type: "send" }, {
+        isAdmin: await this.isCurrentUserAdmin(conversation),
+      });
+      if (!decision.allowed) throw new Error(decision.reason || "Blocked by room policy.");
+    }
 
     let messageId: string;
     if (opts?.replyTo) {
@@ -426,6 +637,7 @@ export class XmtpTransport implements Transport {
   async markRead(conversationId: string): Promise<void> {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) return;
+    if (this.roomMeta.has(conversationId)) return;
     const now = Date.now();
     if (now - (this.lastReceiptAt.get(conversationId) ?? 0) < 3000) return;
     this.lastReceiptAt.set(conversationId, now);
@@ -446,11 +658,58 @@ export class XmtpTransport implements Transport {
     return { ...mapped, title: handle || mapped.title };
   }
 
-  async createRoom(_input: StartRoomInput): Promise<Conversation> {
-    throw new Error("Rooms need Push Protocol (coming soon).");
+  async createRoom(input: StartRoomInput): Promise<Conversation> {
+    const client = this.requireClient();
+    const sdk = await this.loadSdk();
+    const gate = input.gate ?? OPEN_GATE;
+    const policy = mergePolicy(this.org.policy, input.policy);
+    const meta: RoomMeta = {
+      gate,
+      policy,
+      description: input.description,
+      namespace: this.org.namespace,
+    };
+    const group = await client.conversations.createGroup([], {
+      permissions: sdk.GroupPermissionsOptions.AdminOnly,
+    });
+
+    await Promise.all([
+      group.updateName(input.title),
+      group.updateDescription(roomMetaDescription(meta)),
+      group.addSuperAdmin(this.requireInboxId()).catch(() => undefined),
+    ]);
+    this.conversations.set(group.id, group);
+    this.roomMeta.set(group.id, meta);
+
+    const seedId = await group.sendText(`#${input.title} created.`);
+    const mapped = await this.mapRoomConversation(group);
+    return {
+      ...mapped,
+      lastMessage: {
+        id: seedId,
+        conversationId: group.id,
+        sender: this.myAddress,
+        body: `#${input.title} created.`,
+        sentAt: Date.now(),
+      },
+    };
   }
 
-  async setRoomPolicy(_conversationId: string, _policy: Policy): Promise<void> {}
+  async setRoomPolicy(conversationId: string, policy: Policy): Promise<void> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation || !this.roomMeta.has(conversationId)) return;
+    if (!await this.isCurrentUserAdmin(conversation)) throw new Error("Admins only.");
+
+    const current = this.roomMeta.get(conversationId) ?? {
+      gate: OPEN_GATE,
+      policy: mergePolicy(this.org.policy, policy),
+    };
+    const next: RoomMeta = { ...current, policy };
+    this.roomMeta.set(conversationId, next);
+    const group = conversation as XmtpConversation & { updateDescription?: (description: string) => Promise<void> };
+    await group.updateDescription?.(roomMetaDescription(next));
+    this.changeCallback?.();
+  }
 
   subscribe(cb: () => void): () => void {
     this.changeCallback = cb;
