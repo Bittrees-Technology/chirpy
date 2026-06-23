@@ -1,34 +1,64 @@
 # Self-host the gate
 
-An org can run its own **gate service** (the serverless token/action gate) instead of
-deploying it to Vercel — on-brand for a decentralized product. This directory is the
-ops bundle for that: an interactive installer (prompt → write config → run as a
-service).
+An org can run its own **gate service** — the XMTP gatekeeper that admits wallets to
+token-gated rooms — instead of using the Vercel deployment's `/api/room-join`. This is
+also the **recommended** way to run the gatekeeper at all: it uses `@xmtp/node-sdk`, whose
+native bindings don't run on Vercel's serverless runtime, so an always-on container (or any
+VM) is the right home for it.
 
-> **Status:** scaffold. The gate *logic* already exists, framework-agnostic, in
-> `@app/core` (`evalGate` + the `ChainReader` interface). The thin HTTP wrapper that
-> turns it into a deployable service lands in the **XMTP/gate phase** (see
-> `docs/PRODUCTION.md`). This bundle is ready to wrap it when it does.
+The gate runs the **same** `api/room-join.js` handler the web app expects — it verifies a
+wallet signature, evaluates the room's gate with `@app/core`'s `evalGate`, and (as a room
+super-admin) adds the wallet's inbox to the XMTP-MLS group.
 
 ## What's here
 
-- `install.sh` — interactive installer: prompts for domain, RPC, KV, port → writes
-  `gate.env` → brings the stack up with Docker Compose.
-- `docker-compose.yml` — the `gate` service (+ a Redis for the KV registry).
+- `gate-server.mjs` — Node HTTP server that wraps `api/room-join.js`; serves `POST /api/room-join` (+ `/health`) with CORS.
+- `gate.Dockerfile` — container image for the gate (Debian/glibc base, so the XMTP native bindings load).
+- `docker-compose.yml` — the `gate` service.
+- `gate.package.json` — the gate's runtime deps (kept lean, separate from the monorepo).
 - `gate.env.example` — environment template.
+- `gen-gatekeeper-key.mjs` — generate the gatekeeper bot's keypair.
+- `install.sh` — interactive installer: prompts → writes `gate.env` → `docker compose up`.
 
-## Usage (once the gate service ships)
+## Quick start
 
 ```bash
 cd selfhost
-./install.sh            # prompts, writes gate.env, runs `docker compose up -d`
+./install.sh                       # prompts, writes gate.env, runs docker compose up -d --build
 ```
 
-Then point an org's `OrgConfig.gateUrl` at `https://<your-domain>/api/gate`.
+…or manually:
+
+```bash
+cd selfhost
+node gen-gatekeeper-key.mjs        # note the private key + address
+cp gate.env.example gate.env       # fill in the values (incl. the key above)
+docker compose up -d --build
+curl localhost:8788/health         # {"ok":true,"gatekeeper":true}
+```
+
+Then:
+
+1. Add the **gatekeeper address** as a **super-admin** of each gated room it manages.
+2. Point the org's `OrgConfig.gateUrl` at `https://<your-domain>/api/room-join` (blank uses
+   the Chirpy deployment's own gate instead).
+
+## Environment (`gate.env`)
+
+| Var | Required | Notes |
+|---|---|---|
+| `XMTP_GATEKEEPER_PRIVATE_KEY` | ✅ | 0x EOA key for the bot; must be a room super-admin. Generate with `gen-gatekeeper-key.mjs`. |
+| `MAINNET_RPC_URL` | ✅ | Unrestricted mainnet RPC for on-chain reads (token/Safe/ENS). Not a browser-allowlisted key. |
+| `GATE_ALLOW_ORIGIN` | ↺ | CORS origin of your Chirpy web app (default `*`; set the exact origin in prod). |
+| `GATE_PORT` | ↺ | Listen port (default `8788`). |
+| `GATE_DOMAIN` | ↺ | Informational; used by your reverse proxy/TLS. |
+
+> Encrypted cross-device **sync** (`api/usersync.js`) is a separate concern that needs a KV
+> store; it isn't part of this gate bundle.
 
 ## Why self-host
 
-- **No Vercel dependency** — run the gate on your own box, behind your own nginx/SSL.
-- **Data locality** — the roles/rooms KV registry stays on infrastructure you control.
-- **Censorship-resistance** — optionally front it with a reverse-proxy relay for
-  path/method policy + proxying.
+- **Run the gatekeeper at all** — `@xmtp/node-sdk` needs a runtime with native bindings (a
+  container/VM), which Vercel serverless doesn't provide.
+- **No Vercel dependency** — run on your own box behind your own nginx/TLS.
+- **Censorship-resistance** — optionally front it with a reverse-proxy relay.

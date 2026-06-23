@@ -1,5 +1,8 @@
-# Self-hosted gate stack. `gate` wraps @app/core's evalGate behind HTTP; it builds
-# from ../ (the monorepo) once the gate service lands in the XMTP/gate phase.
+# Self-hosted Chirpy gate. The `gate` service runs the XMTP gatekeeper room-join handler
+# (selfhost/gate-server.mjs) — the same logic the Vercel deployment uses, but in an
+# always-on container that supports @xmtp/node-sdk's native bindings.
+#
+# Point an org's OrgConfig.gateUrl at  http(s)://<your-host>/api/room-join
 services:
   gate:
     build:
@@ -8,16 +11,4 @@ services:
     env_file: ./gate.env
     ports:
       - "${GATE_PORT:-8788}:8788"
-    depends_on:
-      - redis
     restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
-
-volumes:
-  redis-data:
