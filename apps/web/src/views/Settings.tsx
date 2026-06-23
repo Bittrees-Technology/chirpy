@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { serializeOrg, type RoomRule } from "@app/core";
 import { useChat, useIdentity, useOrgs, useSettingsPrefs } from "../state";
-import { Avatar, Button, Field, Toggle, shortAddr } from "../ui";
+import { Avatar, Button, Field, Modal, Toggle, shortAddr } from "../ui";
 import { download } from "./dialogs";
 import { UpdateCard } from "./UpdateCard";
 import { useI18n, LANGS, type LangCode } from "../i18n";
@@ -29,6 +29,7 @@ export function Settings(
   const [resolverText, setResolverText] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
   const [syncMessageKind, setSyncMessageKind] = useState<"success" | "error" | "neutral">("neutral");
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
 
   const profileLookup = useMemo(() => {
     const handle = identity.handle?.trim() ?? "";
@@ -230,9 +231,8 @@ export function Settings(
             transportNeedsRevoke ? (
               <Button
                 variant="primary"
-                onClick={() => { void enableMessaging({ revokeStale: true }); }}
+                onClick={() => setShowRevokeConfirm(true)}
                 disabled={transportStatus === "enabling"}
-                title="Revoke this inbox's old devices/sessions, then enable messaging here. Other signed-in devices will need to reconnect."
               >
                 {transportStatus === "enabling" ? "Revoking…" : "Revoke old sessions & enable"}
               </Button>
@@ -360,6 +360,30 @@ export function Settings(
       <p className="muted settings-footer">
         Direct messages use XMTP when enabled. Your profile picture comes from ENS. Preferences live on this device unless sync is on.
       </p>
+
+      {showRevokeConfirm && (
+        <Modal title="Revoke old sessions?" onClose={() => setShowRevokeConfirm(false)}>
+          <p className="muted">
+            Your messaging inbox is at XMTP's limit of 10 devices/sessions. To enable messaging on
+            {" "}<strong>this</strong> device, Chirpy will revoke the existing installations on your inbox.
+          </p>
+          <p className="muted">
+            This signs you out of Chirpy messaging on <strong>every other device and browser</strong> you've
+            enabled. Each will need to re-enable messaging (one signature) to reconnect. Your conversations and
+            history are not deleted.
+          </p>
+          <p className="muted">You'll be asked for one wallet signature to authorize the revoke.</p>
+          <div className="modal-actions">
+            <Button variant="ghost" onClick={() => setShowRevokeConfirm(false)}>Cancel</Button>
+            <Button
+              variant="danger"
+              onClick={() => { setShowRevokeConfirm(false); void enableMessaging({ revokeStale: true }); }}
+            >
+              Revoke other devices & enable here
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

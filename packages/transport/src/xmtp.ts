@@ -382,11 +382,16 @@ export class XmtpTransport implements Transport {
       await this.adopt(client);
     } catch (error) {
       this.status = "error";
-      // Surface the 10/10 case as a typed, actionable error so the UI can offer
-      // a one-click "revoke old sessions & enable" instead of dead-ending.
-      if (!opts?.revokeStale && isInstallationLimit(error)) {
+      // Surface the 10/10 case as a typed, actionable error so the UI can keep offering
+      // a one-click "revoke old sessions & enable" instead of dead-ending. We must keep the
+      // code on the revokeStale retry too: if the revoke cleared nothing (or hasn't
+      // propagated yet) and Client.create still hits the cap, a code-less error would make
+      // the recovery button vanish — stranding the exact flow this path exists to rescue.
+      if (isInstallationLimit(error)) {
         const friendly = new Error(
-          "Your messaging inbox already has the maximum 10 devices/sessions registered. Revoke the old ones to enable messaging on this device.",
+          opts?.revokeStale
+            ? "We revoked the old sessions, but XMTP still reports this inbox at its 10-device limit. Revocations can take a few seconds to propagate — wait a moment and try again."
+            : "Your messaging inbox already has the maximum 10 devices/sessions registered. Revoke the old ones to enable messaging on this device.",
         ) as Error & { code?: string };
         friendly.code = "installation_limit";
         throw friendly;
@@ -400,9 +405,25 @@ export class XmtpTransport implements Transport {
   private async revokeStaleInstallations(sdk: Sdk): Promise<number> {
     if (!this.provider) throw new Error("Connect a wallet to revoke installations.");
     const identifier = await this.identifier();
-    const inboxId = await (sdk as unknown as {
+    // Resolve the inbox the network actually associates with this wallet — the same lookup
+    // Client.create performs via getInboxIdForIdentifier. generateInboxId() only yields the
+    // deterministic nonce-0 inbox, which is wrong for wallets registered at a non-zero nonce
+    // or with a reassigned recovery address: we'd fetch/revoke the wrong inbox, find nothing,
+    // and strand the user on a red error. Fall back to the nonce-0 id only when the wallet has
+    // no on-network inbox yet (nothing to revoke either way).
+    const helpers = sdk as unknown as {
+      createBackend: (options?: { env?: string }) => Promise<unknown>;
+      getInboxIdForIdentifier: (backend: unknown, id: typeof identifier) => Promise<string | undefined>;
       generateInboxId: (id: typeof identifier, nonce?: bigint) => Promise<string>;
-    }).generateInboxId(identifier);
+    };
+    let inboxId: string | undefined;
+    try {
+      const backend = await helpers.createBackend({ env: xmtpEnv() });
+      inboxId = await helpers.getInboxIdForIdentifier(backend, identifier);
+    } catch {
+      inboxId = undefined;
+    }
+    if (!inboxId) inboxId = await helpers.generateInboxId(identifier);
     const ClientStatic = sdk.Client as unknown as {
       fetchInboxStates: (inboxIds: string[], env?: unknown) => Promise<Array<{ installations?: Array<{ bytes: Uint8Array }> }>>;
       revokeInstallations: (signer: unknown, inboxId: string, ids: Uint8Array[], env?: unknown) => Promise<void>;
