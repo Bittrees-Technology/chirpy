@@ -71,14 +71,11 @@ function Sidebar(
 }
 
 export function App() {
-  const { transportId, transportStatus, transportError, enableMessaging } = useChat();
-  const {
-    mode, hasInjectedWallet, walletConnectAvailable, connectWallet, connectWalletConnect, isConnecting,
-  } = useIdentity();
+  const { transportId, transportStatus } = useChat();
   const [view, setView] = useState<View>("chats");
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = () => setDialog(null);
-  const xmtpNeedsEnable = transportId === "xmtp" && transportStatus !== "ready";
+  const needsConnect = transportId === "xmtp" && transportStatus !== "ready";
 
   // Silent auto-update check on launch (desktop only; no-op on web/mobile).
   useEffect(() => { void autoUpdateOnLaunch(); }, []);
@@ -87,43 +84,31 @@ export function App() {
     <div className="app">
       <Sidebar view={view} setView={setView} onCreateOrg={() => setDialog("createOrg")} />
       <main className="main">
-        {xmtpNeedsEnable && (
-          <div className="error-banner" style={{ margin: 12 }}>
-            {mode === "wallet"
-              ? "XMTP messaging is off for this wallet. Sign once to enable DMs on this browser."
-              : hasInjectedWallet
-                ? "Connect a wallet to enable XMTP DMs."
-                : walletConnectAvailable
-                  ? "Connect with WalletConnect to enable XMTP DMs."
-                  : "Open Chirpy in a browser with an injected wallet to enable XMTP DMs."}
-            <button
-              className="btn btn-primary btn-sm"
-              style={{ marginLeft: 12 }}
-              disabled={transportStatus === "enabling" || isConnecting || (!hasInjectedWallet && !walletConnectAvailable && mode !== "wallet")}
-              onClick={() => {
-                void (mode === "wallet"
-                  ? enableMessaging()
-                  : hasInjectedWallet ? connectWallet() : connectWalletConnect());
-              }}
-            >
-              {mode === "wallet"
-                ? (transportStatus === "enabling" ? "Enabling..." : "Enable messaging")
-                : hasInjectedWallet ? "Connect wallet" : "WalletConnect"}
-            </button>
-            {transportError && <span style={{ marginLeft: 12 }}>{transportError}</span>}
-          </div>
-        )}
         {view === "chats" && (
           <div className="split">
-            <ConversationColumn kind="dm" title="Chats" newLabel="+ New" onNew={() => setDialog("newDm")} />
+            <ConversationColumn
+              kind="dm"
+              title="Chats"
+              newLabel="+ New"
+              needsConnect={needsConnect}
+              onNew={() => setDialog("newDm")}
+              onOpenSettings={() => setView("settings")}
+            />
             <Thread />
           </div>
         )}
         {view === "rooms" && (
           <div className="split">
-            <ConversationColumn kind="room" title="Rooms" newLabel="+ Room" onNew={() => {
-              setDialog("newRoom");
-            }} />
+            <ConversationColumn
+              kind="room"
+              title="Rooms"
+              newLabel="+ Room"
+              needsConnect={needsConnect}
+              onNew={() => {
+                setDialog("newRoom");
+              }}
+              onOpenSettings={() => setView("settings")}
+            />
             <Thread />
           </div>
         )}

@@ -21,7 +21,7 @@ export function Settings(
   } = useIdentity();
   const { orgs, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices } = useSettingsPrefs();
-  const { transportId } = useChat();
+  const { transportId, transportStatus, transportError, enableMessaging } = useChat();
   const { lang, setLang, t } = useI18n();
   const [profileEns, setProfileEns] = useState<EnsRecord | null>(null);
   const [resolverInput, setResolverInput] = useState("");
@@ -120,6 +120,9 @@ export function Settings(
       ? `On - encrypted locally for ${shortAddr(syncState.walletAddress)}. Cross-device delivery starts when the sync relay is connected.`
       : "On - encrypted locally. Cross-device delivery starts when the sync relay is connected."
     : "Off - stored only on this device. Turn on to encrypt them to your wallet and sync across devices (two signatures, no gas).";
+  const transportText = transportId === "mock"
+    ? "Mock mode: local chats on this device."
+    : "XMTP mode: encrypted DMs and rooms.";
   const handleSyncClick = async () => {
     setSyncMessage("");
     setSyncMessageKind("neutral");
@@ -163,15 +166,18 @@ export function Settings(
       </section>
 
       <section className="card">
-        <h2>Identity</h2>
+        <h2>Account</h2>
         <p className="muted">
           {mode === "wallet"
-            ? "Connected wallet identity. ENS name and avatar are resolved from the active account when available."
+            ? "Connected wallet identity. ENS profile data appears when available."
             : hasInjectedWallet
-              ? "Connect an injected wallet to use your real address, ENS name, and ENS avatar. Local identity remains available offline."
+              ? "Connect a wallet to use your address and ENS profile."
               : walletConnectAvailable
-                ? "Connect with WalletConnect to use your real address, ENS name, and ENS avatar. Local identity remains available offline."
-                : "Local identity mode is active because no injected wallet was found in this browser."}
+                ? "Connect with WalletConnect to use your address and ENS profile."
+                : "Local identity mode is active."}
+        </p>
+        <p className="muted">
+          Mode: <span className="pill">{transportId}</span> {transportText}
         </p>
         <div className="grid2">
           <Field label="Display name"><input className="input" value={identity.handle ?? ""} onChange={(e) => setHandle(e.target.value)} /></Field>
@@ -202,6 +208,32 @@ export function Settings(
                 <Button variant="ghost" onClick={reset}>Regenerate identity</Button>
               )}
             </>
+          )}
+        </div>
+        <div className="pref-row account-messaging">
+          <div>
+            <div className="pref-title">Messaging</div>
+            {transportId !== "xmtp" ? (
+              <div className="muted">Messaging runs locally in mock mode.</div>
+            ) : mode !== "wallet" ? (
+              <div className="muted">Connect a wallet above to enable encrypted messaging.</div>
+            ) : transportStatus === "ready" ? (
+              <div className="muted status-positive">✓ Messaging enabled on this device.</div>
+            ) : (
+              <>
+                <div className="muted">One-time signature to create your encrypted inbox. No gas, no transaction.</div>
+                {transportError && <div className="muted sync-status status-error">{transportError}</div>}
+              </>
+            )}
+          </div>
+          {transportId === "xmtp" && mode === "wallet" && transportStatus !== "ready" && (
+            <Button
+              variant="primary"
+              onClick={() => { void enableMessaging(); }}
+              disabled={transportStatus === "enabling"}
+            >
+              {transportStatus === "enabling" ? "Enabling..." : "Enable messaging"}
+            </Button>
           )}
         </div>
       </section>
@@ -254,16 +286,6 @@ export function Settings(
         </div>
       </section>
 
-      <section className="card">
-        <h2>Transport</h2>
-        <p className="muted">
-          Mode: <span className="pill">{transportId}</span>{" "}
-          {transportId === "mock"
-            ? "— fully offline. DMs persist per wallet (across all orgs + personal); rooms persist per org. No wallet, no network."
-            : "— live XMTP DMs + MLS rooms."}
-        </p>
-      </section>
-
       <UpdateCard />
 
       <section className="card">
@@ -274,7 +296,7 @@ export function Settings(
             <Button variant="primary" onClick={onCreateOrg}>Create</Button>
           </div>
         </div>
-        <p className="muted">The app ships with no organization baked in. Import an existing org's config or create your own; chat lives inside each one.</p>
+        <p className="muted">Import an org config or create one. Chats stay inside the active org.</p>
         <div className="org-table">
           {orgs.map((o) => (
             <div key={o.id} className={`org-row ${o.id === activeOrgId ? "active" : ""}`}>
@@ -325,7 +347,7 @@ export function Settings(
       </section>
 
       <p className="muted settings-footer">
-        Direct messages are end-to-end encrypted over XMTP. Your profile picture is your ENS avatar. Saved Messages and these preferences live on this device — and sync across your devices (encrypted) when you turn on sync above.
+        Direct messages use XMTP when enabled. Your profile picture comes from ENS. Preferences live on this device unless sync is on.
       </p>
     </div>
   );
