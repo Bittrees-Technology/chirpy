@@ -69,6 +69,7 @@ docs/          PLAN.md · ARCHITECTURE.md · NATIVE.md
 - ✅ **Action policy** layer (read-only rooms, block attachments, size caps) — freeze a room live.
 - ✅ Per-org **drop-in CSS theming**, file-based **i18n**, and a styled **error page**.
 - ✅ macOS + iOS project (Tauri 2) with generated icons.
+- ⚠️ App icons are placeholder Chirpy artwork using the reusable Bittrees tree mark until final brand artwork is available.
 - ✅ Desktop **auto-update** (signed, GitHub Releases manifest) — see `docs/NATIVE.md`.
 - ◐ **Self-host** gate bundle scaffolded in `selfhost/` (completes with the gate service).
 - ⏳ **Next:** wire the real `XmtpTransport` (XMTP DMs + Push rooms) + WalletConnect/ENS, and
