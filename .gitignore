@@ -13,3 +13,7 @@ apps/web/src-tauri/gen/
 apps/web/src-tauri/.tauri/
 .vercel
 uploads/
+
+# Playwright
+test-results/
+playwright-report/
