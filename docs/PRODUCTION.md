@@ -57,9 +57,20 @@ are scoped to the org** that defines them (they are token-gated communities).
 2. ✅ Injected + WalletConnect v2 login and ENS resolver wired into `IdentityProvider`.
 3. ✅ Gate deployed as `api/room-join.js` (+ `api/usersync.js`) Vercel functions; the evaluator
    is `@app/core`'s `evalGate` with a viem `ChainReader` using `MAINNET_RPC_URL`.
-4. ☐ Set Vercel env: **`XMTP_GATEKEEPER_PRIVATE_KEY`** (signs the gatekeeper bot's room adds —
-   the linchpin), `MAINNET_RPC_URL`, `VITE_MAINNET_RPC_URL`/`VITE_ALCHEMY_API_KEY`,
-   `VITE_WALLETCONNECT_PROJECT_ID`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and
-   `VITE_TRANSPORT=xmtp`.
+4. ☐ Set env (full list in [`.env.example`](../.env.example)): **`XMTP_GATEKEEPER_PRIVATE_KEY`**
+   (signs the gatekeeper bot's room adds — the linchpin) + a matching `VITE_GATEKEEPER_ADDRESS`,
+   `MAINNET_RPC_URL`, `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`,
+   `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and `VITE_TRANSPORT=xmtp`.
 5. ☐ Verify ENS resolves on connect; a gated room admits/denies correctly; DMs persist across
    org switches and on a second device.
+
+## Known limitation: the gatekeeper can't run on Vercel serverless
+
+`api/room-join.js` creates an XMTP client via `@xmtp/node-sdk`, whose **native bindings do not
+run on Vercel's serverless runtime** — the deployed `POST /api/room-join` returns
+`500 FUNCTION_INVOCATION_FAILED` even with `XMTP_GATEKEEPER_PRIVATE_KEY` set (a clean `503`
+would mean the key is missing). Run the gatekeeper in an **always-on container/VM** instead
+(see [`../selfhost/`](../selfhost/)) and point each org's `OrgConfig.gateUrl` at
+`https://<gate-host>/api/room-join`. The browser/ENS, the gate evaluator (`@app/core`), and
+encrypted sync (`api/usersync.js`, which has no native deps) are unaffected and run fine on
+Vercel. Confirm the exact failure in Vercel → Functions → `room-join` logs.
