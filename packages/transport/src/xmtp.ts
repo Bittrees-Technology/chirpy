@@ -101,6 +101,12 @@ function isUnregisteredIdentity(error: unknown) {
   return /register_identity|uninitialized identity|identity error/i.test(message);
 }
 
+/** XMTP caps each inbox at 10 registered installations (devices/browsers). */
+function isInstallationLimit(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /already registered\s+\d+\s*\/\s*\d+\s+installations|revoke\s+(your\s+)?existing\s+installations|installation\s+limit|maximum number of installations|too many installations/i.test(message);
+}
+
 function humanError(error: unknown) {
   const message = error instanceof Error && error.message ? error.message : String(error ?? "Something went wrong.");
   if (/lock|already.*open|opfs|another connection/i.test(message)) {
@@ -359,11 +365,14 @@ export class XmtpTransport implements Transport {
     }
   }
 
-  async enable(): Promise<void> {
+  async enable(opts?: { revokeStale?: boolean }): Promise<void> {
     if (!this.provider) throw new Error("Connect a wallet to enable XMTP.");
     const sdk = await this.loadSdk();
     this.status = "enabling";
     try {
+      // Recovery path: if the inbox is at XMTP's 10-installation limit, revoke the
+      // existing installations (one wallet signature) so a fresh one can register.
+      if (opts?.revokeStale) await this.revokeStaleInstallations(sdk);
       const client = await sdk.Client.create(
         makeInjectedSigner(this.provider, this.myAddress, sdk.IdentifierKind.Ethereum),
         xmtpOptions(sdk) as Parameters<typeof sdk.Client.create>[1],
@@ -373,8 +382,41 @@ export class XmtpTransport implements Transport {
       await this.adopt(client);
     } catch (error) {
       this.status = "error";
+      // Surface the 10/10 case as a typed, actionable error so the UI can offer
+      // a one-click "revoke old sessions & enable" instead of dead-ending.
+      if (!opts?.revokeStale && isInstallationLimit(error)) {
+        const friendly = new Error(
+          "Your messaging inbox already has the maximum 10 devices/sessions registered. Revoke the old ones to enable messaging on this device.",
+        ) as Error & { code?: string };
+        friendly.code = "installation_limit";
+        throw friendly;
+      }
       throw new Error(humanError(error));
     }
+  }
+
+  /** Revoke every installation currently registered on this inbox (no client needed —
+   *  uses the static revoke path, which works even at the 10/10 limit). */
+  private async revokeStaleInstallations(sdk: Sdk): Promise<number> {
+    if (!this.provider) throw new Error("Connect a wallet to revoke installations.");
+    const identifier = await this.identifier();
+    const inboxId = await (sdk as unknown as {
+      generateInboxId: (id: typeof identifier, nonce?: bigint) => Promise<string>;
+    }).generateInboxId(identifier);
+    const ClientStatic = sdk.Client as unknown as {
+      fetchInboxStates: (inboxIds: string[], env?: unknown) => Promise<Array<{ installations?: Array<{ bytes: Uint8Array }> }>>;
+      revokeInstallations: (signer: unknown, inboxId: string, ids: Uint8Array[], env?: unknown) => Promise<void>;
+    };
+    const states = await ClientStatic.fetchInboxStates([inboxId], xmtpEnv());
+    const ids = (states?.[0]?.installations ?? []).map((i) => i.bytes).filter(Boolean);
+    if (!ids.length) return 0;
+    await ClientStatic.revokeInstallations(
+      makeInjectedSigner(this.provider, this.myAddress, sdk.IdentifierKind.Ethereum),
+      inboxId,
+      ids,
+      xmtpEnv(),
+    );
+    return ids.length;
   }
 
   private async resolvePeer(conversation: XmtpConversation) {

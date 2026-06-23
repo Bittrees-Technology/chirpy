@@ -45,7 +45,9 @@ export interface Transport {
   /** Identity this transport is acting as. */
   me(): Identity;
   init(): Promise<void>;
-  enable?(): Promise<void>;
+  /** Create the encrypted inbox. `revokeStale` first revokes the inbox's existing
+   *  installations (used to recover from XMTP's 10-installation-per-inbox limit). */
+  enable?(opts?: { revokeStale?: boolean }): Promise<void>;
   listConversations(): Promise<Conversation[]>;
   listMessages(conversationId: string): Promise<ChatMessage[]>;
   send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage>;

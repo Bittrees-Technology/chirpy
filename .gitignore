@@ -11,3 +11,5 @@ apps/web/src-tauri/target/
 apps/web/src-tauri/gen/
 # Tauri updater signing key — NEVER commit the private key
 apps/web/src-tauri/.tauri/
+.vercel
+uploads/

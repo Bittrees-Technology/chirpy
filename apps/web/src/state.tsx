@@ -710,11 +710,13 @@ interface ChatCtx {
   transportId: string;
   transportStatus: string;
   transportError: string | null;
+  /** True when enabling failed because the inbox is at XMTP's 10-installation limit. */
+  transportNeedsRevoke: boolean;
   conversations: Conversation[];
   activeId: string | null;
   activeConversation: Conversation | null;
   messages: ChatMessage[];
-  enableMessaging: () => Promise<void>;
+  enableMessaging: (opts?: { revokeStale?: boolean }) => Promise<void>;
   select: (id: string | null) => void;
   send: (body: string, replyTo?: string) => Promise<void>;
   react: (messageId: string, emoji: string) => Promise<void>;
@@ -732,6 +734,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [transportId, setTransportId] = useState("mock");
   const [transportStatus, setTransportStatus] = useState("idle");
   const [transportError, setTransportError] = useState<string | null>(null);
+  const [transportNeedsRevoke, setTransportNeedsRevoke] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -780,18 +783,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (id) transportRef.current?.markRead(id);
   }, []);
 
-  const enableMessaging = useCallback(async () => {
+  const enableMessaging = useCallback(async (opts?: { revokeStale?: boolean }) => {
     const t = transportRef.current;
     if (!t?.enable) return;
     setTransportError(null);
+    setTransportNeedsRevoke(false);
     setTransportStatus("enabling");
     try {
-      await t.enable();
+      await t.enable(opts);
       setTransportStatus(t.status ?? "ready");
       await reloadConversations();
     } catch (err) {
       setTransportStatus(t.status ?? "error");
       setTransportError(err instanceof Error ? err.message : "Messaging could not be enabled.");
+      if ((err as { code?: string })?.code === "installation_limit") setTransportNeedsRevoke(true);
     }
   }, [reloadConversations]);
 
@@ -844,9 +849,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo<ChatCtx>(() => ({
-    transportId, transportStatus, transportError, conversations, activeId, activeConversation, messages,
+    transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages,
     enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy,
-  }), [transportId, transportStatus, transportError, conversations, activeId, activeConversation, messages, enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy]);
+  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

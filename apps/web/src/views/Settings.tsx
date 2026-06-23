@@ -21,7 +21,7 @@ export function Settings(
   } = useIdentity();
   const { orgs, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices } = useSettingsPrefs();
-  const { transportId, transportStatus, transportError, enableMessaging } = useChat();
+  const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging } = useChat();
   const { lang, setLang, t } = useI18n();
   const [profileEns, setProfileEns] = useState<EnsRecord | null>(null);
   const [resolverInput, setResolverInput] = useState("");
@@ -227,13 +227,24 @@ export function Settings(
             )}
           </div>
           {transportId === "xmtp" && mode === "wallet" && transportStatus !== "ready" && (
-            <Button
-              variant="primary"
-              onClick={() => { void enableMessaging(); }}
-              disabled={transportStatus === "enabling"}
-            >
-              {transportStatus === "enabling" ? "Enabling..." : "Enable messaging"}
-            </Button>
+            transportNeedsRevoke ? (
+              <Button
+                variant="primary"
+                onClick={() => { void enableMessaging({ revokeStale: true }); }}
+                disabled={transportStatus === "enabling"}
+                title="Revoke this inbox's old devices/sessions, then enable messaging here. Other signed-in devices will need to reconnect."
+              >
+                {transportStatus === "enabling" ? "Revoking…" : "Revoke old sessions & enable"}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                onClick={() => { void enableMessaging(); }}
+                disabled={transportStatus === "enabling"}
+              >
+                {transportStatus === "enabling" ? "Enabling..." : "Enable messaging"}
+              </Button>
+            )
           )}
         </div>
       </section>
