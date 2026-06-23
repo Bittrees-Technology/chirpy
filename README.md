@@ -102,9 +102,9 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROADMAP.md · NATI
   still need `selfhost/gate.Dockerfile` + an HTTP entrypoint wrapping `evalGate`. Per-org
   `OrgConfig.gateUrl` is shown in Settings but **not yet consumed** — the client currently
   hardcodes its own origin's `/api/*`.
-- ◐ **Release hardening**: macOS-only release job (no Windows/Linux yet despite
-  `bundle.targets: "all"`), and no Apple notarization (auto-update is updater-signed, not
-  Gatekeeper-notarized). Push an `app-v*` tag to cut the first release.
+- ◐ **Release**: CI now builds macOS + Windows + Linux on an `app-v*` tag; Apple notarization
+  activates when the `APPLE_*` Actions secrets are set (until then macOS ships updater-signed
+  only). No release has been cut yet — push an `app-v*` tag to publish the first one.
 - ⚠️ App icons are interim Chirpy artwork (the reusable Bittrees tree mark) pending final brand art.
 - ⚠️ Preset token addresses in `examples/` are **illustrative placeholders** (e.g. the Research
   membership token is the burn address) — set real addresses before gating against them.
