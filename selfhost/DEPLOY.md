@@ -40,6 +40,29 @@ cd selfhost && ./install.sh                  # prompts → writes gate.env → d
 Required env (see `gate.env.example`): `XMTP_GATEKEEPER_PRIVATE_KEY`, `MAINNET_RPC_URL`,
 `GATE_ALLOW_ORIGIN` (your Chirpy origin). Put it behind TLS (Fly/Render do this for you).
 
+### Local build/test on Apple Silicon — `apple/container` (no Docker Desktop)
+
+[`apple/container`](https://github.com/apple/container) (macOS 15+, ideal on macOS 26) runs the
+**same** `gate.Dockerfile` unchanged — it's an OCI runtime. Install once from the signed `.pkg`
+on the [latest release](https://github.com/apple/container/releases), then:
+
+```bash
+container system start                                  # start the helper (once per login)
+container build -t chirpy-gate -f selfhost/gate.Dockerfile .
+container run -d --name gt \
+  --env XMTP_GATEKEEPER_PRIVATE_KEY=0x... \
+  --env MAINNET_RPC_URL=https://... \
+  --env GATE_ALLOW_ORIGIN='*' \
+  chirpy-gate
+container ls                                            # shows the container's IP
+curl http://<container-ip>:8788/health                  # {"ok":true,"gatekeeper":true}
+```
+
+It runs an arm64 Linux VM — the exact path validated here under Docker (the `linux-arm64-gnu`
+binding + glibc 2.41 + `ca-certificates` are baked into `gate.Dockerfile`), so it behaves
+identically. `apple/container` is a **local** runtime, not a host: for the always-on production
+gate, use a cloud host (above).
+
 ## 3. Point the web app at the gate
 
 In the Chirpy Vercel project:
