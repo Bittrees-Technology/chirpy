@@ -2,6 +2,7 @@ import { decodeGate, evalGate } from "../packages/core/src/gating.ts";
 import { makeViemChainReader } from "../packages/core/src/viemChainReader.ts";
 import { getAddress, recoverMessageAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { checkRateLimit, logEvent } from "./server-utils.js";
 
 const ETH_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const JOIN_MESSAGE =
@@ -56,15 +57,38 @@ async function getGatekeeperClient() {
 }
 
 export default async function handler(req, res) {
+  const route = "/api/room-join";
+  const startedAt = Date.now();
+  const method = String(req?.method || "unknown");
+  logEvent("request.started", { route, method });
+  const respond = (status, body, outcome = status >= 500 ? "error" : "completed") => {
+    logEvent("request.completed", {
+      route,
+      method,
+      status,
+      durationMs: Date.now() - startedAt,
+      outcome,
+    });
+    return res.status(status).json(body);
+  };
+
   try {
+    if (!req?.rateLimitChecked) {
+      const decision = checkRateLimit(req, route);
+      if (!decision.allowed) {
+        res.setHeader("Retry-After", String(decision.retryAfterSeconds));
+        return respond(429, { error: "too many requests" }, "rate_limited");
+      }
+    }
+
     if (req.method !== "POST") {
       res.setHeader("Allow", "POST");
-      return res.status(405).json({ error: "method not allowed" });
+      return respond(405, { error: "method not allowed" });
     }
 
     const bot = await getGatekeeperClient();
     if (!bot) {
-      return res.status(503).json({ error: "gatekeeper is not configured" });
+      return respond(503, { error: "gatekeeper is not configured" });
     }
 
     const { convId, address, signature, inboxId, gate, gating } = req.body || {};
@@ -75,22 +99,22 @@ export default async function handler(req, res) {
       typeof inboxId !== "string" ||
       typeof gate !== "string"
     ) {
-      return res.status(400).json({ error: "bad request" });
+      return respond(400, { error: "bad request" });
     }
 
     let signer;
     try {
       signer = await recoverMessageAddress({ message: JOIN_MESSAGE, signature });
     } catch {
-      return res.status(401).json({ error: "bad signature" });
+      return respond(401, { error: "bad signature" });
     }
     if (getAddress(signer) !== getAddress(address)) {
-      return res.status(403).json({ error: "signature does not match address" });
+      return respond(403, { error: "signature does not match address" });
     }
 
     const decodedGate = decodeGate(gate);
     if ((decodedGate.rules?.length ?? 0) === 0) {
-      return res.status(400).json({ error: "room is open" });
+      return respond(400, { error: "room is open" });
     }
     const gatingConfig = isObject(gating) ? gating : {};
 
@@ -103,22 +127,22 @@ export default async function handler(req, res) {
         powerTier: isObject(gatingConfig.powerTier) ? gatingConfig.powerTier : undefined,
       },
     );
-    if (!passes) return res.status(403).json({ error: "gate check failed" });
+    if (!passes) return respond(403, { error: "gate check failed" });
 
     await bot.conversations.sync();
     await bot.conversations.syncAll();
     const conversation = await bot.conversations.getConversationById(convId);
     if (!conversation || typeof conversation.addMembers !== "function") {
-      return res.status(404).json({ error: "room not found" });
+      return respond(404, { error: "room not found" });
     }
     if (typeof conversation.isSuperAdmin === "function" && !conversation.isSuperAdmin(bot.inboxId)) {
-      return res.status(403).json({ error: "gatekeeper is not a room super-admin" });
+      return respond(403, { error: "gatekeeper is not a room super-admin" });
     }
 
     await conversation.addMembers([inboxId]);
-    return res.status(200).json({ ok: true });
+    return respond(200, { ok: true });
   } catch (e) {
-    return res.status(500).json({ error: String(e?.message || e) });
+    return respond(500, { error: String(e?.message || e) });
   }
 }
 

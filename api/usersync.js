@@ -1,4 +1,5 @@
 import { getAddress, recoverMessageAddress } from "viem";
+import { checkRateLimit, logEvent } from "./server-utils.js";
 
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -36,48 +37,69 @@ async function readRec(addrLower) {
 }
 
 export default async function handler(req, res) {
+  const route = "/api/usersync";
+  const startedAt = Date.now();
+  const method = String(req?.method || "unknown");
+  logEvent("request.started", { route, method });
+  const respond = (status, body, outcome = status >= 500 ? "error" : "completed") => {
+    logEvent("request.completed", {
+      route,
+      method,
+      status,
+      durationMs: Date.now() - startedAt,
+      outcome,
+    });
+    return res.status(status).json(body);
+  };
+
   try {
+    const decision = checkRateLimit(req, route);
+    if (!decision.allowed) {
+      res.setHeader("Retry-After", String(decision.retryAfterSeconds));
+      return respond(429, { error: "too many requests" }, "rate_limited");
+    }
+
     if (req.method === "GET") {
       const address = String(req.query.address || "");
-      if (!isAddr(address)) return res.status(400).json({ error: "bad address" });
+      if (!isAddr(address)) return respond(400, { error: "bad address" });
       const rec = await readRec(address.toLowerCase());
-      return res.status(200).json(rec || { blob: null, updatedAt: 0 });
+      return respond(200, rec || { blob: null, updatedAt: 0 });
     }
 
     if (req.method === "POST") {
       if (!KV_URL || !KV_TOKEN) {
-        return res.status(503).json({ error: "sync storage not configured" });
+        return respond(503, { error: "sync storage not configured" });
       }
 
       const { address, signature, blob, updatedAt } = req.body || {};
       if (!isAddr(address) || typeof signature !== "string" || typeof blob !== "string") {
-        return res.status(400).json({ error: "bad request" });
+        return respond(400, { error: "bad request" });
       }
-      if (blob.length > MAX_BLOB) return res.status(413).json({ error: "blob too large" });
+      if (blob.length > MAX_BLOB) return respond(413, { error: "blob too large" });
 
       let signer;
       try {
         signer = await recoverMessageAddress({ message: AUTH_MESSAGE, signature });
       } catch {
-        return res.status(401).json({ error: "bad signature" });
+        return respond(401, { error: "bad signature" });
       }
       if (getAddress(signer) !== getAddress(address)) {
-        return res.status(403).json({ error: "signature does not match address" });
+        return respond(403, { error: "signature does not match address" });
       }
 
       const incoming = Number(updatedAt) || Date.now();
       const cur = await readRec(address.toLowerCase());
       if (cur && Number(cur.updatedAt) > incoming) {
-        return res.status(409).json({ stale: true, updatedAt: cur.updatedAt });
+        return respond(409, { stale: true, updatedAt: cur.updatedAt });
       }
 
       await kv(["SET", PREFIX + address.toLowerCase(), JSON.stringify({ blob, updatedAt: incoming })]);
-      return res.status(200).json({ ok: true });
+      return respond(200, { ok: true });
     }
 
     res.setHeader("Allow", "GET, POST");
-    return res.status(405).json({ error: "method not allowed" });
+    return respond(405, { error: "method not allowed" });
   } catch (e) {
-    return res.status(500).json({ error: String(e?.message || e) });
+    return respond(500, { error: String(e?.message || e) });
   }
 }

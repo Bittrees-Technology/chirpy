@@ -10,6 +10,11 @@
 // MAINNET_RPC_URL. Optional: GATE_PORT (default 8788), GATE_ALLOW_ORIGIN (default *).
 import { createServer } from "node:http";
 import roomJoinHandler from "../api/room-join.js";
+import {
+  checkRateLimit,
+  logEvent,
+  writeRateLimitResponse,
+} from "../api/server-utils.js";
 
 const PORT = Number(process.env.GATE_PORT || 8788);
 const ALLOW_ORIGIN = process.env.GATE_ALLOW_ORIGIN || "*";
@@ -45,21 +50,46 @@ async function readJson(req) {
 }
 
 const server = createServer(async (req, res) => {
+  const startedAt = Date.now();
+  const logCompletion = (route, status, outcome = status >= 500 ? "error" : "completed") => {
+    logEvent("request.completed", {
+      route,
+      method: String(req.method || "unknown"),
+      status,
+      durationMs: Date.now() - startedAt,
+      outcome,
+    });
+  };
+
   applyCors(res);
   const { pathname, searchParams } = new URL(req.url, "http://localhost");
+  logEvent("request.started", { route: pathname, method: String(req.method || "unknown") });
 
-  if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
+  if (req.method === "OPTIONS") {
+    res.statusCode = 204;
+    logCompletion(pathname, 204);
+    return res.end();
+  }
 
   if (pathname === "/health" || pathname === "/") {
     res.statusCode = 200;
     res.setHeader("content-type", "application/json");
+    logCompletion(pathname, 200);
     return res.end(JSON.stringify({ ok: true, gatekeeper: Boolean(process.env.XMTP_GATEKEEPER_PRIVATE_KEY) }));
   }
 
   if (pathname !== "/api/room-join") {
     res.statusCode = 404;
     res.setHeader("content-type", "application/json");
+    logCompletion(pathname, 404);
     return res.end(JSON.stringify({ error: "not found" }));
+  }
+
+  const decision = checkRateLimit(req, pathname);
+  if (!decision.allowed) {
+    writeRateLimitResponse(res, decision);
+    logCompletion(pathname, 429, "rate_limited");
+    return;
   }
 
   let body;
@@ -68,24 +98,35 @@ const server = createServer(async (req, res) => {
   } catch {
     res.statusCode = 400;
     res.setHeader("content-type", "application/json");
+    logCompletion(pathname, 400);
     return res.end(JSON.stringify({ error: "bad json" }));
   }
 
   try {
     await roomJoinHandler(
-      { method: req.method, body, query: Object.fromEntries(searchParams) },
+      {
+        method: req.method,
+        body,
+        query: Object.fromEntries(searchParams),
+        rateLimitChecked: true,
+      },
       vercelRes(res),
     );
+    if (res.writableEnded) logCompletion(pathname, res.statusCode);
   } catch (e) {
     if (!res.writableEnded) {
       res.statusCode = 500;
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ error: String(e?.message || e) }));
+      logCompletion(pathname, 500);
     }
   }
 });
 
 server.listen(PORT, () => {
-  const keyed = process.env.XMTP_GATEKEEPER_PRIVATE_KEY ? "configured" : "NOT configured";
-  console.log(`Chirpy gate listening on :${PORT} (gatekeeper ${keyed})`);
+  logEvent("server.started", {
+    route: "selfhost/gate-server",
+    port: PORT,
+    gatekeeperConfigured: Boolean(process.env.XMTP_GATEKEEPER_PRIVATE_KEY),
+  });
 });
