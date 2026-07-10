@@ -98,10 +98,11 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROADMAP.md · NATI
   to select the XMTP transport. See [docs/PRODUCTION.md](docs/PRODUCTION.md).
 - ⏳ **iOS**: the Rust shell and icons are ready, but the Xcode project isn't generated yet
   (`pnpm tauri ios init` / `ios dev`). See [docs/NATIVE.md](docs/NATIVE.md).
-- ◐ **Self-host bundle** (`selfhost/`): `install.sh` + `docker-compose.yml` are scaffolded but
-  still need `selfhost/gate.Dockerfile` + an HTTP entrypoint wrapping `evalGate`. Per-org
-  `OrgConfig.gateUrl` is shown in Settings but **not yet consumed** — the client currently
-  hardcodes its own origin's `/api/*`.
+- ✅ **Self-host bundle** (`selfhost/`): `gate.Dockerfile` + `gate-server.mjs` (a working Node
+  HTTP wrapper around `api/room-join.js` with CORS) are built and documented in
+  `selfhost/DEPLOY.md`. Per-org `OrgConfig.gateUrl` is consumed by the client
+  (`packages/transport/src/xmtp.ts` `gateEndpoint()`) — point it at a self-hosted gate to route
+  around the Vercel serverless limitation below.
 - ◐ **Release**: CI now builds macOS + Windows + Linux on an `app-v*` tag; Apple notarization
   activates when the `APPLE_*` Actions secrets are set (until then macOS ships updater-signed
   only). No release has been cut yet — push an `app-v*` tag to publish the first one.
