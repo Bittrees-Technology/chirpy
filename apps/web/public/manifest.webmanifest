@@ -2,8 +2,12 @@
   "name": "Chirpy",
   "short_name": "Chirpy",
   "description": "Wallet-native chat for any community",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
+  "categories": ["social", "communication"],
   "background_color": "#FFFFFF",
   "theme_color": "#F7931A",
   "icons": [
