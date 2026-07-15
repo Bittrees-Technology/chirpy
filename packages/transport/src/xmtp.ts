@@ -227,6 +227,55 @@ export function classifyConversation(
     : "dm";
 }
 
+/** Normalize a room title for comparison: trim, drop a leading "#", lowercase.
+ *  Lets legacy rooms named "#general" / "General" match the canonical seed title. */
+export function canonicalizeRoomTitle(title: string): string {
+  return title.trim().replace(/^#+/, "").trim().toLowerCase();
+}
+
+/** Canonical seed-room titles for an org: the org's default rooms, or "general"
+ *  when none are configured (matches the ensureOrgRooms fallback seed). */
+export function seedRoomTitles(org: Pick<OrgConfig, "defaultRooms">): Set<string> {
+  const titles = org.defaultRooms.length
+    ? org.defaultRooms.map((seed) => seed.title)
+    : ["general"];
+  return new Set(titles.map(canonicalizeRoomTitle));
+}
+
+/** True when a room title matches one of the org's canonical seed titles,
+ *  regardless of casing or a leading "#" and even without Chirpy metadata. */
+export function isSeedRoomTitle(title: string, seedTitles: Set<string>): boolean {
+  return seedTitles.has(canonicalizeRoomTitle(title));
+}
+
+/** Collapse duplicate seed rooms (e.g. six legacy "#general" rooms) down to a
+ *  single conversation per canonical seed title, keeping the most recently
+ *  active one. Non-seed rooms and DMs pass through untouched. */
+export function dedupeSeedRooms(
+  conversations: Conversation[],
+  seedTitles: Set<string>,
+): Conversation[] {
+  const indexByTitle = new Map<string, number>();
+  const result: Conversation[] = [];
+  for (const conversation of conversations) {
+    if (conversation.kind === "room" && isSeedRoomTitle(conversation.title, seedTitles)) {
+      const key = canonicalizeRoomTitle(conversation.title);
+      const existingIndex = indexByTitle.get(key);
+      if (existingIndex === undefined) {
+        indexByTitle.set(key, result.length);
+        result.push(conversation);
+      } else {
+        const keptAt = result[existingIndex].lastMessage?.sentAt ?? 0;
+        const currentAt = conversation.lastMessage?.sentAt ?? 0;
+        if (currentAt > keptAt) result[existingIndex] = conversation;
+      }
+      continue;
+    }
+    result.push(conversation);
+  }
+  return result;
+}
+
 function toChatMessage(
   sdk: Sdk,
   message: DecodedMessage,
@@ -567,11 +616,20 @@ export class XmtpTransport implements Transport {
   }
 
   private async ensureOrgRooms(conversations: Conversation[]) {
+    const seedTitles = seedRoomTitles(this.org);
+    // Treat a room as an existing org room when its Chirpy metadata namespace
+    // matches OR its title matches a canonical seed title. The latter recognizes
+    // legacy/general rooms created without Chirpy metadata, so we don't seed a
+    // second #general on top of them.
     const existingRooms = conversations.filter((conversation) =>
       conversation.kind === "room" &&
-      this.roomMeta.get(conversation.id)?.namespace === this.org.namespace
+      (this.roomMeta.get(conversation.id)?.namespace === this.org.namespace ||
+        isSeedRoomTitle(conversation.title, seedTitles))
     );
-    if (existingRooms.length || roomsWereSeeded(this.myAddress, this.org.namespace)) return conversations;
+    if (existingRooms.length || roomsWereSeeded(this.myAddress, this.org.namespace)) {
+      markRoomsSeeded(this.myAddress, this.org.namespace);
+      return dedupeSeedRooms(conversations, seedTitles);
+    }
 
     const seeds: Array<Pick<RoomSeed, "title" | "description" | "gate" | "policy">> = this.org.defaultRooms.length
       ? this.org.defaultRooms
@@ -586,7 +644,7 @@ export class XmtpTransport implements Transport {
       }));
     }
     markRoomsSeeded(this.myAddress, this.org.namespace);
-    return [...conversations, ...created];
+    return dedupeSeedRooms([...conversations, ...created], seedTitles);
   }
 
   private async mapConversation(conversation: XmtpConversation): Promise<Conversation> {
