@@ -44,6 +44,13 @@ cd selfhost && ./install.sh                  # prompts → writes gate.env → d
 Required env (see `gate.env.example`): `XMTP_GATEKEEPER_PRIVATE_KEY`, `MAINNET_RPC_URL`,
 `GATE_ALLOW_ORIGIN` (your Chirpy origin). Put it behind TLS (Fly/Render do this for you).
 
+**Persist the XMTP store.** The image writes its XMTP MLS store to `GATE_DATA_DIR` (default
+`/data`). Back that path with a durable volume — `docker-compose.yml` declares a `gate-data`
+volume, `fly.toml` a `[mounts]` volume (create it once: `fly volumes create gate_data --config
+selfhost/fly.toml --region iad --size 1`); on Render/Railway attach a disk mounted at `/data`.
+Without a persistent volume the gatekeeper registers a **new XMTP installation on every restart**
+and will eventually hit XMTP's per-inbox installation cap.
+
 ### Local build/test on Apple Silicon — `apple/container` (no Docker Desktop)
 
 [`apple/container`](https://github.com/apple/container) (macOS 15+, ideal on macOS 26) runs the

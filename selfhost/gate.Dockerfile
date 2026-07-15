@@ -29,6 +29,13 @@ COPY selfhost/gate-server.mjs ./selfhost/gate-server.mjs
 ENV GATE_PORT=8788
 EXPOSE 8788
 
+# The XMTP MLS store lives here on a persistent volume (see docker-compose.yml / fly.toml).
+# Keeping it durable across restarts means the gatekeeper reuses its existing XMTP installation
+# instead of registering a new one every boot (XMTP caps installations per inbox).
+ENV GATE_DATA_DIR=/data
+RUN mkdir -p /data
+VOLUME ["/data"]
+
 # /health needs no XMTP/secret, so it's a safe liveness probe.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.GATE_PORT||8788)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

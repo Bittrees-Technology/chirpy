@@ -40,7 +40,12 @@ function clientOptions(logLevel) {
   return {
     env: "production",
     loggingLevel: logLevel,
-    dbPath: (inboxId) => `/tmp/chirpy-xmtp-gatekeeper-${inboxId}.db3`,
+    // Persist the XMTP MLS store on a durable disk in the self-hosted gate (GATE_DATA_DIR ->
+    // a mounted volume). A fresh store on each boot registers a NEW installation against the
+    // gatekeeper inbox, and XMTP caps installations per inbox — so ephemeral /tmp churns through
+    // that cap on every redeploy. Defaults to /tmp so the Vercel handler (where /tmp is the only
+    // writable path, and XMTP can't load its native binding anyway) is unaffected.
+    dbPath: (inboxId) => `${process.env.GATE_DATA_DIR || "/tmp"}/chirpy-xmtp-gatekeeper-${inboxId}.db3`,
   };
 }
 

@@ -52,6 +52,7 @@ Then:
 | `GATE_ALLOW_ORIGIN` | ↺ | CORS origin of your Chirpy web app (default `*`; set the exact origin in prod). |
 | `GATE_PORT` | ↺ | Listen port (default `8788`). |
 | `GATE_DOMAIN` | ↺ | Informational; used by your reverse proxy/TLS. |
+| `GATE_DATA_DIR` | ↺ | Persistent XMTP MLS store path (default `/data`, backed by a volume). Keeps the gatekeeper's XMTP installation stable across restarts; don't point it at ephemeral storage. |
 
 > Encrypted cross-device **sync** (`api/usersync.js`) is a separate concern that needs a KV
 > store; it isn't part of this gate bundle.
