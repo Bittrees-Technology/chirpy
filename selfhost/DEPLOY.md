@@ -1,5 +1,9 @@
 # Deploying the Chirpy gatekeeper gate
 
+This file covers the gate deployment mechanics. For the operator rollout order,
+health checks, rollback commands, and incident recovery flow across both the web
+and gate surfaces, use [`../docs/ROLLOUT-RUNBOOK.md`](../docs/ROLLOUT-RUNBOOK.md).
+
 The gate runs the XMTP gatekeeper bot that admits wallets to token-gated rooms. It **must**
 run on an always-on host with a modern glibc — **not** Vercel serverless. Verified end-to-end
 in a container: `@xmtp/node-sdk`'s native binding needs **GLIBC ≥ 2.38** and the **system CA
@@ -27,7 +31,7 @@ fly secrets set --config selfhost/fly.toml \
     MAINNET_RPC_URL=https://... \
     GATE_ALLOW_ORIGIN=https://chirpy.bittrees.org
 fly deploy --config selfhost/fly.toml --dockerfile selfhost/gate.Dockerfile
-curl https://<your-app>.fly.dev/health      # {"ok":true,"gatekeeper":true}
+curl https://<your-app>.fly.dev/health      # HTTP 200 + {"ok":true,"status":"ok",...}
 ```
 
 **Any Docker host / VPS** (Render, Railway, a droplet, …):
@@ -56,6 +60,7 @@ container run -d --name gt \
   chirpy-gate
 container ls                                            # shows the container's IP
 curl http://<container-ip>:8788/health                  # {"ok":true,"gatekeeper":true}
+                                                     # missing key or RPC now returns HTTP 503
 ```
 
 It runs an arm64 Linux VM — the exact path validated here under Docker (the `linux-arm64-gnu`
@@ -80,6 +85,6 @@ gatekeeper address as a super-admin manually.
 
 ## Verify
 
-`curl <gate>/health` → `{"ok":true,"gatekeeper":true}`; then in the app, create a gated room and
+`curl <gate>/health` → HTTP `200` with `"ok": true`; then in the app, create a gated room and
 request to join from a qualifying wallet — the gate verifies the signature, runs `evalGate`, and
 adds your inbox.

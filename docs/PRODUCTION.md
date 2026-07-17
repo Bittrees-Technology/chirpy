@@ -1,8 +1,41 @@
 # Production go-live spec
 
+For the operator sequence, rollback commands, and incident recovery flow, use
+[`docs/ROLLOUT-RUNBOOK.md`](ROLLOUT-RUNBOOK.md). This file remains the
+environment and go-live requirements reference.
+
 Requirements for the live release. The XMTP transport, wallet/ENS, and the serverless gate
 are **implemented**; what remains is provisioning the server env below and building with
 `VITE_TRANSPORT=xmtp`. (The offline `MockTransport` stays the no-wallet default.)
+
+## Migration posture
+
+This release has **no schema or datastore migration step**. Chirpy's rollout surface here is:
+
+- web build/runtime configuration on Vercel
+- self-hosted gate deployment plus its secrets
+- existing KV-backed sync configuration
+
+There is no SQL/Prisma/Drizzle migration to run before, during, or after the deploy. If a
+future release adds persisted schema changes, add that procedure here before using this file
+as the operator checklist.
+
+## 0. Deployment metadata and external-gate health reporting
+
+Set these non-secret variables on the web deployment so `/api/health` reports the
+release accurately:
+
+- `CHIRPY_BASE_URL` = the canonical web origin, for example
+  `https://chirpy.bittrees.org`
+- `CHIRPY_RELEASE_CHANNEL` = a stable label such as `production` or `staging`
+- `CHIRPY_EXTERNAL_GATE_URL` = the canonical self-hosted gate endpoint when
+  production room joins are routed away from Vercel, for example
+  `https://gate.example.org/api/room-join`
+
+With `CHIRPY_EXTERNAL_GATE_URL` set, `/api/health` treats the supported
+external-gate topology as release-ready without requiring
+`XMTP_GATEKEEPER_PRIVATE_KEY` on the Vercel deployment itself. The external
+gate's own `/health` endpoint remains the authoritative liveness probe.
 
 ## 1. Alchemy key, uploaded through Vercel
 
@@ -57,10 +90,13 @@ are scoped to the org** that defines them (they are token-gated communities).
 2. ✅ Injected + WalletConnect v2 login and ENS resolver wired into `IdentityProvider`.
 3. ✅ Gate deployed as `api/room-join.js` (+ `api/usersync.js`) Vercel functions; the evaluator
    is `@app/core`'s `evalGate` with a viem `ChainReader` using `MAINNET_RPC_URL`.
-4. ☐ Set env (full list in [`.env.example`](../.env.example)): **`XMTP_GATEKEEPER_PRIVATE_KEY`**
-   (signs the gatekeeper bot's room adds — the linchpin) + a matching `VITE_GATEKEEPER_ADDRESS`,
-   `MAINNET_RPC_URL`, `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`,
+4. ☐ Set env (full list in [`.env.example`](../.env.example)): `CHIRPY_BASE_URL`,
+   `CHIRPY_RELEASE_CHANNEL`, `CHIRPY_EXTERNAL_GATE_URL` (when using the
+   supported external gate), a matching `VITE_GATEKEEPER_ADDRESS`,
+   `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`,
    `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and `VITE_TRANSPORT=xmtp`.
+   Set `XMTP_GATEKEEPER_PRIVATE_KEY` and `MAINNET_RPC_URL` on the external gate
+   host itself, not on the web deployment.
 5. ☐ Verify ENS resolves on connect; a gated room admits/denies correctly; DMs persist across
    org switches and on a second device.
 

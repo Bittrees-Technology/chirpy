@@ -91,6 +91,15 @@ export function logEvent(event, fields = {}) {
     "outcome",
     "port",
     "gatekeeperConfigured",
+    "channel",
+    "transport",
+    "version",
+    "workflowEvent",
+    "releasePhase",
+    "result",
+    "environment",
+    "deployment",
+    "check",
   ];
   const safeFields = {};
   for (const field of allowedFields) {

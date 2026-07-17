@@ -34,7 +34,7 @@ cd selfhost
 node gen-gatekeeper-key.mjs        # note the private key + address
 cp gate.env.example gate.env       # fill in the values (incl. the key above)
 docker compose up -d --build
-curl localhost:8788/health         # {"ok":true,"gatekeeper":true}
+curl localhost:8788/health         # HTTP 200 + {"ok":true,"status":"ok",...}
 ```
 
 Then:
@@ -55,6 +55,10 @@ Then:
 
 > Encrypted cross-device **sync** (`api/usersync.js`) is a separate concern that needs a KV
 > store; it isn't part of this gate bundle.
+
+`GET /health` now returns HTTP `503` when either `XMTP_GATEKEEPER_PRIVATE_KEY`
+or `MAINNET_RPC_URL` is missing, so a green probe means the gate has the minimum
+required secrets to serve room joins.
 
 ## Why self-host
 

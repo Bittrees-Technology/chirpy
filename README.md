@@ -64,7 +64,7 @@ apps/
 api/           room-join.js (serverless token-gate), usersync.js (encrypted device sync) — Vercel functions
 selfhost/      Docker self-host bundle for the gate (scaffold — see "What's left")
 examples/      bittrees-inc.org.json, bittrees-research.org.json  (importable org presets)
-docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROADMAP.md · NATIVE.md
+docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROLLOUT-RUNBOOK.md · ROADMAP.md · NATIVE.md
 ```
 
 ## Status
@@ -92,10 +92,11 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROADMAP.md · NATI
 
 ### What's left
 
-- ⏳ **Provision prod secrets** so the live deploy exercises the gate/sync (not just mock):
-  `XMTP_GATEKEEPER_PRIVATE_KEY`, `MAINNET_RPC_URL`, and `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
-  Until set, `/api/room-join` and `/api/usersync` return 503. Build with `VITE_TRANSPORT=xmtp`
-  to select the XMTP transport. See [docs/PRODUCTION.md](docs/PRODUCTION.md).
+- ⏳ **Provision the production web env plus the external gate** so the live deploy exercises
+  XMTP and sync (not just mock): the web surface needs the browser and KV values documented in
+  [docs/PRODUCTION.md](docs/PRODUCTION.md), and production gated orgs must point `gateUrl` at
+  the self-hosted gate described in [docs/ROLLOUT-RUNBOOK.md](docs/ROLLOUT-RUNBOOK.md).
+  The same-origin Vercel `/api/room-join` path is not a supported production gatekeeper target.
 - ⏳ **iOS**: the Rust shell and icons are ready, but the Xcode project isn't generated yet
   (`pnpm tauri ios init` / `ios dev`). See [docs/NATIVE.md](docs/NATIVE.md).
 - ✅ **Self-host bundle** (`selfhost/`): `gate.Dockerfile` + `gate-server.mjs` (a working Node

@@ -60,15 +60,18 @@ export default async function handler(req, res) {
   const route = "/api/room-join";
   const startedAt = Date.now();
   const method = String(req?.method || "unknown");
-  logEvent("request.started", { route, method });
+  const lifecycleLogged = Boolean(req?.lifecycleLogged);
+  if (!lifecycleLogged) logEvent("request.started", { route, method });
   const respond = (status, body, outcome = status >= 500 ? "error" : "completed") => {
-    logEvent("request.completed", {
-      route,
-      method,
-      status,
-      durationMs: Date.now() - startedAt,
-      outcome,
-    });
+    if (!lifecycleLogged) {
+      logEvent("request.completed", {
+        route,
+        method,
+        status,
+        durationMs: Date.now() - startedAt,
+        outcome,
+      });
+    }
     return res.status(status).json(body);
   };
 

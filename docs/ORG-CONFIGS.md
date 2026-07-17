@@ -191,5 +191,7 @@ pnpm typecheck
 
 For the runtime deployment verification, follow the gate health and qualifying
 / non-qualifying wallet checks in the checklist above. Refer to
-[`docs/PRODUCTION.md`](PRODUCTION.md) for the broader production checklist and
+[`docs/ROLLOUT-RUNBOOK.md`](ROLLOUT-RUNBOOK.md) for the operator rollout and
+rollback sequence, [`docs/PRODUCTION.md`](PRODUCTION.md) for the broader
+production checklist, and
 [`selfhost/DEPLOY.md`](../selfhost/DEPLOY.md) for gate deployment details.

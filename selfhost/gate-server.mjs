@@ -9,6 +9,7 @@
 // https://gate.acme.org/api/room-join. Required env: XMTP_GATEKEEPER_PRIVATE_KEY,
 // MAINNET_RPC_URL. Optional: GATE_PORT (default 8788), GATE_ALLOW_ORIGIN (default *).
 import { createServer } from "node:http";
+import { buildGateHealthReport } from "../api/ops-utils.js";
 import roomJoinHandler from "../api/room-join.js";
 import {
   checkRateLimit,
@@ -72,10 +73,11 @@ const server = createServer(async (req, res) => {
   }
 
   if (pathname === "/health" || pathname === "/") {
-    res.statusCode = 200;
+    const report = buildGateHealthReport(process.env);
+    res.statusCode = report.ok ? 200 : 503;
     res.setHeader("content-type", "application/json");
-    logCompletion(pathname, 200);
-    return res.end(JSON.stringify({ ok: true, gatekeeper: Boolean(process.env.XMTP_GATEKEEPER_PRIVATE_KEY) }));
+    logCompletion(pathname, res.statusCode, report.ok ? "completed" : "error");
+    return res.end(JSON.stringify(report));
   }
 
   if (pathname !== "/api/room-join") {
@@ -109,6 +111,7 @@ const server = createServer(async (req, res) => {
         body,
         query: Object.fromEntries(searchParams),
         rateLimitChecked: true,
+        lifecycleLogged: true,
       },
       vercelRes(res),
     );

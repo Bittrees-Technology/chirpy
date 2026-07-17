@@ -15,6 +15,14 @@ export default defineConfig({
       {
         resolve: { alias },
         test: {
+          name: "api",
+          environment: "node",
+          include: ["api/test/**/*.test.ts"],
+        },
+      },
+      {
+        resolve: { alias },
+        test: {
           name: "core",
           environment: "node",
           include: ["packages/core/test/**/*.test.ts"],
