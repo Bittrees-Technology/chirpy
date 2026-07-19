@@ -61,10 +61,17 @@ jobs:
           node-version: 22
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Simulator compilation exercises the actual iOS cfg without requiring
+          # a signing identity, provisioning profile, or physical device.
+          targets: aarch64-apple-ios-sim
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       # Guards the deep-link / WalletConnect return config (chirpy:// scheme,
       # deep-link:default capability, WC metadata.redirect) against drift.
       - run: pnpm test
-      # Confirms the native shell (incl. the deep-link plugin) still compiles.
+      # Confirms the native shell (incl. the deep-link plugin) compiles both for
+      # the runner and for iOS. GitHub's macOS image supplies the simulator SDK;
+      # neither invocation signs, packages, installs, or uploads an app.
       - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml
+      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target aarch64-apple-ios-sim
