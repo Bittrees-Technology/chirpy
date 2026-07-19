@@ -3,7 +3,7 @@
 // UI is shared — only this thin shell differs per target.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().plugin(tauri_plugin_deep_link::init());
 
     // Desktop-only: auto-update (check signed release manifest → download → install →
     // relaunch) and process control (relaunch). Mobile updates go through the app stores.

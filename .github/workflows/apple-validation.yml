@@ -1,0 +1,52 @@
+name: apple-validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: apple-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-tauri-check:
+    name: macOS Tauri check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml
+      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target aarch64-apple-darwin
+      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target x86_64-apple-darwin
+
+  ios-config-check:
+    name: iOS config check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test -- apps/web/test/walletconnectDeeplink.test.ts
+      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml
