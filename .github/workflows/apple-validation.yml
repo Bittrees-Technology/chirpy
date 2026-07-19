@@ -1,9 +1,26 @@
 name: apple-validation
 
+# Credential-free validation of the macOS/iOS (Tauri) build surface. These jobs
+# compile the native shell and check the deep-link / WalletConnect config, but do
+# NOT sign, notarize, or upload anything — that path (Apple Developer ID + the
+# release workflow) requires secrets and stays in the tag-triggered release.yml.
+#
+# Runs on macOS runners (needed for the Apple targets), so it is scoped with
+# `paths:` to only fire when the Apple build surface actually changes.
 on:
   pull_request:
+    paths:
+      - "apps/web/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/apple-validation.yml"
   push:
     branches: [main]
+    paths:
+      - "apps/web/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/apple-validation.yml"
   workflow_dispatch:
 
 concurrency:
@@ -16,20 +33,20 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      # pnpm version comes from package.json's `packageManager` field — never also
+      # pass `version:` (that combination aborts pnpm/action-setup@v4). See release.yml.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10.32.1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
         with:
+          # Both arches, so the universal-apple-darwin release bundle is validated.
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
-      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml
       - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target aarch64-apple-darwin
       - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target x86_64-apple-darwin
 
@@ -39,8 +56,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10.32.1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -48,5 +63,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm test -- apps/web/test/walletconnectDeeplink.test.ts
+      # Guards the deep-link / WalletConnect return config (chirpy:// scheme,
+      # deep-link:default capability, WC metadata.redirect) against drift.
+      - run: pnpm test
+      # Confirms the native shell (incl. the deep-link plugin) still compiles.
       - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml
