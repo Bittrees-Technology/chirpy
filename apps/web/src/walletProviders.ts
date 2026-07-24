@@ -58,6 +58,10 @@ async function initWalletConnectProvider(): Promise<WalletEventProvider & { acco
       description: "Wallet-native chat for any community",
       url: window.location.origin,
       icons: [`${window.location.origin}/icon.png`],
+      redirect: {
+        native: "chirpy://",
+        universal: window.location.origin,
+      },
     },
   });
   return provider as unknown as WalletEventProvider & { accounts?: string[] };

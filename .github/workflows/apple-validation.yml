@@ -1,0 +1,77 @@
+name: apple-validation
+
+# Credential-free validation of the macOS/iOS (Tauri) build surface. These jobs
+# compile the native shell and check the deep-link / WalletConnect config, but do
+# NOT sign, notarize, or upload anything — that path (Apple Developer ID + the
+# release workflow) requires secrets and stays in the tag-triggered release.yml.
+#
+# Runs on macOS runners (needed for the Apple targets), so it is scoped with
+# `paths:` to only fire when the Apple build surface actually changes.
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/apple-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/apple-validation.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: apple-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-tauri-check:
+    name: macOS Tauri check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # pnpm version comes from package.json's `packageManager` field — never also
+      # pass `version:` (that combination aborts pnpm/action-setup@v4). See release.yml.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Both arches, so the universal-apple-darwin release bundle is validated.
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target aarch64-apple-darwin
+      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target x86_64-apple-darwin
+
+  ios-config-check:
+    name: iOS config check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Simulator compilation exercises the actual iOS cfg without requiring
+          # a signing identity, provisioning profile, or physical device.
+          targets: aarch64-apple-ios-sim
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      # Guards the deep-link / WalletConnect return config (chirpy:// scheme,
+      # deep-link:default capability, WC metadata.redirect) against drift.
+      - run: pnpm test
+      # Confirms the native shell (incl. the deep-link plugin) compiles both for
+      # the runner and for iOS. GitHub's macOS image supplies the simulator SDK;
+      # neither invocation signs, packages, installs, or uploads an app.
+      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml
+      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target aarch64-apple-ios-sim
