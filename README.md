@@ -17,6 +17,32 @@ primary frame: Chirpy is meant to be reusable by any wallet-native community
 
 > Same web frontend → **web**, **macOS desktop**, and **iOS** via Tauri 2.
 
+## Product independence contract
+
+- **User and value:** Chirpy serves wallet-native communities that need encrypted direct
+  messages and organization-scoped, token-gated rooms without adopting another product.
+- **In scope:** the reusable chat client, local preview transport, wallet/XMTP transport,
+  organization configuration, gate evaluation, encrypted settings sync, and web/native shells.
+- **Out of scope:** Chirpy does not provide governance, treasury, membership issuance, or the
+  surrounding websites and operations of any organization.
+- **Onboarding and first value:** `pnpm install && pnpm dev` opens the standalone local preview;
+  a new user can create a personal or organization space and send a mock message without a
+  wallet, network connection, imported preset, or sibling application.
+- **Release status:** the live URL is a preview and the repository has an `app-v0.1.0` tag, but
+  no published GitHub release. Production messaging still requires the documented runtime
+  configuration and external gate for gated-room admission.
+- **Trust and support ownership:** Chirpy must own approved support, security, privacy, and
+  terms artifacts before exposing those public paths. They are tracked as product blockers in
+  [docs/PUBLIC-SURFACE-BLOCKERS.md](docs/PUBLIC-SURFACE-BLOCKERS.md); no claims are implied.
+- **Standalone entry and runtime:** the primary entry point is `apps/web`, runnable directly
+  with the root `pnpm dev` command and buildable with `pnpm build`; Tauri wraps that same app.
+- **No sibling dependency:** building, previewing, and using Chirpy does not require a Bittrees
+  Inc, Research, governance, or other sibling checkout or runtime. Bittrees files are examples
+  and provenance only.
+- **Optional integration boundary:** presets, wallet/XMTP mode, ENS, hosted KV sync, external
+  gate services, and embeds are opt-in integrations. The local mock preview remains usable when
+  they are absent; enabling an integration does not make a sibling product part of Chirpy.
+
 ---
 
 ## Quick start (web — view it now)
@@ -117,9 +143,9 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROLLOUT-RUNBOOK.md
   `selfhost/DEPLOY.md`. Per-org `OrgConfig.gateUrl` is consumed by the client
   (`packages/transport/src/xmtp.ts` `gateEndpoint()`) — point it at a self-hosted gate to route
   around the Vercel serverless limitation below.
-- ◐ **Release**: CI now builds macOS + Windows + Linux on an `app-v*` tag; Apple notarization
+- ◐ **Release**: CI builds macOS + Windows + Linux on an `app-v*` tag; Apple notarization
   activates when the `APPLE_*` Actions secrets are set (until then macOS ships updater-signed
-  only). No release has been cut yet — push an `app-v*` tag to publish the first one.
+  only). The `app-v0.1.0` tag exists, but no GitHub release is published yet.
 - ⚠️ App icons are interim Chirpy artwork (the reusable Bittrees tree mark) pending final brand art.
 - ⚠️ Preset token addresses in `examples/` are **illustrative placeholders** (e.g. the Research
   membership token is the burn address) — set real addresses before gating against them.
