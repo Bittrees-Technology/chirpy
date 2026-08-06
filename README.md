@@ -1,18 +1,18 @@
 # Chirpy
 
-**Wallet-native chat for any community — one codebase across web, a Mac desktop app, and iOS (Tauri 2).**
+**Wallet-native community chat: encrypted 1:1 DMs, token-gated rooms, and portable org spaces across web, macOS, and iOS (Tauri 2).**
 
-🌐 **Live:** [chirpy.bittrees.org](https://chirpy.bittrees.org) · skinned with the **Bittrees** brand theme (light surface, Bitcoin-orange accent, treasury-green positives, serif headings).
+🌐 **Live preview:** [chirpy.bittrees.org](https://chirpy.bittrees.org)
 
-Chirpy is an **org-agnostic** chat client. It ships with *no* organization baked in:
-you start in a personal space, and you can **import** an existing organization's config
-or **create** your own — each org brings its own branding, chains, token-gating rules,
-roles, and rooms. The chat itself (1:1 DMs + token-gated community rooms) lives inside
-every org.
+Chirpy is an **org-agnostic** chat client for communities that organize around wallets.
+You start in a personal space, then **import** an existing organization's config or
+**create** your own. Each org brings its own branding, chains, token-gating rules,
+roles, and rooms; your 1:1 DMs stay attached to your wallet while community rooms
+remain scoped to the org that gates them.
 
-It is built from the chat functionality already shipping in the Bittrees Inc and Bittrees
-Research apps (XMTP DMs + token-gated rooms — XMTP-MLS groups joined via a gatekeeper bot),
-generalized so those two become nothing more than **importable presets**
+The implementation is generalized from chat functionality used by Bittrees Inc and
+Bittrees Research. Bittrees is provenance and an included preset, not the product's
+primary frame: Chirpy is meant to be reusable by any wallet-native community
 (see `apps/web/src/presets.ts` and `examples/`).
 
 > Same web frontend → **web**, **macOS desktop**, and **iOS** via Tauri 2.
@@ -30,9 +30,12 @@ Everything works offline in this preview build: the **default** transport is a l
 that persists per-org to `localStorage`, so you can click around (create an org, import the
 Bittrees presets, DM, create gated rooms, react/reply) with **no wallet and no network**.
 
-To run against **real XMTP** (encrypted DMs + MLS rooms), build/serve with
-`VITE_TRANSPORT=xmtp` and connect a wallet. Gated-room joins and cross-device sync
-additionally require the server env in [docs/PRODUCTION.md](docs/PRODUCTION.md).
+Production-style messaging is implemented behind `VITE_TRANSPORT=xmtp`: encrypted DMs,
+XMTP-MLS rooms, wallet login, ENS profiles, and wallet-encrypted sync. A production
+deployment is not just a static build, though. It requires the browser/KV env plus a
+self-hosted external gate for gated-room joins as documented in
+[docs/PRODUCTION.md](docs/PRODUCTION.md) and
+[docs/ROLLOUT-RUNBOOK.md](docs/ROLLOUT-RUNBOOK.md).
 
 ```bash
 pnpm build          # production web build → apps/web/dist
@@ -68,6 +71,16 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROLLOUT-RUNBOOK.md
 ```
 
 ## Status
+
+### Preview vs production
+
+- **Preview default:** `VITE_TRANSPORT` unset, local mock transport, no wallet required, no
+  real delivery or community admission.
+- **Production target:** `VITE_TRANSPORT=xmtp`, wallet identity, ENS, XMTP DMs/rooms,
+  encrypted sync, and an external gatekeeper service for token-gated room joins.
+- **Public trust paths:** `/support`, `/security`, `/privacy`, and `/terms` are not shipped
+  as placeholder SPA routes. Add real approved artifacts before linking or routing them;
+  see [docs/PUBLIC-SURFACE-BLOCKERS.md](docs/PUBLIC-SURFACE-BLOCKERS.md).
 
 ### Done
 
