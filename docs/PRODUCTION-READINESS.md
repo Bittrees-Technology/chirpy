@@ -127,10 +127,20 @@ Packaged native apps require `VITE_API_ORIGIN` pointing at the hosted HTTPS orig
 
 The server allows its canonical service origin plus explicitly configured `CHIRPY_SYNC_ALLOWED_ORIGINS`. Native release origins are `tauri://localhost`, `http://tauri.localhost`, and `https://tauri.localhost`; wildcard/null and unlisted origins are rejected. Preflight allows only GET/POST and Content-Type, with no credentialed CORS. Scoped wallet/device signatures remain required for mutations. See [Tauri's platform URL implementation](https://docs.rs/tauri/latest/src/tauri/manager/mod.rs.html) for the platform origin differences.
 
-Endpoint and CORS tests cover native configuration, untrusted origins, invalid preflights, redirects, service-identity mismatch and signed versus unsigned writes. Native shell/device acceptance, a stricter native content-security policy and signed/notarized distribution remain pending.
+Endpoint and CORS tests cover native configuration, untrusted origins, invalid preflights, redirects, service-identity mismatch and signed versus unsigned writes. Native shell/device acceptance and signed/notarized distribution remain pending.
 
 ## Native dependency audit
 
 The native lockfile updates plist to 1.10.1 (quick-xml 0.42.0) and anyhow to 1.0.104, clearing RUSTSEC-2026-0194, RUSTSEC-2026-0195 and the anyhow unsoundness warning RUSTSEC-2026-0190. The declared minimum Rust version is now 1.88, matching plist's requirement. CI audits the native lockfile with pinned cargo-audit 0.22.2 and retains its report; vulnerability advisories fail the job.
 
 Seven warnings remain visible in `docs/security/native-baseline-2026-09-09.json`: six unmaintained transitive crates and the older glib safety advisory constrained by Tauri's GTK3/Linux dependency graph. They are not suppressed or represented as fixed. Upstream migration and platform applicability review remain release work, particularly for Linux. This audit covers Cargo dependencies, separately from npm and the gate container.
+
+## Native shell hardening
+
+The packaged shell now has an explicit content-security policy: bundled scripts plus WebAssembly, no JavaScript eval or injected inline scripts, bounded wallet verification frames, and no object embeds or external form submissions. HTTPS/WSS connections remain available for configured chain, XMTP, gate and wallet services. Development policy separately permits local dev connections. This follows [Tauri's CSP guidance](https://v2.tauri.app/security/csp/).
+
+Desktop updater APIs are enabled only for a desktop target identified by Tauri's build environment; iOS/Android use store updates. Startup checks availability but does not silently install or restart over a conversation. Settings retains explicit installation/restart actions.
+
+External gates can opt into the three standard Tauri origins through `GATE_NATIVE_ORIGINS`, alongside the existing web origin. Arbitrary/wildcard native origins are rejected, and native requests still require the same signed admission challenge. An operator must set this on the actual gate host.
+
+Validation: 175 unit/HTTP tests pass, the browser attack probe blocks normal-page eval and inline injection while allowing chat and WASM, and both real XMTP dev tests pass with the native policy applied to served assets. The nightly XMTP flow now uses that policy. Packaged-device wallet return and store/signing acceptance remain outstanding.

@@ -7,6 +7,7 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: { "import.meta.env.VITE_NATIVE_PLATFORM": JSON.stringify(process.env.TAURI_ENV_PLATFORM || "") },
   resolve: {
     alias: {
       "@app/core": r("../../packages/core/src/index.ts"),

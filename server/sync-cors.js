@@ -1,4 +1,5 @@
-const nativeOrigins = new Set(['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']);
+import { NATIVE_ORIGINS } from './native-origins.js';
+const nativeOrigins = new Set(NATIVE_ORIGINS);
 function validOrigin(value) {
   if (nativeOrigins.has(value)) return true;
   try { const url = new URL(value); return url.protocol === 'https:' && url.origin === value; }

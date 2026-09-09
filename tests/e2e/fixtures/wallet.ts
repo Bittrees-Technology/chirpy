@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { test as base, type BrowserContext, type Page } from "@playwright/test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
@@ -12,6 +13,13 @@ const isHex = (value: unknown): value is `0x${string}` =>
 
 export async function injectSyntheticWallet(target: WalletInjectionTarget): Promise<string> {
   const account = privateKeyToAccount(generatePrivateKey());
+  if (process.env.CHIRPY_TEST_NATIVE_CSP === "1") {
+    const policy = JSON.parse(readFileSync("apps/web/src-tauri/tauri.conf.json", "utf8")).app.security.csp;
+    await target.route("http://127.0.0.1:*/**", async route => {
+      const response = await route.fetch();
+      await route.fulfill({ response, headers: { ...response.headers(), "content-security-policy": policy } });
+    });
+  }
 
   await target.exposeFunction("__walletSign", (params: unknown[] = []) => {
     const rawHex = params.find(isHex);

@@ -129,3 +129,7 @@ XMTP_MEMBERSHIP_DRILL=1 node scripts/test-gate-membership.mjs chirpy-gate:local
 ```
 
 The isolated dev drill verifies actual SDK identity binding and membership changes with fresh wallets, and uses deterministic test balances and a simulated observation clock. It does not prove your production chain RPC, token holdings, room policies or elapsed-time service operation. It removes its test database volume afterward.
+
+## Native gate clients
+
+To support native Chirpy clients, explicitly set `GATE_NATIVE_ORIGINS=tauri://localhost,http://tauri.localhost,https://tauri.localhost`. Keep `GATE_ALLOW_ORIGIN` set to the exact web app origin. The additional list accepts only these platform origins and does not alter signature, inbox, gate or room-policy checks. Native clients are denied by default until configured. Do not use a wildcard or `null` origin.
