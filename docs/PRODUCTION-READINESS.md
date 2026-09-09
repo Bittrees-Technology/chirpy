@@ -149,7 +149,7 @@ Validation: 175 unit/HTTP tests pass, the browser attack probe blocks normal-pag
 
 Native release preparation now requires a matching `app-v` tag and consistent UI/Cargo/Tauri versions, production XMTP, a hosted HTTPS API, browser RPC and WalletConnect configuration, an updater signing key, and macOS signing/notarization inputs on the macOS runner. It checks web release readiness and requires dependency-aware gate health before building. Completed artifacts remain GitHub drafts for signature, installation, updater and platform acceptance; Windows code signing and final promotion remain operator work.
 
-Configure repository variables `VITE_API_ORIGIN`, `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`, and `CHIRPY_GATE_HEALTH_URL`, plus the signing secrets described in the release workflow. No repository signing secrets or releases were present during this review. Backend configuration and runtime readiness are still incomplete, so a production native release must currently remain blocked.
+Configure repository variables `VITE_API_ORIGIN`, `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`, and `CHIRPY_GATE_HEALTH_URL`, plus the signing secrets described in the release workflow. The existing updater key has now been verified against the configured public key using a synthetic signed file and configured as the GitHub Actions signing secret. Apple signing/notarization credentials and released artifacts remain outstanding. Backend configuration and runtime readiness are still incomplete, so a production native release must currently remain blocked.
 
 The nightly XMTP workflow no longer masks failures with continue-on-error. It runs the CSP-constrained browser flow plus real dev-network encrypted storage restoration and membership lifecycle drills, retains browser evidence and has a bounded timeout. These synthetic checks complement, rather than replace, operator backup restoration and production multi-wallet/device acceptance.
 
@@ -198,3 +198,9 @@ Read-only inspection confirms both consumers still have Push room registries and
 Web readiness requires canonical HTTPS gate/sync endpoints and rejects development-network builds. Invalid endpoints are not echoed into public health output. Native release validation checks the canonical gate health path and requires its host/port to match the external gate reported by the web deployment, in addition to production network, fresh dependency readiness and live sync checks.
 
 Validation: 230 tests, API type checking and rollout proof pass, including malformed/credential-bearing URLs, wrong hosts/ports and dev-network false positives.
+
+## Pinned native release tooling
+
+The Tauri CLI is pinned to 2.11.4 in the workspace lockfile. Local commands and the release action use that installed binary, and Apple validation checks its availability after a frozen install. Native documentation distinguishes Rust compilation from Xcode packaging and device acceptance.
+
+The existing ignored updater private key signed a synthetic file whose Ed25519 signature verified against the configured public key. The matching private key is configured in GitHub Actions; the synthetic file was removed and no key material was committed. This verifies key compatibility, not a packaged release or updater installation.

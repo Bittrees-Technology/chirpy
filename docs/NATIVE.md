@@ -106,4 +106,4 @@ App Store; the web build updates on reload.
 
 ## Validation status
 
-CI compiles macOS and generates/builds the iOS project. The CSP-constrained browser flow exercises live XMTP dev messaging; it does not prove WKWebView storage, WalletConnect return or signed distribution on a real device. Rust requires at least 1.88. Seven native dependency warnings remain tracked in [the security baseline](security/native-baseline-2026-09-09.json); they are not suppressed.
+CI checks Rust compilation for macOS and the iOS simulator; Xcode project generation and packaging remain outstanding. The CSP-constrained browser flow exercises live XMTP dev messaging; it does not prove WKWebView storage, WalletConnect return or signed distribution on a real device. Rust requires at least 1.88. Seven native dependency warnings remain tracked in [the security baseline](security/native-baseline-2026-09-09.json); they are not suppressed.

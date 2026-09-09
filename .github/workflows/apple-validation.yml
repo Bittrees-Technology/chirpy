@@ -45,6 +45,7 @@ jobs:
           # Both arches, so the universal-apple-darwin release bundle is validated.
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri --version
       - run: pnpm typecheck
       - run: pnpm build
       - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target aarch64-apple-darwin
@@ -66,6 +67,7 @@ jobs:
           # a signing identity, provisioning profile, or physical device.
           targets: aarch64-apple-ios-sim
       - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri --version
       - run: pnpm typecheck
       # Guards the deep-link / WalletConnect return config (chirpy:// scheme,
       # deep-link:default capability, WC metadata.redirect) against drift.
