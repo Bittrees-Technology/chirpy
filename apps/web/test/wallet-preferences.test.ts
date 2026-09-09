@@ -1,3 +1,4 @@
+import { receiptOverride } from "../src/receiptPreferences";
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -29,6 +30,7 @@ it('isolates wallet preferences immediately and ignores late profile responses a
     expect(current.prefs.readReceiptsDefault).toBe(false);
     expect(current.prefs.syncAcrossDevices).toBe(false);
     await act(async () => current.setReadReceiptsDefault(true));
+    await act(async () => current.setChatReadReceipts("dm", false));
     mock.account = b;
     let result: any;
     await act(async () => { result = await current.enableSyncAcrossDevices(); });
@@ -39,11 +41,13 @@ it('isolates wallet preferences immediately and ignores late profile responses a
     expect(current.prefs.readReceiptsDefault).toBe(false);
     expect(current.prefs.syncAcrossDevices).toBe(false);
     expect(current.prefs.blocked).toEqual([]);
+    expect(receiptOverride(current.prefs.readReceiptOverrides, "dm")).toBeUndefined();
     await act(async () => lookups[0].resolve({ name: 'old.eth' }));
     expect(current.identity.address).toBe(b);
     expect(current.identity.handle).not.toBe('old.eth');
     await act(async () => { mock.account = a; mock.handlers.get('accountsChanged')?.([a]); });
     expect(current.prefs.readReceiptsDefault).toBe(true);
+    expect(receiptOverride(current.prefs.readReceiptOverrides, "dm")).toBe(false);
     await act(async () => current.disconnectWallet());
     await act(async () => { for (const lookup of lookups) lookup.resolve({ name: 'late.eth' }); });
     expect(current.mode).toBe('stub');

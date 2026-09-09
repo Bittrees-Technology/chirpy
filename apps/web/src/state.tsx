@@ -1,3 +1,4 @@
+import { normalizeReceiptOverrides, receiptOverride, receiptPreferenceKey, type ReceiptOverrides } from "./receiptPreferences";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   PERSONAL_ORG, type Identity, type OrgConfig, type Policy,
@@ -362,6 +363,7 @@ export const useOrgs = () => {
 // ====================================================================
 interface SettingsPrefs {
   readReceiptsDefault: boolean;
+  readReceiptOverrides?: ReceiptOverrides;
   syncAcrossDevices: boolean;
   blocked: string[];
 }
@@ -389,6 +391,7 @@ interface SettingsPrefsCtx {
   prefs: SettingsPrefs;
   syncState: SettingsSyncState;
   setReadReceiptsDefault: (on: boolean) => void;
+  setChatReadReceipts: (conversationId: string, on: boolean | undefined) => void;
   enableSyncAcrossDevices: () => Promise<SettingsSyncResult>;
   disableSyncAcrossDevices: () => Promise<SettingsSyncResult>;
   revokeAllSyncDevices: () => Promise<SettingsSyncResult>;
@@ -401,6 +404,7 @@ const SETTINGS_SYNC_AUTH_SIG_PREFIX = "chirpy.sync.authSig.";
 function normalizeSettingsPrefs(value: Partial<SettingsPrefs> | null | undefined): SettingsPrefs {
   return {
     readReceiptsDefault: value?.readReceiptsDefault === true,
+    readReceiptOverrides: normalizeReceiptOverrides(value?.readReceiptOverrides),
     syncAcrossDevices: value?.syncAcrossDevices === true,
     blocked: Array.isArray(value?.blocked) ? value.blocked.filter((address) => typeof address === "string" && /^0x[a-fA-F0-9]{40}$/.test(address)).map((address) => address.toLowerCase()) : [],
   };
@@ -681,6 +685,16 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
     prefs,
     syncState,
     setReadReceiptsDefault: (readReceiptsDefault) => { prefsUpdatedAtRef.current = Date.now(); LS.set(updatedAtKey, prefsUpdatedAtRef.current); setPrefs((p) => ({ ...p, readReceiptsDefault })); },
+    setChatReadReceipts: (conversationId, on) => {
+      if (!/^[a-zA-Z0-9_-]{1,256}$/.test(conversationId) || (on !== undefined && typeof on !== "boolean")) return;
+      prefsUpdatedAtRef.current = Date.now(); LS.set(updatedAtKey, prefsUpdatedAtRef.current);
+      setPrefs((current) => {
+        const overrides = { ...current.readReceiptOverrides };
+        const key = receiptPreferenceKey(conversationId);
+        if (on === undefined) delete overrides[key]; else overrides[key] = on;
+        return { ...current, readReceiptOverrides: overrides };
+      });
+    },
     enableSyncAcrossDevices: async () => {
       if (mode !== "wallet") return { ok: false, message: "Connect a wallet before enabling encrypted sync." };
       setSyncState((s) => ({ ...s, isEncrypting: true }));
@@ -909,8 +923,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const markRead = useCallback(async (throughMessageId: string) => {
     if (!activeId) return;
-    await transportRef.current?.markRead(activeId, { sendReceipt: prefs.readReceiptsDefault, throughMessageId });
-  }, [activeId, prefs.readReceiptsDefault]);
+    await transportRef.current?.markRead(activeId, { sendReceipt: receiptOverride(prefs.readReceiptOverrides, activeId) ?? prefs.readReceiptsDefault, throughMessageId });
+  }, [activeId, prefs.readReceiptsDefault, prefs.readReceiptOverrides]);
 
   const enableMessaging = useCallback(async (opts?: { revokeStale?: boolean }) => {
     const t = transportRef.current;

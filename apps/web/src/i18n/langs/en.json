@@ -61,5 +61,9 @@
   "thread.latest": "Latest messages",
   "thread.refresh": "Refresh messages",
   "thread.loadingHistory": "Loading messages…",
-  "thread.earlierReply": "Reply to an earlier message"
+  "thread.earlierReply": "Reply to an earlier message",
+  "thread.receipts": "Send read receipts",
+  "thread.receiptsDefault": "Use global setting",
+  "thread.receiptsOn": "On",
+  "thread.receiptsOff": "Off"
 }
