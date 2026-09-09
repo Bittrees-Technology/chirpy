@@ -40,3 +40,18 @@ it("keeps separate drafts when switching conversations", async () => {
   await act(async () => root.render(React.createElement(Thread)));
   expect(container.querySelector("input").value).toBe("first draft");
 });
+
+it("does not pull a reader away from older messages when new messages arrive", async () => {
+  const history = container.querySelector('[role="region"]');
+  Object.defineProperties(history, { scrollHeight: { value: 1000, configurable: true }, clientHeight: { value: 100, configurable: true }, scrollTop: { value: 0, writable: true, configurable: true } });
+  await act(async () => history.dispatchEvent(new Event("scroll", { bubbles: true })));
+  vi.mocked(HTMLElement.prototype.scrollIntoView).mockClear();
+  state.messages = [{ id: "new", conversationId: "dm", sender: "0x2", body: "new message", sentAt: Date.now() }] as any;
+  await act(async () => root.render(React.createElement(Thread)));
+  expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
+  expect(container.textContent).toContain("New messages — jump to latest");
+  const jump = Array.from(container.querySelectorAll("button")).find((b: any) => b.textContent.includes("jump to latest")) as HTMLElement;
+  await act(async () => jump.click());
+  expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+  state.messages = [];
+});

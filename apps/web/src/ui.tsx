@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useId, useLayoutEffect, useRef } from "react";
+import { useI18n } from "./i18n";
 
 export const shortAddr = (a: string) =>
   a && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
@@ -66,16 +67,38 @@ export function Modal(
   { title, onClose, children, wide }:
   { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean },
 ) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const { t } = useI18n();
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current!;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialog.showModal();
+    return () => { dialog.close(); if (opener?.isConnected) opener.focus(); };
+  }, []);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className={`modal ${wide ? "modal-wide" : ""}`} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2>{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
-        </div>
-        <div className="modal-body">{children}</div>
+    <dialog ref={dialogRef} className={`modal ${wide ? "modal-wide" : ""}`} aria-labelledby={titleId}
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      onKeyDown={(event) => {
+        if (event.key !== "Tab") return;
+        const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])'
+        )).filter((element) => element.getClientRects().length > 0 && element.tabIndex >= 0);
+        const first = items[0]; const last = items.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
+      }}>
+      <div className="modal-head">
+        <h2 id={titleId}>{title}</h2>
+        <button className="icon-btn" onClick={onClose} aria-label={t("common.close", "Close")}>✕</button>
       </div>
-    </div>
+      <div className="modal-body">{children}</div>
+    </dialog>
   );
 }
 

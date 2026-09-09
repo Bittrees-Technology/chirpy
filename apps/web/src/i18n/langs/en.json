@@ -3,7 +3,6 @@
   "nav.rooms": "Rooms",
   "nav.settings": "Settings",
   "settings.language": "Language",
-
   "list.searchChats": "Search chats",
   "list.searchRooms": "Search rooms",
   "list.newChat": "+ Chat",
@@ -19,7 +18,6 @@
   "list.emptyRoomsHint": "+ Room to create a token-gated community space",
   "list.noResultsTitle": "No results",
   "list.noResultsHint": "Try another search",
-
   "thread.selectTitle": "Select a conversation",
   "thread.selectHint": "or start a new one from the left",
   "thread.noMessagesTitle": "No messages yet",
@@ -31,5 +29,18 @@
   "thread.readOnly": "🔒 This room is read-only. Posting is frozen.",
   "thread.replyingTo": "Replying to:",
   "thread.messagePrefix": "Message",
-  "thread.send": "Send"
+  "thread.send": "Send",
+  "common.close": "Close",
+  "thread.back": "Back to chats",
+  "thread.history": "Message history",
+  "thread.reactWith": "React with",
+  "thread.reply": "Reply",
+  "thread.cancelReply": "Cancel reply",
+  "thread.newMessages": "New messages — jump to latest",
+  "thread.draftKept": "Your draft has been kept.",
+  "thread.roomId": "Room ID",
+  "thread.joinToSend": "Join this room to send messages.",
+  "thread.compose": "Write a message",
+  "thread.sending": "Sending…",
+  "thread.actionFailed": "This action failed. Try again."
 }
