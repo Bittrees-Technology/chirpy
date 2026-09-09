@@ -252,3 +252,11 @@ Formatting tests cover selected-language times/dates and invalid timestamps. The
 Apple CI now generates the Xcode project and builds an unsigned simulator archive with the pinned Tauri CLI. Packaged bundle identity, simulator platform, executable and the `chirpy` return scheme are checked before installation. An isolated iPhone simulator installs and launches the app, requests its registered return URL, and retains launch and URL-confirmation screenshots for visual review. iOS may present an Open confirmation; URL dispatch alone does not prove completed handoff.
 
 This checks packaging and initial launch with XMTP dev and an inert API origin. It does not establish wallet handoff, authenticated messaging, persistent WKWebView storage, signing, TestFlight or physical-device acceptance. Production release artifacts still require the separate signed release workflow and service readiness gates.
+
+## Organization collection capacity
+
+Creation/import rejects a new organization before the saved collection exceeds the 1,000-entry reload limit. Replacing an existing organization remains possible at capacity, and removal immediately frees a slot. The same collection reference is updated before React renders, preventing multiple additions in one event from bypassing the limit. Limit errors are available in English and Spanish.
+
+The provider regression fails against the prior implementation and verifies back-to-back additions, replacement, removal, slot reuse and a reload with all 1,000 entries intact and no recovery quarantine. Existing malformed-store and read/write failure coverage remains in place.
+
+Extended acceptance was rerun on main `75ecae90da4fd2b6ddef7a9571e0bbfbdd4011ea`: [run 34357787147](https://github.com/Bittrees-Technology/chirpy/actions/runs/34357787147) passed both live XMTP dev browser tests under native CSP, encrypted fresh-volume restore with installation/message continuity and wrong-key rejection, and the membership audit/enforcement drill. The membership drill uses deterministic RPC/balance responses; production on-chain and operator acceptance remain outstanding.

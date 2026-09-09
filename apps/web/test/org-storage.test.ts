@@ -44,3 +44,34 @@ it.each(['read', 'write'])('reports a storage %s failure without discarding the 
     } else expect(state.orgs.some(org => org.branding.name === 'Preserved')).toBe(true);
   } finally { await act(async () => root.unmount()); }
 });
+
+it('rejects additions beyond the reload limit but permits replacement and removal at capacity', async () => {
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  const orgs = Array.from({ length: 999 }, (_, i) => ({ ...createOrg({ name: `Org ${i}` }), id: `org_${i}` }));
+  const saved = new Map([[ORGANIZATIONS_KEY, JSON.stringify({ version: 2, orgs, recovery: [] })]]);
+  vi.stubGlobal('localStorage', { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => saved.set(key, value) });
+  let state: ReturnType<typeof useOrgs>;
+  function Probe() { state = useOrgs(); return null; }
+  const root = createRoot(document.createElement('div'));
+  try {
+    await act(async () => root.render(React.createElement(OrgProvider, null, React.createElement(Probe))));
+    const final = createOrg({ name: 'Final slot' });
+    await act(async () => {
+      state.addOrg(final);
+      // Calls in the same render must not bypass the limit through a stale closure.
+      expect(() => state.addOrg(createOrg({ name: 'Overflow' }))).toThrow('Organization limit reached');
+    });
+    expect(state.orgs).toHaveLength(1001); // Includes Personal.
+    const replacement = { ...final, branding: { ...final.branding, name: 'Updated' } };
+    await act(async () => state.addOrg(replacement));
+    expect(state.activeOrg.branding.name).toBe('Updated');
+    await act(async () => {
+      state.removeOrg(final.id);
+      state.addOrg(createOrg({ name: 'Reused slot' }));
+    });
+    const reloaded = loadOrganizationStore({ getItem: key => saved.get(key) ?? null });
+    expect(reloaded.orgs).toHaveLength(1000);
+    expect(reloaded.recovery).toEqual([]);
+    expect(reloaded.orgs.at(-1)?.branding.name).toBe('Reused slot');
+  } finally { await act(async () => root.unmount()); }
+});

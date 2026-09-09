@@ -275,6 +275,7 @@
   "dialog.tokenId": "ID del token",
   "status.invalidJson": "JSON no válido",
   "status.importLimit": "La configuración supera el límite de importación de 256 KB.",
+  "status.orgLimitReached": "Se ha alcanzado el límite de organizaciones. Elimina una organización antes de añadir otra.",
   "status.orgStorageUnreadable": "No se ha podido leer el almacenamiento de organizaciones. Restablece el acceso antes de importar o crear una organización.",
   "status.invalidField": "{field} no es válido",
   "status.invalidConfig": "Configuración de organización no válida: {details}",

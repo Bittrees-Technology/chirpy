@@ -1,5 +1,6 @@
 import { parseOrg, type OrgConfig } from '@app/core';
 
+export const MAX_SAVED_ORGANIZATIONS = 1000;
 export const ORGANIZATIONS_KEY = 'chat:orgs:v2';
 export const LEGACY_ORGANIZATIONS_KEY = 'chat:orgs:v1';
 export interface OrganizationStore {
@@ -21,7 +22,7 @@ export function decodeOrganizationStore(raw: string | null, legacy = false): Org
     candidates = parsed.orgs; recovery = parsed.recovery;
   } else return { ...empty, recovery: [raw] };
   // Preserve an oversized store intact rather than iterating an unbounded list at startup.
-  if (candidates.length > 1000) return { ...empty, recovery: [raw] };
+  if (candidates.length > MAX_SAVED_ORGANIZATIONS) return { ...empty, recovery: [raw] };
   const orgs: OrgConfig[] = [];
   const ids = new Set<string>();
   let rejected = false;
