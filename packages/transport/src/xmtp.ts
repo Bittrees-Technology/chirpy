@@ -269,6 +269,10 @@ export class XmtpTransport implements Transport {
   private stream: StreamHandle | null = null;
   private streamStopped = false;
   private streamRunning = false;
+  private streamHealthy = false;
+  private fullRefreshRequired = true;
+  private dirtyConversations = new Set<string>();
+  private mappedConversations = new Map<string, Conversation>();
   private conversationRefresh: Promise<Conversation[]> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private lastReceiptAt = new Map<string, number>();
@@ -658,6 +662,11 @@ export class XmtpTransport implements Transport {
     };
   }
 
+  private invalidateConversation(id: string) {
+    this.dirtyConversations.add(id);
+    this.changeCallback?.();
+  }
+
   listConversations(): Promise<Conversation[]> {
     if (!this.conversationRefresh) {
       const refresh = this.refreshConversations();
@@ -672,14 +681,27 @@ export class XmtpTransport implements Transport {
   private async refreshConversations(): Promise<Conversation[]> {
     const client = this.client;
     if (!client || this.status !== "ready") return [];
+    const full = this.fullRefreshRequired || !this.streamHealthy;
+    this.fullRefreshRequired = false;
+    const dirty = this.dirtyConversations;
+    this.dirtyConversations = new Set();
     try {
-      await client.conversations.sync();
-      await client.conversations.syncAll();
+      if (full) {
+        await client.conversations.sync();
+        await client.conversations.syncAll();
+      }
+      // Streamed messages are already persisted by the SDK. Listing local
+      // conversations also picks up newly received conversations and metadata.
       const list = await client.conversations.list();
       this.conversations = new Map(list.map((conversation) => [conversation.id, conversation]));
       // Keep known restrictions available while asynchronous mapping is in flight.
-      const mapped = await mapConversations(list, (conversation) => this.mapConversation(conversation));
-      const scoped = mapped.filter((c) => c.kind === "dm" || c.namespace === this.org.namespace ||
+      const changed = full ? list : list.filter(conversation => dirty.has(conversation.id) || !this.mappedConversations.has(conversation.id));
+      const updates = await mapConversations(changed, (conversation) => this.mapConversation(conversation));
+      const next = full ? new Map<string, Conversation>() : new Map(this.mappedConversations);
+      for (const conversation of updates) next.set(conversation.id, conversation);
+      for (const id of next.keys()) if (!this.conversations.has(id)) next.delete(id);
+      this.mappedConversations = next;
+      const scoped = [...next.values()].filter((c) => c.kind === "dm" || c.namespace === this.org.namespace ||
         (!c.namespace && this.org.namespace === "personal"));
       let directory: Conversation[] = [];
       try { directory = await this.publishedRooms(); this.warning = undefined; }
@@ -699,6 +721,8 @@ export class XmtpTransport implements Transport {
       }
       return scoped.sort((a, b) => (b.lastMessage?.sentAt ?? 0) - (a.lastMessage?.sentAt ?? 0));
     } catch (error) {
+      this.fullRefreshRequired = true;
+      for (const id of dirty) this.dirtyConversations.add(id);
       if (isUnregisteredIdentity(error)) {
         forgetEnabled(this.myAddress);
         this.client = null;
@@ -783,6 +807,7 @@ export class XmtpTransport implements Transport {
       messageId = await conversation.sendText(text);
     }
 
+    this.invalidateConversation(conversationId);
     return {
       id: messageId,
       conversationId,
@@ -818,6 +843,7 @@ export class XmtpTransport implements Transport {
       content: emoji,
       schema: sdk.ReactionSchema.Unicode,
     });
+    this.invalidateConversation(conversationId);
   }
 
   async markRead(conversationId: string, options?: { sendReceipt: boolean; throughMessageId?: string }): Promise<void> {
@@ -828,7 +854,7 @@ export class XmtpTransport implements Transport {
     const room = this.isRoomConversation(sdk, conversation);
     if (!room && await conversation.consentState() !== sdk.ConsentState.Allowed) return;
     if (!this.readState.advance(conversationId, cursor.at)) return;
-    this.changeCallback?.();
+    this.invalidateConversation(conversationId);
     if (room || options?.sendReceipt !== true) return;
     const now = Date.now();
     if (now - (this.lastReceiptAt.get(conversationId) ?? 0) < 3000) return;
@@ -849,7 +875,7 @@ export class XmtpTransport implements Transport {
     const sdk = await this.loadSdk();
     if (this.isRoomConversation(sdk, conversation)) throw new Error("Consent controls apply to direct messages.");
     await conversation.updateConsentState(state === "allowed" ? sdk.ConsentState.Allowed : sdk.ConsentState.Denied);
-    this.changeCallback?.();
+    this.invalidateConversation(conversationId);
   }
 
   async startDm(address: string, handle?: string): Promise<Conversation> {
@@ -865,6 +891,7 @@ export class XmtpTransport implements Transport {
     this.peerByConversation.set(conversation.id, target);
     savePeerCache(this.peerByConversation);
     const mapped = await this.mapConversation(conversation);
+    this.invalidateConversation(conversation.id);
     return { ...mapped, title: handle || mapped.title };
   }
 
@@ -911,6 +938,7 @@ export class XmtpTransport implements Transport {
 
     const seedId = await group.sendText(`#${input.title} created.`);
     const mapped = await this.mapRoomConversation(group);
+    this.invalidateConversation(group.id);
     return {
       ...mapped,
       lastMessage: {
@@ -962,6 +990,7 @@ export class XmtpTransport implements Transport {
 
     await this.requireClient().conversations.sync();
     await this.requireClient().conversations.syncAll();
+    this.fullRefreshRequired = true;
     this.changeCallback?.();
   }
 
@@ -979,7 +1008,7 @@ export class XmtpTransport implements Transport {
     if (!group.updateDescription) throw new Error("Room policy updates are unavailable.");
     await group.updateDescription(roomMetaDescription(next));
     this.roomMeta.set(conversationId, next);
-    this.changeCallback?.();
+    this.invalidateConversation(conversationId);
   }
 
   subscribe(cb: () => void): () => void {
@@ -990,6 +1019,8 @@ export class XmtpTransport implements Transport {
     return () => {
       if (this.changeCallback === cb) this.changeCallback = null;
       this.streamStopped = true;
+      this.streamHealthy = false;
+      this.fullRefreshRequired = true;
       if (this.pollTimer) clearInterval(this.pollTimer);
       this.pollTimer = null;
       this.cleanupEvents?.();
@@ -1003,6 +1034,7 @@ export class XmtpTransport implements Transport {
     if (this.pollTimer) clearInterval(this.pollTimer);
     const sync = () => {
       if (this.status !== "ready" || (typeof document !== "undefined" && document.visibilityState === "hidden")) return;
+      this.fullRefreshRequired = true;
       if (!this.streamRunning) void this.runStream(cb);
       cb(); // The subscriber owns refresh; polling must not duplicate it.
     };
@@ -1031,23 +1063,34 @@ export class XmtpTransport implements Transport {
     try {
       while (!this.streamStopped && this.status === "ready") {
         try {
-          this.stream = await client.conversations.streamAllMessages() as StreamHandle;
+          const recover = () => {
+            this.streamHealthy = false;
+            this.fullRefreshRequired = true;
+            if (!this.streamStopped) cb();
+          };
+          this.stream = await client.conversations.streamAllMessages({
+            onError: recover, onFail: recover, onRetry: recover, onEnd: recover,
+            onRestart: () => { recover(); this.streamHealthy = !this.streamStopped; },
+          }) as StreamHandle;
+          this.streamHealthy = true;
           for await (const message of this.stream) {
             if (this.streamStopped) break;
-            if (message.conversationId) {
-              const conversation = await client.conversations.getConversationById(message.conversationId);
-              if (conversation) this.conversations.set(message.conversationId, conversation as XmtpConversation);
-            }
+            this.streamHealthy = true;
+            if (message.conversationId) this.dirtyConversations.add(message.conversationId);
+            else this.fullRefreshRequired = true;
             cb();
           }
         } catch {
           /* reconnect below */
         }
+        this.streamHealthy = false;
+        this.fullRefreshRequired = true;
         if (this.streamStopped) break;
         cb();
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     } finally {
+      this.streamHealthy = false;
       this.streamRunning = false;
     }
   }

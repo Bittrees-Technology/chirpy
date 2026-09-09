@@ -23,7 +23,7 @@ The [production readiness ledger](PRODUCTION-READINESS.md) records implementatio
 ## Product and integration follow-ups
 
 - Incoming receipt times and per-chat outgoing overrides are implemented; retain device acceptance coverage.
-- Incremental conversation synchronization and real-device large-inbox benchmarks; rendering/profile work and SDK mapping concurrency are bounded.
+- Reduce initial/periodic full synchronization and local full-list enumeration costs, and complete real-device large-inbox benchmarks. Streamed updates refresh affected summaries; rendering/profile work and SDK mapping concurrency are bounded.
 - Broader translations and mobile/accessibility acceptance (room administrator controls are implemented).
 - Trusted role/power/delegate/multi-chain resolvers and verified presets where needed.
 - Long-running multi-device sync/conflict acceptance and explicit deletion/unblock merge semantics.
