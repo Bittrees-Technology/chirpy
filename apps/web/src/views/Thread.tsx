@@ -26,6 +26,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [consentPending, setConsentPending] = useState(false);
   const [joinPending, setJoinPending] = useState(false);
+  const [policyPending, setPolicyPending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -97,6 +98,8 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const isRoom = activeConversation.kind === "room";
   const policy: Policy | null = isRoom ? (activeConversation.policy ?? null) : null;
   const readOnly = policy?.mode === "read-only";
+  const isAdmin = isRoom && activeConversation.isAdmin === true;
+  const postingBlocked = readOnly && !isAdmin;
   const needsConsent = !isRoom && (activeConversation.pending || activeConversation.blocked);
   const changeConsent = async (state: "allowed" | "denied") => {
     setConsentPending(true);
@@ -107,8 +110,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const isGatedRoom = isRoom && Boolean(activeConversation.gate?.rules.length);
   const isMember = activeConversation.peers.some((peer) => peer.toLowerCase() === identity.address.toLowerCase());
   const toggleFreeze = () => {
-    if (!policy) return;
-    void setRoomPolicy({ ...policy, mode: readOnly ? "active" : "read-only" }).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
+    if (!policy || !isAdmin || policyPending) return;
+    setPolicyPending(true);
+    void setRoomPolicy({ ...policy, mode: readOnly ? "active" : "read-only" }).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") })).finally(() => setPolicyPending(false));
   };
   const requestJoin = async () => {
     setJoinPending(true);
@@ -143,9 +147,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                 {joinPending ? t("thread.requesting", "Requesting...") : t("thread.requestJoin", "Request to join")}
               </Button>
             )}
-            {isRoom && policy && (
-              <Button variant={readOnly ? "primary" : "ghost"} onClick={toggleFreeze}>
-                {readOnly ? t("thread.unfreeze", "Unfreeze") : t("thread.freeze", "Freeze")}
+            {isAdmin && policy && (
+              <Button variant={readOnly ? "primary" : "ghost"} disabled={policyPending} onClick={toggleFreeze}>
+                {readOnly ? t("thread.unfreeze", "Resume member posting") : t("thread.freeze", "Pause member posting")}
               </Button>
             )}
           </div>
@@ -206,11 +210,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                 </div>
                 <div className="msg-tools">
                   {EMOJIS.map((e) => (
-                    <button key={e} className="react-btn" disabled={Boolean(needsConsent || readOnly)} aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
+                    <button key={e} className="react-btn" disabled={Boolean(needsConsent || postingBlocked)} aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
                       void react(m.id, e).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
                     }}>{e}</button>
                   ))}
-                  <button className="react-btn" disabled={Boolean(needsConsent || readOnly)} aria-label={t("thread.reply", "Reply")} onClick={() => setReplyTo(m.id)}>↩</button>
+                  <button className="react-btn" disabled={Boolean(needsConsent || postingBlocked)} aria-label={t("thread.reply", "Reply")} onClick={() => setReplyTo(m.id)}>↩</button>
                 </div>
                 {m.reactions && Object.keys(m.reactions).length > 0 && (
                   <div className="msg-reactions">
@@ -236,7 +240,8 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
       {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{sendError.message} {t("thread.draftKept", "Your draft has been kept.")}</div>}
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
-      {needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : readOnly ? (
+      {readOnly && isAdmin && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chirpy. Administrators can still post; other clients may ignore this policy.")}</div>}
+      {needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : postingBlocked ? (
         <div className="composer readonly-note">{t("thread.readOnly", "Member posting is paused in Chirpy. Other clients may still send messages.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>

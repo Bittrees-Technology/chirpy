@@ -24,7 +24,7 @@ The [production readiness ledger](PRODUCTION-READINESS.md) records implementatio
 
 - Incoming receipt times and per-chat outgoing overrides are implemented; retain device acceptance coverage.
 - Very large inbox performance and incremental conversation synchronization.
-- Consistent room administrator controls, broader translations and mobile/accessibility acceptance.
+- Broader translations and mobile/accessibility acceptance (room administrator controls are implemented).
 - Trusted role/power/delegate/multi-chain resolvers and verified presets where needed.
 - Long-running multi-device sync/conflict acceptance and explicit deletion/unblock merge semantics.
 - Shared UI/embed packaging and Governance/Research migration with rollback tests; framing requires an intentional origin allowlist.

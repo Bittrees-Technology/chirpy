@@ -30,6 +30,8 @@ export interface Conversation {
   gate?: Gate;
   /** Effective action policy (rooms only) — org default merged with room override. */
   policy?: Policy;
+  /** Current identity's room role, derived from the transport; actions recheck it. */
+  isAdmin?: boolean;
   lastMessage?: ChatMessage;
   /** Latest peer receipt time; XMTP receipts do not identify an exact message. */
   lastReadReceiptAt?: number;

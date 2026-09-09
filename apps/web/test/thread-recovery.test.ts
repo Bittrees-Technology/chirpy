@@ -103,3 +103,18 @@ it("shows receipt time only in accepted peer DMs, without claiming a message was
     expect(container.querySelector('[data-testid="peer-receipt"]')).toBeNull();
   }
 });
+
+it("hides room controls without authority and keeps administrator posting available during a pause", async () => {
+  state.activeConversation = { id: "room", kind: "room", title: "Room", peers: ["0x1"], policy: { mode: "read-only" } } as any;
+  await act(async () => root.render(React.createElement(Thread)));
+  expect(container.textContent).not.toContain("Resume member posting");
+  expect(container.querySelector(".composer-input")).toBeNull();
+  state.activeConversation = { ...state.activeConversation, isAdmin: true } as any;
+  await act(async () => root.render(React.createElement(Thread)));
+  expect(container.textContent).toContain("Resume member posting");
+  expect(container.querySelector(".composer-input")).not.toBeNull();
+  state.activeConversation = { ...state.activeConversation, isAdmin: false } as any;
+  await act(async () => root.render(React.createElement(Thread)));
+  expect(container.textContent).not.toContain("Resume member posting");
+  expect(container.querySelector(".composer-input")).toBeNull();
+});

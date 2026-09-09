@@ -172,7 +172,7 @@ export class MockTransport implements Transport {
     const target = this.snap.conversations.find((c) => c.id === conversationId);
     if (target?.blocked || target?.pending) throw new Error("Accept or unblock this conversation before sending.");
     if (target?.kind === "room" && target.policy) {
-      const decision = evaluatePolicy(target.policy, { type: "send" });
+      const decision = evaluatePolicy(target.policy, { type: "send" }, { isAdmin: target.isAdmin === true });
       if (!decision.allowed) throw new Error(decision.reason || "Blocked by room policy.");
     }
     const msg: ChatMessage = {
@@ -209,7 +209,7 @@ export class MockTransport implements Transport {
     const target = this.snap.conversations.find((c) => c.id === conversationId);
     if (target?.blocked || target?.pending) throw new Error("Accept or unblock this conversation before reacting.");
     if (target?.kind === "room" && target.policy) {
-      const decision = evaluatePolicy(target.policy, { type: "send" });
+      const decision = evaluatePolicy(target.policy, { type: "send" }, { isAdmin: target.isAdmin === true });
       if (!decision.allowed) throw new Error(decision.reason || "Blocked by room policy.");
     }
     const msg = (this.snap.messages[conversationId] || []).find((m) => m.id === messageId);
@@ -259,7 +259,7 @@ export class MockTransport implements Transport {
   async createRoom(input: StartRoomInput): Promise<Conversation> {
     const conv: Conversation = {
       id: uid("room"), kind: "room", title: input.title, description: input.description,
-      peers: [this.identity.address], gate: input.gate,
+      peers: [this.identity.address], gate: input.gate, isAdmin: true,
       policy: mergePolicy(this.org.policy, input.policy), unread: 0,
     };
     this.snap.conversations.push(conv);
@@ -279,6 +279,7 @@ export class MockTransport implements Transport {
   async setRoomPolicy(conversationId: string, policy: Policy): Promise<void> {
     const conv = this.snap.conversations.find((c) => c.id === conversationId && c.kind === "room");
     if (!conv) return;
+    if (conv.isAdmin !== true) throw new Error("Admins only.");
     conv.policy = policy;
     this.persist(); this.emit();
   }

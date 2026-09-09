@@ -571,6 +571,7 @@ export class XmtpTransport implements Transport {
       namespace: meta.namespace,
       gate: meta.gate,
       policy: meta.policy,
+      isAdmin: await this.isCurrentUserAdmin(conversation).catch(() => false),
       lastMessage,
       unread: await this.unreadCount(conversation),
     };
