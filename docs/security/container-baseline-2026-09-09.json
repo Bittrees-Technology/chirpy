@@ -1,0 +1,189 @@
+{
+  "scanner": "Trivy 0.74.0",
+  "scannedAt": "2026-09-09T09:24:37.101887553Z",
+  "runtimeBase": "gcr.io/distroless/nodejs24-debian13:nonroot@sha256:774b7d020b24214835769e24c3544835526cd0288f0b094eae48e8b2c2429a79",
+  "high": 0,
+  "critical": 0,
+  "remainingFindings": [
+    {
+      "id": "CVE-2026-18374",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-18374"
+    },
+    {
+      "id": "CVE-2026-19499",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-19499"
+    },
+    {
+      "id": "CVE-2026-19542",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-19542"
+    },
+    {
+      "id": "CVE-2026-5435",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-5435"
+    },
+    {
+      "id": "CVE-2026-5450",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-5450"
+    },
+    {
+      "id": "CVE-2026-5928",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-5928"
+    },
+    {
+      "id": "CVE-2026-6238",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-6238"
+    },
+    {
+      "id": "CVE-2026-6368",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-6368"
+    },
+    {
+      "id": "CVE-2026-6791",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-6791"
+    },
+    {
+      "id": "CVE-2026-77117",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-77117"
+    },
+    {
+      "id": "CVE-2026-80489",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-80489"
+    },
+    {
+      "id": "CVE-2010-4756",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "LOW",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2010-4756"
+    },
+    {
+      "id": "CVE-2018-20796",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "LOW",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2018-20796"
+    },
+    {
+      "id": "CVE-2019-1010022",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "LOW",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2019-1010022"
+    },
+    {
+      "id": "CVE-2019-1010023",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "LOW",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2019-1010023"
+    },
+    {
+      "id": "CVE-2019-1010024",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "LOW",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2019-1010024"
+    },
+    {
+      "id": "CVE-2019-1010025",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "LOW",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2019-1010025"
+    },
+    {
+      "id": "CVE-2019-9192",
+      "package": "libc6",
+      "installedVersion": "2.41-12+deb13u3",
+      "severity": "LOW",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2019-9192"
+    },
+    {
+      "id": "CVE-2026-27171",
+      "package": "zlib1g",
+      "installedVersion": "1:1.3.dfsg+really1.3.1-1+b1",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-27171"
+    },
+    {
+      "id": "CVE-2026-85091",
+      "package": "zlib1g",
+      "installedVersion": "1:1.3.dfsg+really1.3.1-1+b1",
+      "severity": "MEDIUM",
+      "status": "affected",
+      "fixedVersion": null,
+      "tracker": "https://security-tracker.debian.org/tracker/CVE-2026-85091"
+    }
+  ]
+}

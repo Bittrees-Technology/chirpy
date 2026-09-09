@@ -2,9 +2,8 @@
 
 An org can run its own **gate service** — the XMTP gatekeeper that admits wallets to
 token-gated rooms — instead of using the Vercel deployment's `/api/room-join`. This is
-also the **recommended** way to run the gatekeeper at all: it uses `@xmtp/node-sdk`, whose
-native bindings don't run on Vercel's serverless runtime, so an always-on container (or any
-VM) is the right home for it.
+the supported production topology: the gatekeeper requires a durable database and one
+coordinated process, provided by an always-on container or VM.
 
 The gate runs the `server/room-join.js` handler the web app expects — it verifies a
 wallet signature, evaluates the room's gate with `@app/core`'s `evalGate`, and (as a room
@@ -69,3 +68,13 @@ required secrets to serve room joins.
 - **Censorship-resistance** — optionally front it with a reverse-proxy relay.
 
 The web deployment's `/api/room-join` is a fail-closed placeholder. It returns a clear 503 until each organization points to its external gate URL; it never starts a gatekeeper or imports native bindings. Shared server helpers and tests live outside the API route directory.
+
+## Restricted runtime
+
+The final image uses a minimal Node 24 / Debian 13 runtime with no shell or package manager. It runs as UID/GID 65532 (`nonroot`), with pinned base/dependency versions and an npm lockfile. The separate build stage audits the application dependencies before copying them into the runtime image. Docker Compose makes the application filesystem read-only, drops all Linux capabilities, prevents privilege escalation and limits process count. Only `/data` (persistent) and `/tmp` (ephemeral) are writable.
+
+New Docker named volumes inherit the image's `/data` ownership. Before upgrading an existing volume, stop the gate, preserve a backup, and give UID/GID 65532 ownership of its database directory. Other providers, including Fly mounts, must prepare writable ownership for UID 65532. Do not work around ownership failures by running the service as root.
+
+`node scripts/test-gate-container.mjs IMAGE` verifies the built image in isolated containers and removes its test volume afterward. CI requires this check, including a separate dependency audit during the image build; the monorepo audit alone does not cover its separate dependency graph.
+
+The final image is also scanned in CI for high/critical vulnerabilities with a pinned scanner. Lower-severity base-library findings are recorded in `docs/security/container-baseline-2026-09-09.json`; a clean application npm audit is not a whole-image security assessment.

@@ -9,7 +9,7 @@ We implement and merge independent changes in increasing complexity, while prese
 | 3 | Unread counts, request acceptance/rejection, blocking and receipts | DM consent merged in PR #6; unread cursors and visible-message receipt handling merged in PR #7 |
 | 4 | Wallet-specific preferences and revocable sync authorization | Wallet isolation merged in PR #8; expiring device authorization and atomic revocation merged in PR #9 |
 | 5 | Pagination, bounded refresh, long-history performance | Refresh coalescing merged in PR #12; bounded message pages and history navigation merged in PR #13 |
-| 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Pending |
+| 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Supported-rule UI and advisory policy hardening merged in PR #14; membership revalidation and operator moderation remain pending |
 | 7 | Dependency remediation, live probes, backup/restore and release acceptance | JavaScript dependency patches and required audit merged in PR #10; hosted sync probe passed; backup/restore and full release acceptance pending |
 | 8 | Production gate deployment and multi-wallet acceptance | Needs hosting/bot identity and reviewed room registry |
 | 9 | Public support/security/privacy/terms material | Support/security pages merged in PR #5 and GitHub private reporting enabled; privacy/terms still need actual operator/retention decisions |
@@ -94,3 +94,9 @@ The production room editor offers mainnet token holdings, explicit ERC-1155 IDs,
 Posting pauses and attachment rules are explicitly Chirpy-client policies. The current XMTP permission API governs membership, administrators and metadata, and provides no posting-permission update. Other clients can ignore a posting pause; no history revocation is promised. Reactions now obey the same gate/policy checks as sends. Super-admins are recognized for policy updates, and local policy changes only after the SDK confirms publication. Automated membership revalidation and an operator moderation/reporting process remain outstanding.
 
 Validation: 104 tests and eight browser tests pass, including unsupported gate controls, paused-room reactions, non-admin denial and failed-policy rollback. Both type checks pass.
+
+## Gate container restrictions
+
+The gate image uses a minimal Node 24 / Debian 13 runtime without shell or package-manager tools, and pins its base digest and separate npm dependency graph. It runs as UID 65532. Compose uses a read-only root filesystem, no Linux capabilities, no privilege escalation, bounded process count and an ephemeral temporary directory. Persistent data ownership is explicit. CI now requires a real container check for native SDK loading, HTTP rejection behavior, filesystem/privilege restrictions, volume persistence across restart and an npm audit in the dependency build stage. This restart check does not yet constitute an XMTP database backup/restore drill.
+
+The full image scan prompted removal of the general-purpose base and bundled package managers. The final image reports zero high/critical findings and zero application JavaScript findings. Trivy still reports 13 medium and seven low base-library findings with no fixed version in the scanned distribution; see `docs/security/container-baseline-2026-09-09.json`. These remain tracked for applicability review and upstream fixes. CI blocks high/critical image findings, including unfixed ones; it does not suppress the recorded medium/low findings.

@@ -4,8 +4,10 @@
   "type": "module",
   "description": "Runtime deps for the self-hosted Chirpy gate (selfhost/gate-server.mjs). Kept separate from the monorepo's pnpm setup so the container image stays lean.",
   "dependencies": {
-    "@xmtp/node-sdk": "^6.0.0",
-    "tsx": "^4.19.2",
-    "viem": "^2.53.1"
+    "@xmtp/node-sdk": "6.0.0",
+    "viem": "2.53.1"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   }
 }
