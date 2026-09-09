@@ -210,3 +210,9 @@ The existing ignored updater private key signed a synthetic file whose Ed25519 s
 Sync setup and remote merges now reject stale results when a newer local preference edit occurs during wallet authorization, remote reads, encryption, or write acknowledgments. Receipt opt-outs are preserved locally and setup reports that a retry is needed. Local edit timestamps advance monotonically even when the clock repeats or moves backwards.
 
 Regression tests delay authorization, a remote read and a write acknowledgment while changing both receipt preferences. All three fail against the previous implementation and pass with the guard. This addresses a same-device race; extended real-device offline/conflict acceptance and legacy deletion semantics remain outstanding.
+
+## Validated language preferences and document language
+
+Stored or runtime language values must be registered dictionary keys. Prototype names such as constructor and __proto__ no longer enter the translation state and crash rendering. Language changes also update the document language so assistive technologies receive the correct pronunciation language.
+
+Five regression cases cover malformed/prototype values, supported persisted Spanish, runtime rejection, persistence and document-language updates. They fail against the previous implementation. Broader translation coverage and assistive-technology acceptance remain outstanding.
