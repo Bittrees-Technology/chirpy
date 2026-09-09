@@ -281,6 +281,7 @@
   "status.invalidConfig": "Invalid org config: {details}",
   "dialog.defaultPowerLabel": "Power",
   "nav.primary": "Primary",
+  "thread.invalidRoom": "Room configuration is invalid or unsupported. Ask an administrator to repair it.",
   "thread.member": "{count} member",
   "thread.members": "{count} members",
   "thread.gated": "gated",

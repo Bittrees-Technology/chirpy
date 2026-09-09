@@ -118,3 +118,12 @@ it("hides room controls without authority and keeps administrator posting availa
   expect(container.textContent).not.toContain("Resume member posting");
   expect(container.querySelector(".composer-input")).toBeNull();
 });
+
+it('shows a repair alert and disables room actions for invalid configuration even for an admin', async () => {
+  state.activeConversation = { id: 'room', kind: 'room', title: 'Room', peers: ['0x1'], policy: { mode: 'read-only' }, gate: { combine: 'any', rules: [] }, isAdmin: true, configurationError: true } as any;
+  await act(async () => root.render(React.createElement(Thread)));
+  expect(container.querySelector('[role="alert"]').textContent).toContain('Room configuration is invalid or unsupported');
+  expect(container.querySelector('.composer-input')).toBeNull();
+  expect(container.textContent).not.toContain('Resume member posting');
+  expect(container.textContent).not.toContain('Administrators can still post');
+});

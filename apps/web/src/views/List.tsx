@@ -158,7 +158,7 @@ export function ConversationColumn(
                   {c.lastMessage && <span className="list-item-time">{fmtTime(c.lastMessage.sentAt, lang)}</span>}
                 </div>
                 <div className="list-item-bottom">
-                  <span className="list-item-preview">{c.lastMessage?.body ?? c.description ?? "—"}</span>
+                  <span className="list-item-preview">{c.configurationError ? t("thread.invalidRoom", "Room configuration is invalid or unsupported. Ask an administrator to repair it.") : c.lastMessage?.body ?? c.description ?? "—"}</span>
                   {c.unread > 0 && <span className="badge">{c.unread}</span>}
                 </div>
               </div>

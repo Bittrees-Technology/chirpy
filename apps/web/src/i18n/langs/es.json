@@ -281,6 +281,7 @@
   "status.invalidConfig": "Configuración de organización no válida: {details}",
   "dialog.defaultPowerLabel": "Poder de voto",
   "nav.primary": "Principal",
+  "thread.invalidRoom": "La configuración de la sala no es válida o no es compatible. Pide a un administrador que la repare.",
   "thread.member": "{count} miembro",
   "thread.members": "{count} miembros",
   "thread.gated": "con acceso restringido",

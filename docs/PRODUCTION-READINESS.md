@@ -288,3 +288,11 @@ A 10,000-conversation regression remaps one entry for one streamed update; the p
 ## Native validation covers shared packages
 
 Apple validation now runs when shared core/transport packages or root TypeScript/test configuration change, in addition to the web/native directory and dependency manifests. Those shared packages are bundled into the native frontend; excluding them could leave a native build untested after a messaging change. The workflow change itself exercises macOS compilation and the generated iOS simulator archive/launch path against the current shared code.
+
+## Untrusted room metadata validation
+
+Received Chirpy room metadata validates its version, namespace, description, gate and policy before entering conversation state. Encoded gates decode strictly; damaged data cannot silently become an open gate. The metadata envelope is limited to 64 KiB UTF-8 and a structured room description to 10,000 characters. Valid legacy plain descriptions, omitted legacy defaults, and supported object/encoded gates remain readable. Unsupported production gate types and malformed structured metadata are marked unavailable for room actions.
+
+Invalid configuration yields a safe read-only policy and a repair message in English/Spanish. The UI disables composition, reactions and policy/join controls; transport checks reject writes even for administrators. Directory metadata cannot erase the error. Creation and policy updates use the same validation before writing network metadata, avoiding newly created rooms that fail their own read validation. This does not grant a client authority to repair an unknown gate or weaken protocol membership.
+
+Regressions cover nested malformed values, corrupt encoding, unknown versions, unsupported gates, resource bounds, directory overlays, writer validation and the repair UI. An integrated case reproduces an unintended synthetic send through the previous damaged-gate fallback and rejects it with the new boundary.
