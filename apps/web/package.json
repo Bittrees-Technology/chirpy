@@ -16,7 +16,8 @@
     "@tauri-apps/plugin-updater": "^2",
     "@walletconnect/ethereum-provider": "^2.23.9",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "viem": "^2.53.1"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
