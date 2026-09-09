@@ -1,100 +1,40 @@
-# Deploying the Chirpy gatekeeper gate
+# Deploying the Chirpy gate
 
-This file covers the gate deployment mechanics. For the operator rollout order,
-health checks, rollback commands, and incident recovery flow across both the web
-and gate surfaces, use [`../docs/ROLLOUT-RUNBOOK.md`](../docs/ROLLOUT-RUNBOOK.md).
+The native XMTP gate runs on one always-on host with durable storage. Vercel's room-join handler deliberately returns 503; it never loads the native SDK. The tested container supplies the native runtime, runs as UID/GID 65532 and retains filesystem/privilege restrictions.
 
-The gate runs the XMTP gatekeeper bot that admits wallets to token-gated rooms. It **must**
-run on an always-on host with a modern glibc — **not** Vercel serverless. Verified end-to-end
-in a container: `@xmtp/node-sdk`'s native binding needs **GLIBC ≥ 2.38** and the **system CA
-bundle** (`ca-certificates`) for its gRPC/TLS, both baked into `gate.Dockerfile` (Debian 13
-"trixie"). On Vercel the same code 500s (`GrpcBuilder transport error` / `Cannot find native
-binding`) because the serverless runtime has neither.
+## Configure a new installation
 
-## 1. Generate the gatekeeper key (keep it secret)
+Install repository dependencies with the pinned pnpm version and use Node 24 or newer for setup. Choose the host, TLS domain, incident owner and secret custody before production activation. Prepare a nonempty reviewed registry using [PRIORITY-FIXES.md](../docs/PRIORITY-FIXES.md); the empty example grants no access.
 
-```bash
-node selfhost/gen-gatekeeper-key.mjs      # prints the 0x private key + its address
+Run from the repository root:
+
+```sh
+bash selfhost/install.sh
 ```
 
-Note both: the **private key** → the gate host's `XMTP_GATEKEEPER_PRIVATE_KEY`; the **address**
-→ the web app's `VITE_GATEKEEPER_ADDRESS` (step 3) and room super-admin (step 4).
+The installer asks for the HTTPS domain/origin/RPC, reviewed registry and existing wallet key (or explicit generation through a blank response). It writes separate persistent wallet/database keys to mode-600 `selfhost/gate.env` and the public registry to `selfhost/rooms.json`. It refuses existing files and symlinks. Preserve existing identity material rather than rerunning setup over it. Back up both keys separately from the database.
 
-## 2. Deploy the gate
+If creating a new identity, configure first without starting, then use the printed public address to establish room super-admin permissions and finish the registry before startup. Creating a room in the UI does not automatically enroll it in the trusted registry.
 
-**Fly.io** (see `fly.toml`; run from the repo root):
+## Start the supplied Compose deployment
 
-```bash
-fly launch --no-deploy --copy-config --config selfhost/fly.toml      # pick a unique app name
-fly secrets set --config selfhost/fly.toml \
-    XMTP_GATEKEEPER_PRIVATE_KEY=0x... \
-    MAINNET_RPC_URL=https://... \
-    GATE_ALLOW_ORIGIN=https://chirpy.bittrees.org
-fly deploy --config selfhost/fly.toml --dockerfile selfhost/gate.Dockerfile
-curl https://<your-app>.fly.dev/health      # HTTP 200 + {"ok":true,"status":"ok",...}
+```sh
+docker compose -f selfhost/docker-compose.yml --env-file selfhost/gate.env up -d --build
+docker compose -f selfhost/docker-compose.yml --env-file selfhost/gate.env ps
+curl -fsS https://gate.example.org/health
 ```
 
-**Any Docker host / VPS** (Render, Railway, a droplet, …):
+Configure TLS and host firewall routing to the gate port. Compose mounts the database volume at `/data` and the registry read-only at `/config/rooms.json`. Do not omit these mounts or the restrictions when adapting the deployment. Existing volumes must be writable by UID/GID 65532. Never start two processes against one store.
 
-```bash
-cd selfhost && ./install.sh                  # prompts → writes gate.env → docker compose up -d --build
-# or manually: docker build -f selfhost/gate.Dockerfile -t chirpy-gate . && docker run -d -p 8788:8788 --env-file selfhost/gate.env chirpy-gate
-```
+The complete environment is documented in [gate.env.example](gate.env.example). Required values include `XMTP_GATEKEEPER_PRIVATE_KEY`, `GATE_DB_ENCRYPTION_KEY`, `MAINNET_RPC_URL`, `GATE_ALLOW_ORIGIN`, `GATE_PUBLIC_URL`, `CHIRPY_GATE_ROOMS_FILE`, and `GATE_DATA_DIR`. Use `GATE_XMTP_ENV=production` for release.
 
-Required env (see `gate.env.example`): `XMTP_GATEKEEPER_PRIVATE_KEY`, `MAINNET_RPC_URL`,
-`GATE_ALLOW_ORIGIN` (your Chirpy origin). Put it behind TLS (Fly/Render do this for you).
+The Fly configuration is an alternative template requiring a unique app, durable volume, all required secrets, reviewed registry delivery and equivalent single-writer permissions. No Fly or other production gate deployment is established by this repository.
 
-**Persist the XMTP store.** The image writes its XMTP MLS store to `GATE_DATA_DIR` (default
-`/data`). Back that path with a durable volume — `docker-compose.yml` declares a `gate-data`
-volume, `fly.toml` a `[mounts]` volume (create it once: `fly volumes create gate_data --config
-selfhost/fly.toml --region iad --size 1`); on Render/Railway attach a disk mounted at `/data`.
-Without a persistent volume the gatekeeper registers a **new XMTP installation on every restart**
-and will eventually hit XMTP's per-inbox installation cap.
+## Route the web app and accept admission
 
-### Local build/test on Apple Silicon — `apple/container` (no Docker Desktop)
+Set the public `VITE_GATEKEEPER_ADDRESS` and `CHIRPY_EXTERNAL_GATE_URL` on the web deployment, rebuild, and set every production organization's `gateUrl` to the matching canonical `https://<gate-host>/api/room-join`. Health metadata does not rewrite organization settings.
 
-[`apple/container`](https://github.com/apple/container) (macOS 15+, ideal on macOS 26) runs the
-**same** `gate.Dockerfile` unchanged — it's an OCI runtime. Install once from the signed `.pkg`
-on the [latest release](https://github.com/apple/container/releases), then:
-
-```bash
-container system start                                  # start the helper (once per login)
-container build -t chirpy-gate -f selfhost/gate.Dockerfile .
-container run -d --name gt \
-  --env XMTP_GATEKEEPER_PRIVATE_KEY=0x... \
-  --env MAINNET_RPC_URL=https://... \
-  --env GATE_ALLOW_ORIGIN='*' \
-  chirpy-gate
-container ls                                            # shows the container's IP
-curl http://<container-ip>:8788/health                  # {"ok":true,"gatekeeper":true}
-                                                     # missing key or RPC now returns HTTP 503
-```
-
-It runs an arm64 Linux VM — the exact path validated here under Docker (the `linux-arm64-gnu`
-binding + glibc 2.41 + `ca-certificates` are baked into `gate.Dockerfile`), so it behaves
-identically. `apple/container` is a **local** runtime, not a host: for the always-on production
-gate, use a cloud host (above).
-
-## 3. Point the web app at the gate
-
-In the Chirpy Vercel project:
-
-- Set **`VITE_GATEKEEPER_ADDRESS`** = the gatekeeper address from step 1 (so newly created gated
-  rooms add the bot as a super-admin). Then redeploy.
-- For each gated org, set **`OrgConfig.gateUrl`** = `https://<gate-host>/api/room-join`
-  (blank = the app's own `/api/room-join`, which won't work on Vercel — so set it).
-
-## 4. Make the bot a room super-admin
-
-The gatekeeper can only add members to rooms where it's a **super-admin**. New gated rooms get
-this automatically once `VITE_GATEKEEPER_ADDRESS` is set; for rooms created before that, add the
-gatekeeper address as a super-admin manually.
-
-## Verify
-
-`curl <gate>/health` → HTTP `200` with `"ok": true`; then in the app, create a gated room and
-request to join from a qualifying wallet — the gate verifies the signature, runs `evalGate`, and
-adds your inbox.
+Require fresh production dependency readiness, then prove qualifying and denied wallets against the same registered room. Include replay, substituted inbox and restart tests. Follow [ROLLOUT-RUNBOOK.md](../docs/ROLLOUT-RUNBOOK.md) for evidence and recovery.
 
 ## Encrypted database and recovery
 

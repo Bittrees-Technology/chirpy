@@ -1,116 +1,37 @@
-# Production go-live spec
+# Production go-live requirements
 
-For the operator sequence, rollback commands, and incident recovery flow, use
-[`docs/ROLLOUT-RUNBOOK.md`](ROLLOUT-RUNBOOK.md). This file remains the
-environment and go-live requirements reference.
+Use [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) for implementation evidence and [ROLLOUT-RUNBOOK.md](ROLLOUT-RUNBOOK.md) for promotion and recovery. As of 9 September 2026, web and sync are deployed; an accepted production gate and signed native releases remain outstanding.
 
-Requirements for the live release. The XMTP transport, wallet/ENS, and the serverless gate
-are **implemented**; what remains is provisioning the server env below and building with
-`VITE_TRANSPORT=xmtp`. (The offline `MockTransport` stays the no-wallet default.)
+## Deployment boundary
 
-## Migration posture
+Vercel serves the web app and four handlers: health, encrypted user sync, workflow events, and a room-join handler that deliberately returns 503. Native XMTP admission runs only in the durable external gate process in `selfhost/`, using `server/room-join.js`. Gatekeeper keys must stay on that host.
 
-This release has **no schema or datastore migration step**. Chirpy's rollout surface here is:
+| Location | Configuration |
+|---|---|
+| Browser build | `VITE_TRANSPORT=xmtp`, `VITE_XMTP_ENV=production`, browser-restricted `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`, public `VITE_GATEKEEPER_ADDRESS` |
+| Web server | Canonical `CHIRPY_BASE_URL`, `CHIRPY_RELEASE_CHANNEL`, `CHIRPY_EXTERNAL_GATE_URL`, `CHIRPY_SYNC_SERVICE_URL=https://<web-host>/api/usersync`, KV URL/token or Upstash equivalents |
+| External gate | Persistent wallet key, separate database key, mainnet RPC, exact HTTPS web origin, canonical join URL, nonempty reviewed registry, durable data directory, production network; see [gate environment](../selfhost/gate.env.example) |
+| Imported organizations | Exact namespace and external `gateUrl`; every registered room must grant the same gatekeeper super-admin authority |
+| Native builds | Explicit HTTPS `VITE_API_ORIGIN`, production browser configuration, signing credentials and release variables; see [NATIVE.md](NATIVE.md) |
 
-- web build/runtime configuration on Vercel
-- self-hosted gate deployment plus its secrets
-- existing KV-backed sync configuration
+Browser-prefixed values ship to users. Use a separate server RPC credential compatible with server access. Secrets belong in the respective host's secret manager. Native CORS requires explicit `CHIRPY_SYNC_ALLOWED_ORIGINS` on the web server and `GATE_NATIVE_ORIGINS` on the gate; neither bypasses signed authorization.
 
-There is no SQL/Prisma/Drizzle migration to run before, during, or after the deploy. If a
-future release adds persisted schema changes, add that procedure here before using this file
-as the operator checklist.
+## Data and authority
 
-## 0. Deployment metadata and external-gate health reporting
+DMs and Saved Messages follow the wallet across organizations; rooms use exact namespaces. XMTP owns encrypted conversation delivery and installation history. Optional Chirpy sync stores an encrypted settings/snapshot payload, not an automatic backup or transfer of the XMTP database.
 
-Set these non-secret variables on the web deployment so `/api/health` reports the
-release accurately:
+Sync v2 grants an in-memory device key at most 24 hours of wallet-authorized access to one service and epoch. Writes bind ciphertext and expected revision. Device and all-device revocation are atomic with writes. Older reusable signatures are rejected; clients must refresh. Existing encrypted payload/key derivation remains compatible and missing revisions start at zero.
 
-- `CHIRPY_BASE_URL` = the canonical web origin, for example
-  `https://chirpy.bittrees.org`
-- `CHIRPY_RELEASE_CHANNEL` = a stable label such as `production` or `staging`
-- `CHIRPY_EXTERNAL_GATE_URL` = the canonical self-hosted gate endpoint when
-  production room joins are routed away from Vercel, for example
-  `https://gate.example.org/api/room-join`
+The gate database requires its original encryption key, wallet identity, network and persistent storage. Existing plaintext stores need a reviewed offline migration. There is no automatic rekey or destructive migration. Follow [storage recovery](../selfhost/DEPLOY.md#encrypted-database-and-recovery), preserving salt and sidecar files.
 
-With `CHIRPY_EXTERNAL_GATE_URL` set, `/api/health` treats the supported
-external-gate topology as release-ready without requiring
-`XMTP_GATEKEEPER_PRIVATE_KEY` on the Vercel deployment itself. The external
-gate's own `/health` endpoint remains the authoritative liveness probe.
+Only mainnet token holdings, explicit ERC-1155 IDs, Safe owners and ENS are supported production rules. Preset addresses are illustrative until reviewed. Role, voting-power, delegate and other-chain resolvers remain unavailable. Posting pauses and attachment rules are advisory client policies, not a protocol-wide freeze.
 
-## 1. Alchemy key, uploaded through Vercel
+## Release acceptance
 
-- The serverless **token-gate** (`api/room-join.js`) and any server-side ENS/Safe reads use an
-  **unrestricted** Alchemy RPC, set as `MAINNET_RPC_URL` in the Vercel project
-  (Dashboard → Settings → Environment Variables, or `vercel env add MAINNET_RPC_URL`).
-- The **browser** uses a **separate, domain-allowlisted** key as `VITE_MAINNET_RPC_URL`
-  (and/or `VITE_ALCHEMY_API_KEY`) for ENS name/avatar lookups.
-- ⚠️ Never reuse the browser (domain-restricted) key on the server: a serverless function
-  has no browser origin and Alchemy will 403 it — this is a known Bittrees footgun, see
-  the comment at the top of Bittrees `api/gate.js`.
-- All keys live only in Vercel env / local `.env.local`; never committed. See `.env.example`.
+- Require green CI, audits, restricted-container tests and expanded XMTP nightly evidence.
+- Verify web configuration, live sync authorization/storage and production gate dependencies separately. Web health alone does not prove admission.
+- Exercise qualifying and denied wallets, substituted inboxes, replay, restart and wallet/org switching against the intended production room and chain policy.
+- Accept operator backup restore, alert delivery and incident ownership. Review membership audit outcomes before enforcement.
+- Complete privacy/terms and moderation/retention decisions, signed native artifact/install/updater acceptance and real-device wallet return.
 
-## 2. WalletConnect login + ENS sync (like the Bittrees Inc app)
-
-- **Login (implemented):** injected EIP-1193 wallets (MetaMask) plus **WalletConnect v2** via
-  `@walletconnect/ethereum-provider` (`VITE_WALLETCONNECT_PROJECT_ID`) — see
-  `apps/web/src/walletProviders.ts`. Hand-rolled EIP-1193, **not** RainbowKit/wagmi. Injected
-  wallets work without the project id.
-- **ENS (implemented):** on connect the address resolves to its primary ENS name + avatar, with
-  reverse lookup cached app-wide (sidebar, DM titles, thread header, message-bubble avatars) —
-  `apps/web/src/ens.ts` + `useEns.ts`. Also feeds the `ens` gate rule.
-- **Where it plugs in:** `IdentityProvider` (`apps/web/src/state.tsx`) holds the connected
-  account; components read `identity.handle` and the ENS hook — no other UI changes.
-- **Mobile (iOS):** WalletConnect deep-links back to Chirpy; register the app URL scheme so
-  the wallet round-trip returns to the app (see `docs/NATIVE.md`).
-
-## 3. Chats persist across all orgs and personally
-
-**Model:** identity is the wallet, so a user's **DMs follow the wallet everywhere**; **rooms
-are scoped to the org** that defines them (they are token-gated communities).
-
-| Surface | Scope | Why |
-|---|---|---|
-| **Chats (1:1 DMs) + Saved Messages** | **wallet-global** — same in every org and personal | one XMTP inbox per wallet; chats shouldn't silo by org |
-| **Rooms (gated)** | per-org | XMTP-MLS groups gated by that org's rules |
-
-- **Already implemented in the mock** (`packages/transport/src/mock.ts`): DMs persist under
-  `chat:mock:dms:<wallet>` (org-independent); rooms under `chat:mock:rooms:<wallet>:<namespace>`.
-  Switch orgs in the app and your Chats list stays; rooms change with the org.
-- **In production this is XMTP-native:** the XMTP client is keyed to the wallet, so DM
-  conversations and history are inherently the same across every org and personal mode — no
-  cross-org sync logic needed. Encrypted multi-device sync (à la Bittrees `userSync.ts`)
-  carries the same history to a second device.
-- **Org = a lens, not a silo:** an org changes branding, chain, gating vocabulary, and which
-  rooms are offered — it does not partition your personal conversations.
-
-## Rollout checklist
-
-1. ✅ `XmtpTransport` (XMTP DMs + MLS rooms) behind the `Transport` interface — built; select it
-   per-build with `VITE_TRANSPORT=xmtp`. **No UI changes vs mock.**
-2. ✅ Injected + WalletConnect v2 login and ENS resolver wired into `IdentityProvider`.
-3. ✅ Gate deployed as `api/room-join.js` (+ `api/usersync.js`) Vercel functions; the evaluator
-   is `@app/core`'s `evalGate` with a viem `ChainReader` using `MAINNET_RPC_URL`.
-4. ☐ Set env (full list in [`.env.example`](../.env.example)): `CHIRPY_BASE_URL`,
-   `CHIRPY_RELEASE_CHANNEL`, `CHIRPY_EXTERNAL_GATE_URL` (when using the
-   supported external gate), a matching `VITE_GATEKEEPER_ADDRESS`,
-   `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`,
-   `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and `VITE_TRANSPORT=xmtp`.
-   Set `XMTP_GATEKEEPER_PRIVATE_KEY` and `MAINNET_RPC_URL` on the external gate
-   host itself, not on the web deployment.
-5. ☐ Verify ENS resolves on connect; a gated room admits/denies correctly; DMs persist across
-   org switches and on a second device.
-
-## Known limitation: the gatekeeper can't run on Vercel serverless
-
-`api/room-join.js` creates an XMTP client via `@xmtp/node-sdk`, whose **native bindings do not
-run on Vercel's serverless runtime** — the deployed `POST /api/room-join` returns
-`500 FUNCTION_INVOCATION_FAILED` even with `XMTP_GATEKEEPER_PRIVATE_KEY` set (a clean `503`
-would mean the key is missing). Run the gatekeeper in an **always-on container/VM** instead
-(see [`../selfhost/`](../selfhost/)) and point each org's `OrgConfig.gateUrl` at
-`https://<gate-host>/api/room-join`. The browser/ENS, the gate evaluator (`@app/core`), and
-encrypted sync (`api/usersync.js`, which has no native deps) are unaffected and run fine on
-Vercel. Confirm the exact failure in Vercel → Functions → `room-join` logs.
-
-## September 2026 priority fixes
-
-Follow [PRIORITY-FIXES.md](PRIORITY-FIXES.md) before activating room joins. The gate requires a trusted room registry and its canonical public URL. v1 reusable room signatures are rejected; sync clients must refresh to send expected revisions.
+Record date, release/image digest, environment, reviewer and evidence for each acceptance. Merging source code does not satisfy external checks.

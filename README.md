@@ -90,8 +90,9 @@ packages/
 apps/
   web/         @app/web        Vite + React 19 frontend (used by web + Tauri Mac/iOS)
     src-tauri/                 Tauri 2 native shell (macOS + iOS)
-api/           room-join.js (serverless token-gate), usersync.js (encrypted device sync) — Vercel functions
-selfhost/      Docker self-host bundle for the gate (scaffold — see "What's left")
+api/           four web handlers; room-join returns 503 and directs deployment to the external gate
+server/        shared API logic and durable native gate implementation
+selfhost/      restricted gate container, installer, encrypted storage and operator guides
 examples/      bittrees-inc.org.json, bittrees-research.org.json  (importable org presets)
 docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROLLOUT-RUNBOOK.md · ROADMAP.md · NATIVE.md
 ```
@@ -104,9 +105,8 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROLLOUT-RUNBOOK.md
   real delivery or community admission.
 - **Production target:** `VITE_TRANSPORT=xmtp`, wallet identity, ENS, XMTP DMs/rooms,
   encrypted sync, and an external gatekeeper service for token-gated room joins.
-- **Public trust paths:** `/support`, `/security`, `/privacy`, and `/terms` are not shipped
-  as placeholder SPA routes. Add real approved artifacts before linking or routing them;
-  see [docs/PUBLIC-SURFACE-BLOCKERS.md](docs/PUBLIC-SURFACE-BLOCKERS.md).
+- **Public trust paths:** `/support` and `/security` are implemented, with GitHub private security reporting enabled. Privacy and terms still require approved operator policies.
+- **Release status:** implementation and automated evidence are tracked in [the readiness ledger](docs/PRODUCTION-READINESS.md); the production gate and signed native acceptance remain incomplete.
 
 ### Done
 
@@ -119,37 +119,20 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROLLOUT-RUNBOOK.md
   (`walletProviders.ts`); **ENS** name + avatar resolution and reverse lookup
   (`ens.ts`, `useEns.ts`).
 - ✅ Cross-org persistence: DMs follow your wallet across all orgs + personal; rooms per org.
-- ✅ Generalized gating model + evaluator (token / Safe / ENS / role-cascade / power-tier) — `packages/core`.
-- ✅ **Action policy** layer (read-only rooms, block attachments, size caps) — freeze a room live.
+- ✅ Gating evaluator (production: mainnet tokens, explicit ERC-1155 IDs, Safe owners and ENS) — `packages/core`.
+- ✅ **Action policy** layer (read-only rooms, block attachments, size caps) — pause posting in Chirpy; this is advisory client policy.
 - ✅ **Self-hosted token-gate** (`server/room-join.js`): signature-verified `evalGate` + viem chain
   reader + an XMTP gatekeeper bot that adds the inbox to a gated room. Requires a durable external gate deployment.
-- ✅ **Encrypted cross-device sync** (`api/usersync.js`): settings + saved messages, key derived
+- ✅ **Encrypted cross-device sync** (`api/usersync.js`): encrypted settings/snapshot payload, key derived
   from a wallet signature, stored in Upstash/Vercel KV with atomic revisions and revocable, expiring device authorization.
 - ✅ Per-org **drop-in CSS theming**, a styled **error page**, and an i18n framework (EN/ES).
-- ✅ **macOS desktop app** (Tauri 2) with generated icons and signed **auto-update** (ed25519
+- ✅ **macOS desktop app** (Tauri 2) with generated icons and **auto-update support** (ed25519
   updater key + GitHub Releases `latest.json`); release CI in `.github/workflows/release.yml`.
 
 ### What's left
 
-- ⏳ **Provision the production web env plus the external gate** so the live deploy exercises
-  XMTP and sync (not just mock): the web surface needs the browser and KV values documented in
-  [docs/PRODUCTION.md](docs/PRODUCTION.md), and production gated orgs must point `gateUrl` at
-  the self-hosted gate described in [docs/ROLLOUT-RUNBOOK.md](docs/ROLLOUT-RUNBOOK.md).
-  The same-origin Vercel `/api/room-join` path is not a supported production gatekeeper target.
-- ⏳ **iOS**: the Rust shell and icons are ready, but the Xcode project isn't generated yet
-  (`pnpm tauri ios init` / `ios dev`). See [docs/NATIVE.md](docs/NATIVE.md).
-- ✅ **Self-host bundle** (`selfhost/`): `gate.Dockerfile` + `gate-server.mjs` (a working Node
-  HTTP wrapper around `server/room-join.js` with CORS) are built and documented in
-  `selfhost/DEPLOY.md`. Per-org `OrgConfig.gateUrl` is consumed by the client
-  (`packages/transport/src/xmtp.ts` `gateEndpoint()`) — point it at a self-hosted gate to route
-  around the Vercel serverless limitation below.
-- ◐ **Release**: CI builds macOS + Windows + Linux on an `app-v*` tag; Apple notarization
-  activates when the `APPLE_*` Actions secrets are set (until then macOS ships updater-signed
-  only). The `app-v0.1.0` tag exists, but no GitHub release is published yet.
-- ⚠️ App icons are interim Chirpy artwork (the reusable Bittrees tree mark) pending final brand art.
-- ⚠️ Preset token addresses in `examples/` are **illustrative placeholders** (e.g. the Research
-  membership token is the burn address) — set real addresses before gating against them.
-- ◐ i18n: framework + EN/ES are wired, but only a handful of strings are extracted through `t()`
-  so far — broaden coverage.
+See [ROADMAP.md](docs/ROADMAP.md) for the current backlog and [PRODUCTION.md](docs/PRODUCTION.md) for release requirements. Production gate hosting/identity/registry, operator recovery/alerts, privacy/terms, signed desktop and real-device iOS acceptance are still required. Incoming receipts, large inbox performance, shared UI/integrations and final artwork remain follow-ups.
+
+Preset token addresses in `examples/` are illustrative until verified. Native CI compiles macOS and generates/builds the iOS project; compilation does not establish device or store acceptance. Release automation requires signing inputs and healthy production services and creates drafts for manual artifact acceptance.
 
 MIT.

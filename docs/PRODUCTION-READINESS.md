@@ -10,12 +10,12 @@ We implement and merge independent changes in increasing complexity, while prese
 | 4 | Wallet-specific preferences and revocable sync authorization | Wallet isolation merged in PR #8; expiring device authorization and atomic revocation merged in PR #9 |
 | 5 | Pagination, bounded refresh, long-history performance | Refresh coalescing merged in PR #12; bounded message pages and history navigation merged in PR #13 |
 | 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Supported-rule UI and advisory policy hardening merged in PR #14; opt-in membership revalidation implemented; production activation and operator moderation remain pending |
-| 7 | Dependency remediation, live probes, backup/restore and release acceptance | JavaScript dependency patches and required audit merged in PR #10; hosted sync probe passed; backup/restore and full release acceptance pending |
+| 7 | Dependency remediation, live probes, backup/restore and release acceptance | JavaScript dependency patches and required audit merged in PR #10; hosted sync probe passed; synthetic encrypted backup/restore and live readiness implemented in PRs #16/#24; operator recovery and release acceptance pending |
 | 8 | Production gate deployment and multi-wallet acceptance | Needs hosting/bot identity and reviewed room registry |
 | 9 | Public support/security/privacy/terms material | Support/security pages merged in PR #5 and GitHub private reporting enabled; privacy/terms still need actual operator/retention decisions |
 | 10 | Native release/signing, iOS real-device and TestFlight acceptance | Needs release credentials and device/store access |
 | 11 | Shared UI/embed and Governance/Research integration | Pending |
-| 12 | Final artwork and documentation reconciliation | Pending |
+| 12 | Final artwork and documentation reconciliation | Operations/roadmap/native guides reconciled; final artwork pending |
 | Later | Voice, presence, optional relays | Product expansion, after core production readiness |
 
 ## HTTP hardening acceptance
@@ -58,7 +58,7 @@ The wallet authorizes a generated device key for one service, wallet, authorizat
 
 Revoking this session creates a server-side denial record until its grant expires. Wallet-signed revoke-all advances a durable authorization epoch without deleting saved data. Every write checks both revocation mechanisms atomically with its data revision, so concurrent revocation cannot be bypassed by a delayed write. If a revocation request fails, the UI distinguishes locally stopped sync from confirmed server revocation.
 
-Production must set `CHIRPY_SYNC_SERVICE_URL` to the canonical HTTPS `/api/usersync` URL. Preview deployments default to their immutable `VERCEL_URL`; open that exact deployment URL when testing sync. Native webviews still need their release-stage API-origin configuration and acceptance tests.
+Production must set `CHIRPY_SYNC_SERVICE_URL` to the canonical HTTPS `/api/usersync` URL. Preview deployments default to their immutable `VERCEL_URL`; open that exact deployment URL when testing sync. Native API-origin routing is implemented in PR #20; packaged-device acceptance remains pending.
 
 
 Validation: 88 tests including three real Redis transaction/expiry tests, both type checks, and seven browser tests pass. CI supplies a pinned Redis service and requires the integration tests. The browser sync test verifies wallet/device signatures, encryption envelope handling and both revocation controls. Local Redis integration uses an isolated ephemeral container and removes only synthetic keys it created.
@@ -91,7 +91,7 @@ Background refreshes retain the selected history page. Sending returns to the la
 
 The production room editor offers mainnet token holdings, explicit ERC-1155 IDs, Safe owners and ENS. Role/power/delegate sources remain unavailable and are not presented as configured production controls. Send and reaction paths reject unsupported gates. Blank ENS inputs normalize to the documented primary-name rule.
 
-Posting pauses and attachment rules are explicitly Chirpy-client policies. The current XMTP permission API governs membership, administrators and metadata, and provides no posting-permission update. Other clients can ignore a posting pause; no history revocation is promised. Reactions now obey the same gate/policy checks as sends. Super-admins are recognized for policy updates, and local policy changes only after the SDK confirms publication. Automated membership revalidation and an operator moderation/reporting process remain outstanding.
+Posting pauses and attachment rules are explicitly Chirpy-client policies. The current XMTP permission API governs membership, administrators and metadata, and provides no posting-permission update. Other clients can ignore a posting pause; no history revocation is promised. Reactions now obey the same gate/policy checks as sends. Super-admins are recognized for policy updates, and local policy changes only after the SDK confirms publication. Opt-in membership revalidation is implemented in PR #19; activation and an operator moderation/reporting process remain outstanding.
 
 Validation: 104 tests and eight browser tests pass, including unsupported gate controls, paused-room reactions, non-admin denial and failed-policy rollback. Both type checks pass.
 
@@ -113,7 +113,7 @@ The installer validates domains, HTTPS origins/RPC values and the reviewed regis
 
 ## Gate work backpressure
 
-Admission uses one shared serial queue with at most 32 waiting operations. Waiting work expires after 10 seconds and overload returns 503 with Retry-After; the caller must obtain a fresh one-use challenge. An active native operation retains its slot until it finishes, so a timeout cannot accidentally create overlapping database writers. Registry policy is reloaded after queue admission and checked again immediately before membership addition; challenge expiry is also checked again. Tests cover saturation, expired waiting work, active-operation exclusion, recovery after failure, and policy removal/expiry during an in-flight eligibility read. Fleet-wide throttling and runtime dependency monitoring remain pending.
+Admission uses one shared serial queue with at most 32 waiting operations. Waiting work expires after 10 seconds and overload returns 503 with Retry-After; the caller must obtain a fresh one-use challenge. An active native operation retains its slot until it finishes, so a timeout cannot accidentally create overlapping database writers. Registry policy is reloaded after queue admission and checked again immediately before membership addition; challenge expiry is also checked again. Tests cover saturation, expired waiting work, active-operation exclusion, recovery after failure, and policy removal/expiry during an in-flight eligibility read. Runtime dependency monitoring is implemented in PR #24; fleet-wide throttling remains pending.
 
 ## Membership lifecycle implementation
 
@@ -160,3 +160,7 @@ The gate now warms and monitors its durable XMTP client, verifies super-admin au
 The local rollout proof now explicitly expects the synthetic gate to remain unready; fake configuration is no longer treated as live acceptance. Native release validation also rejects dev-network gates and confirms a live sync storage/authorization read. Container startup grace is extended to allow first initialization. Large registries must be load-tested against the freshness window; a slow probe cannot silently leave a healthy result indefinitely.
 
 Validation includes wrong/stale chain data, failed or hung probes, recovery, registry changes, lost permissions, HTTP readiness transitions and the real XMTP dev room-authority drill with deterministic RPC responses. Production RPC, routing and operator alert delivery still require the configured gate host.
+
+## Documentation reconciliation
+
+Production, rollout/recovery, gate deployment, native release, README and roadmap instructions now reflect the external gate, encrypted persistent storage, sync v2, live readiness and draft release gates. Removed obsolete serverless gate and incomplete bare-container instructions. Operator decisions and device/production acceptance are explicitly distinguished from automated evidence.

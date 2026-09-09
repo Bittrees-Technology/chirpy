@@ -62,8 +62,7 @@ These matter when building with `VITE_TRANSPORT=xmtp`; verify them on-device ear
 ## Auto-updates (desktop)
 
 The desktop app self-updates via the Tauri **updater** plugin: on launch (and from
-**Settings → Software update**) it fetches a signed `latest.json`, and if a newer version
-exists it downloads, verifies the signature, installs, and relaunches.
+**Settings → Software update**) it fetches a signed `latest.json`, and shows update availability. Installation and restart require explicit actions in Settings.
 
 - **Manifest endpoint** (`tauri.conf.json` → `plugins.updater.endpoints`):
   `https://github.com/Bittrees-Technology/chirpy/releases/latest/download/latest.json`
@@ -75,19 +74,21 @@ exists it downloads, verifies the signature, installs, and relaunches.
 
 ### Releasing an update
 
-CI does it — `.github/workflows/release.yml` builds, signs, and publishes on a tag:
+The release workflow prepares draft artifacts after validating matching UI/Cargo/Tauri versions, production XMTP and live web/gate/sync readiness. Set all three versions before creating the matching tag:
 
 ```bash
-# bump version in apps/web/src-tauri/tauri.conf.json AND apps/web/src/app.config.ts, then:
+# also update apps/web/src-tauri/Cargo.toml and its lockfile before tagging:
 git tag app-v0.1.1 && git push origin app-v0.1.1
 ```
 
 One-time CI setup — add repo **Actions secrets**:
 - `TAURI_SIGNING_PRIVATE_KEY` — contents of `src-tauri/.tauri/chirpy-updater.key`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the key password (empty for the current key)
-- (optional) Apple notarization vars for Gatekeeper-clean downloads.
+- Required on macOS: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
 
-Build + sign locally instead:
+Repository variables: `VITE_API_ORIGIN` (defaults to the hosted Chirpy origin), `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`, `CHIRPY_GATE_HEALTH_URL`. Configure native sync/gate origins as described in [PRODUCTION.md](PRODUCTION.md). Missing credentials or unhealthy dependencies block preparation. Draft promotion requires verified signatures, clean installation and updater acceptance; Windows code signing and actual iOS/TestFlight acceptance remain outstanding.
+
+Build + sign locally for testing:
 
 ```bash
 export TAURI_SIGNING_PRIVATE_KEY="$(cat apps/web/src-tauri/.tauri/chirpy-updater.key)"
@@ -102,3 +103,7 @@ plugin is compiled out on mobile targets (`#[cfg(desktop)]` in `src-tauri/src/li
 and the in-app UI shows "managed by the App Store." Ship iOS updates via TestFlight / the
 App Store; the web build updates on reload.
 
+
+## Validation status
+
+CI compiles macOS and generates/builds the iOS project. The CSP-constrained browser flow exercises live XMTP dev messaging; it does not prove WKWebView storage, WalletConnect return or signed distribution on a real device. Rust requires at least 1.88. Seven native dependency warnings remain tracked in [the security baseline](security/native-baseline-2026-09-09.json); they are not suppressed.
