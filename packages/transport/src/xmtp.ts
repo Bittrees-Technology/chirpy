@@ -235,6 +235,7 @@ export class XmtpTransport implements Transport {
   private streamRunning = false;
   private streamHealthy = false;
   private fullRefreshRequired = true;
+  private fullRefreshCompletedAt: number | null = null;
   private dirtyConversations = new Set<string>();
   private mappedConversations = new Map<string, Conversation>();
   private conversationRefresh: Promise<Conversation[]> | null = null;
@@ -671,7 +672,7 @@ export class XmtpTransport implements Transport {
         (!c.namespace && this.org.namespace === "personal"));
       let directory: Conversation[] = [];
       try { directory = await this.publishedRooms(); this.warning = undefined; }
-      catch { this.warning = "Published rooms are unavailable. Existing chats still work; room joins may need to be retried."; directory = this.catalogCache?.rooms ?? []; }
+      catch { this.fullRefreshRequired = true; this.warning = "Published rooms are unavailable. Existing chats still work; room joins may need to be retried."; directory = this.catalogCache?.rooms ?? []; }
       for (const room of directory) {
         let existing = scoped.find((c) => c.id === room.id);
         if (!existing) {
@@ -690,6 +691,7 @@ export class XmtpTransport implements Transport {
       for (const id of this.roomMeta.keys()) {
         if (!this.conversations.has(id) && !directoryIds.has(id)) this.roomMeta.delete(id);
       }
+      if (full) this.fullRefreshCompletedAt = Date.now();
       return scoped.sort((a, b) => (b.lastMessage?.sentAt ?? 0) - (a.lastMessage?.sentAt ?? 0));
     } catch (error) {
       this.fullRefreshRequired = true;
@@ -1018,7 +1020,15 @@ export class XmtpTransport implements Transport {
       if (!this.streamRunning) void this.runStream(cb);
       cb(); // The subscriber owns refresh; polling must not duplicate it.
     };
-    this.pollTimer = setInterval(sync, 10_000);
+    this.pollTimer = setInterval(() => {
+      const now = Date.now();
+      // Healthy streams deliver immediate changes. Reconcile periodically for
+      // silently missed updates, while errors and explicit invalidation retain
+      // the ten-second fallback. Clock rollback must not defer recovery.
+      if (this.streamHealthy && !this.fullRefreshRequired && this.fullRefreshCompletedAt !== null &&
+          now >= this.fullRefreshCompletedAt && now - this.fullRefreshCompletedAt < 60_000) return;
+      sync();
+    }, 10_000);
     if (typeof window !== "undefined") {
       const visible = () => { if (document.visibilityState === "visible") sync(); };
       window.addEventListener("focus", sync);
