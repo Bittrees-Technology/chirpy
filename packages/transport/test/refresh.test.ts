@@ -84,3 +84,67 @@ it('keeps the existing posting restriction while refreshed room metadata is pend
   await expect(t.send('room', 'After failed refresh')).rejects.toThrow('read-only');
   expect(conversation.sendText).not.toHaveBeenCalled();
 });
+
+async function pollingFixture() {
+  vi.useFakeTimers();
+  const t = make(); t.status = 'ready'; t.streamHealthy = true; t.streamRunning = true;
+  const api = { sync: vi.fn(), syncAll: vi.fn(), list: vi.fn().mockResolvedValue([]) };
+  t.client = { conversations: api }; t.publishedRooms = vi.fn().mockResolvedValue([]);
+  await t.listConversations();
+  const cb = vi.fn(async () => { try { await t.listConversations(); } catch { /* Recovery retries on the next tick. */ } });
+  t.startPoll(cb);
+  return { t, api, cb };
+}
+it('reconciles a healthy idle stream once per minute without intervening local enumeration', async () => {
+  const { t, api, cb } = await pollingFixture();
+  try {
+    await vi.advanceTimersByTimeAsync(50000);
+    expect(cb).not.toHaveBeenCalled(); expect(api.list).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(cb).toHaveBeenCalledOnce(); expect(api.syncAll).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(cb).toHaveBeenCalledTimes(2); expect(api.list).toHaveBeenCalledTimes(3);
+  } finally { clearInterval(t.pollTimer); }
+});
+it.each(['unhealthy', 'invalidated'])('keeps ten-second recovery when %s', async reason => {
+  const { t, api } = await pollingFixture();
+  try {
+    if (reason === 'unhealthy') t.streamHealthy = false;
+    else t.fullRefreshRequired = true;
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(api.syncAll).toHaveBeenCalledTimes(2);
+  } finally { clearInterval(t.pollTimer); }
+});
+it('retries a failed periodic refresh on the next tick instead of delaying it another minute', async () => {
+  const { t, api } = await pollingFixture();
+  try {
+    const completed = t.fullRefreshCompletedAt;
+    api.syncAll.mockRejectedValueOnce(new Error('offline'));
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(t.fullRefreshCompletedAt).toBe(completed);
+    expect(t.fullRefreshRequired).toBe(true);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(api.syncAll).toHaveBeenCalledTimes(3);
+    expect(t.fullRefreshRequired).toBe(false);
+  } finally { clearInterval(t.pollTimer); }
+});
+it('does not postpone reconciliation after the wall clock moves backwards', async () => {
+  const { t, api } = await pollingFixture();
+  try {
+    vi.setSystemTime(Date.now() - 3600000);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(api.syncAll).toHaveBeenCalledTimes(2);
+  } finally { clearInterval(t.pollTimer); }
+});
+
+it('retries a failed directory read on the ten-second fallback', async () => {
+  const { t, api } = await pollingFixture();
+  try {
+    t.publishedRooms.mockRejectedValueOnce(new Error('directory unavailable'));
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(t.fullRefreshRequired).toBe(true);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(api.syncAll).toHaveBeenCalledTimes(3);
+    expect(t.fullRefreshRequired).toBe(false);
+  } finally { clearInterval(t.pollTimer); }
+});
