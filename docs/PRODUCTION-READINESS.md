@@ -73,4 +73,4 @@ Validation: both type checks, 88 tests including real Redis race/expiry checks, 
 
 ## Deployment boundary
 
-Only intended request handlers live in `api/`. Shared server code and API tests are outside the route directory. Deployment exclusions omit tests, native build artifacts and local environment files. The web room-join endpoint returns a deliberate 503 without importing native XMTP bindings or TypeScript gate code. Each organization must configure its external gate URL. Web health never claims embedded-gate readiness; the durable gate process has its own health report.
+Only intended request handlers live in `api/`. Shared server code and API tests are outside the route directory. Vercel and Docker build exclusions omit tests, native build artifacts and local environment files. The web room-join endpoint returns a deliberate 503 without importing native XMTP bindings or TypeScript gate code. Each organization must configure its external gate URL. Web health never claims embedded-gate readiness; the durable gate process has its own health report.
