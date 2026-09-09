@@ -23,7 +23,7 @@ function normalizeGateState(env) {
   const externalUrl = firstNonEmpty(env.CHIRPY_EXTERNAL_GATE_URL);
   return {
     configured: privateKeyConfigured && serverRpcConfigured && nonEmpty(env.CHIRPY_GATE_ROOMS_FILE) && nonEmpty(env.GATE_PUBLIC_URL),
-    externalConfigured: nonEmpty(externalUrl),
+    externalConfigured: validGatePublicUrl(externalUrl),
     externalUrl,
     mode: nonEmpty(externalUrl) ? "external" : "same-origin",
     privateKeyConfigured,
@@ -36,7 +36,7 @@ function normalizeSyncState(env) {
     (nonEmpty(env.KV_REST_API_URL) && nonEmpty(env.KV_REST_API_TOKEN))
     || (nonEmpty(env.UPSTASH_REDIS_REST_URL) && nonEmpty(env.UPSTASH_REDIS_REST_TOKEN));
   const service = env.CHIRPY_SYNC_SERVICE_URL || (env.VERCEL_URL ? `https://${env.VERCEL_URL}/api/usersync` : "");
-  const serviceConfigured = /^https:\/\//.test(service);
+  const serviceConfigured = validHttpsEndpoint(service, "/api/usersync");
   return { configured: kvConfigured && serviceConfigured, kvConfigured, serviceConfigured };
 }
 
@@ -44,10 +44,11 @@ function healthCheck(name, status, summary, extra = {}) {
   return { name, status, summary, ...extra };
 }
 
-function validGatePublicUrl(value) {
-  try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && url.pathname === "/api/room-join" && !url.search && !url.hash; }
+function validHttpsEndpoint(value, pathname) {
+  try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && url.pathname === pathname && !url.search && !url.hash && value === url.origin + pathname; }
   catch { return false; }
 }
+function validGatePublicUrl(value) { return validHttpsEndpoint(value, "/api/room-join"); }
 function validWebOrigin(value) {
   try { const url = new URL(value); return url.protocol === "https:" && url.origin === value; }
   catch { return false; }
@@ -124,6 +125,7 @@ export function readRuntimeProfile(env = process.env) {
 
   return {
     transport,
+    xmtpNetwork: env.VITE_XMTP_ENV === "dev" ? "dev" : "production",
     channel: firstNonEmpty(env.CHIRPY_RELEASE_CHANNEL, env.VERCEL_ENV) || DEFAULT_RELEASE_CHANNEL,
     environment: firstNonEmpty(env.VERCEL_ENV, env.NODE_ENV) || "development",
     deployment: pickDeploymentHost(firstNonEmpty(env.CHIRPY_BASE_URL, env.VERCEL_URL)),
@@ -141,7 +143,7 @@ export function buildHealthReport(env = process.env) {
   const warnings = [];
   const blockingIssues = [];
   const checks = [];
-  const externalGateHost = pickDeploymentHost(profile.gate.externalUrl);
+  const externalGateHost = profile.gate.externalConfigured ? pickDeploymentHost(profile.gate.externalUrl) : null;
   const gateRouteReady = profile.gate.externalConfigured;
 
   checks.push(
@@ -153,6 +155,12 @@ export function buildHealthReport(env = process.env) {
         : "Mock transport selected; wallet/server integrations are optional in this deployment.",
     ),
   );
+
+  if (profile.transport === "xmtp" && profile.xmtpNetwork !== "production") {
+    const summary = "The XMTP dev network cannot satisfy production release readiness.";
+    checks.push(healthCheck("xmtp-network", "degraded", summary));
+    blockingIssues.push(summary);
+  }
 
   if (profile.browserRpcConfigured) {
     checks.push(healthCheck("browser-rpc", "ok", "Browser mainnet RPC is configured for ENS lookups."));
@@ -210,7 +218,8 @@ export function buildHealthReport(env = process.env) {
 
   const releaseReady =
     profile.transport !== "xmtp" || (
-      profile.browserRpcConfigured
+      profile.xmtpNetwork === "production"
+      && profile.browserRpcConfigured
       && gateRouteReady
       && profile.gatekeeperAddressConfigured
       && profile.sync.configured
@@ -223,6 +232,7 @@ export function buildHealthReport(env = process.env) {
     status,
     runtime: {
       transport: profile.transport,
+      xmtpNetwork: profile.transport === "xmtp" ? profile.xmtpNetwork : null,
       channel: profile.channel,
       environment: profile.environment,
       deployment: profile.deployment,

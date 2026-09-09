@@ -192,3 +192,9 @@ Validation: 211 tests, a 10,000-conversation browser scenario with 50 initial pr
 ## Consumer migration review
 
 Read-only inspection confirms both consumers still have Push room registries and separate wallet/UI adapters. INTEGRATION.md records the actual source revisions, history/authority decisions, staged adoption tests and rollback requirements. Their code, existing registries and Research draft branch remain unchanged. REMAINING-WORK.md consolidates the outstanding release dependencies and product follow-ups.
+
+## Release service binding
+
+Web readiness requires canonical HTTPS gate/sync endpoints and rejects development-network builds. Invalid endpoints are not echoed into public health output. Native release validation checks the canonical gate health path and requires its host/port to match the external gate reported by the web deployment, in addition to production network, fresh dependency readiness and live sync checks.
+
+Validation: 230 tests, API type checking and rollout proof pass, including malformed/credential-bearing URLs, wrong hosts/ports and dev-network false positives.

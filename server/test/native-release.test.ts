@@ -13,23 +13,39 @@ describe('native release gates', () => {
   });
   it.each([
     [{ runtime: { transport: 'mock' }, readiness: { releaseReady: true } }, { ok: true, network: 'production', dependencies: { ready: true } }],
-    [{ runtime: { transport: 'xmtp' }, readiness: { releaseReady: false } }, { ok: true, network: 'production', dependencies: { ready: true } }],
-    [{ runtime: { transport: 'xmtp' }, readiness: { releaseReady: true } }, { ok: true }],
+    [{ runtime: { transport: 'xmtp', xmtpNetwork: 'production', gateMode: 'external', externalGate: 'gate.example' }, readiness: { releaseReady: false } }, { ok: true, network: 'production', dependencies: { ready: true } }],
+    [{ runtime: { transport: 'xmtp', xmtpNetwork: 'production', gateMode: 'external', externalGate: 'gate.example' }, readiness: { releaseReady: true } }, { ok: true }],
   ])('refuses mock, degraded or configuration-only service readiness', async (web, gate) => {
     const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => web }).mockResolvedValueOnce({ ok: true, json: async () => gate });
     await expect(verifyReleaseServices(env, fetcher)).rejects.toThrow('readiness');
   });
   it('rejects a dev-network gate and unavailable live sync storage', async () => {
-    const web = { runtime: { transport: 'xmtp' }, readiness: { releaseReady: true } };
+    const web = { runtime: { transport: 'xmtp', xmtpNetwork: 'production', gateMode: 'external', externalGate: 'gate.example' }, readiness: { releaseReady: true } };
     const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => web }).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, network: 'dev', dependencies: { ready: true } }) });
     await expect(verifyReleaseServices(env, fetcher)).rejects.toThrow('readiness');
     const unavailable = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => web }).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, network: 'production', dependencies: { ready: true } }) }).mockResolvedValueOnce({ ok: false });
     await expect(verifyReleaseServices(env, unavailable)).rejects.toThrow('sync storage');
   });
   it('requires both live services and refuses redirects', async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ runtime: { transport: 'xmtp' }, readiness: { releaseReady: true } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, network: 'production', dependencies: { ready: true } }) });
+    const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ runtime: { transport: 'xmtp', xmtpNetwork: 'production', gateMode: 'external', externalGate: 'gate.example' }, readiness: { releaseReady: true } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, network: 'production', dependencies: { ready: true } }) });
     fetcher.mockResolvedValueOnce({ ok: true, json: async () => ({ authVersion: 2, service: 'https://chirpy.example/api/usersync', epoch: 0, revision: 0 }) });
     await expect(verifyReleaseServices(env, fetcher)).resolves.toBeUndefined();
     expect(fetcher).toHaveBeenCalledWith(new URL('https://gate.example/health'), expect.objectContaining({ redirect: 'error' }));
   });
+});
+
+it.each(['https://other.example/health', 'https://gate.example:8443/health'])('rejects a healthy gate at a different configured host or port: %s', async healthUrl => {
+  const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ runtime: { transport: 'xmtp', xmtpNetwork: 'production', gateMode: 'external', externalGate: 'gate.example' }, readiness: { releaseReady: true } }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, network: 'production', dependencies: { ready: true } }) });
+  await expect(verifyReleaseServices({ ...env, CHIRPY_GATE_HEALTH_URL: healthUrl }, fetcher)).rejects.toThrow('match the external gate');
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+it.each(['https://gate.example/', 'https://gate.example/health?probe=1', 'https://gate.example/health#fragment'])('rejects noncanonical health endpoints: %s', healthUrl => {
+  expect(() => validateNativeRelease({ ...env, CHIRPY_GATE_HEALTH_URL: healthUrl }, ['1.2.3', '1.2.3'])).toThrow('/health');
+});
+
+it('rejects web dev-network readiness even when other services are healthy', async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ runtime: { transport: 'xmtp', xmtpNetwork: 'dev', gateMode: 'external', externalGate: 'gate.example' }, readiness: { releaseReady: true } }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, network: 'production', dependencies: { ready: true } }) });
+  await expect(verifyReleaseServices(env, fetcher)).rejects.toThrow('readiness');
 });
