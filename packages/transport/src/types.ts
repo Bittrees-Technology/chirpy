@@ -56,7 +56,7 @@ export interface Transport {
   listMessages(conversationId: string): Promise<ChatMessage[]>;
   send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage>;
   react(conversationId: string, messageId: string, emoji: string): Promise<void>;
-  markRead(conversationId: string, options?: { sendReceipt: boolean }): Promise<void>;
+  markRead(conversationId: string, options?: { sendReceipt: boolean; throughMessageId?: string }): Promise<void>;
   setConversationConsent(conversationId: string, state: "allowed" | "denied"): Promise<void>;
   startDm(address: string, handle?: string): Promise<Conversation>;
   createRoom(input: StartRoomInput): Promise<Conversation>;

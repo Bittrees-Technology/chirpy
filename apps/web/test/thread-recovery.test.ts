@@ -2,7 +2,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Thread } from "../src/views/Thread";
-const state = vi.hoisted(() => ({ send: vi.fn(), activeConversation: { id: "dm", kind: "dm", title: "Peer", peers: ["0x1", "0x2"] }, messages: [] }));
+const state = vi.hoisted(() => ({ send: vi.fn(), markRead: vi.fn().mockResolvedValue(undefined), activeConversation: { id: "dm", kind: "dm", title: "Peer", peers: ["0x1", "0x2"] }, messages: [] }));
 vi.mock("../src/state", () => ({ useChat: () => ({ ...state, react: vi.fn(), setRoomPolicy: vi.fn(), requestRoomJoin: vi.fn() }), useIdentity: () => ({ identity: { address: "0x1" } }) }));
 vi.mock("../src/useEns", () => ({ useEnsProfiles: () => new Map(), nameFor: (_id, _record, fallback) => fallback || "Peer" }));
 vi.mock("../src/i18n", () => ({ useI18n: () => ({ t: (_key, fallback) => fallback }) }));
@@ -11,6 +11,7 @@ beforeEach(async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   HTMLElement.prototype.scrollIntoView = vi.fn();
   state.activeConversation = { id: "dm", kind: "dm", title: "Peer", peers: ["0x1", "0x2"] };
+  state.messages = []; state.markRead.mockClear();
   state.send.mockReset(); container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   await act(async () => root.render(React.createElement(Thread)));
 });
@@ -64,4 +65,29 @@ it("hides stale loaded content immediately when a conversation becomes blocked",
   expect(container.querySelector('.composer-input')).toBeNull();
   expect(container.textContent).not.toContain("private stale message");
   state.messages = [];
+});
+
+
+it("marks only visible focused history as read and leaves background messages unread", async () => {
+  let focused = false;
+  const rects = vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue([{ height: 100 }] as any);
+  const focus = vi.spyOn(document, "hasFocus").mockImplementation(() => focused);
+  const visible = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  try {
+    state.messages = [{ id: "seen", conversationId: "dm", sender: "0x2", body: "hello", sentAt: 1 }] as any;
+    await act(async () => root.render(React.createElement(Thread)));
+    expect(state.markRead).not.toHaveBeenCalled();
+    focused = true;
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(state.markRead).toHaveBeenLastCalledWith("seen");
+    state.markRead.mockClear();
+    visible.mockReturnValue("hidden");
+    state.messages = [{ id: "unseen", conversationId: "dm", sender: "0x2", body: "new", sentAt: 2 }] as any;
+    await act(async () => root.render(React.createElement(Thread)));
+    expect(state.markRead).not.toHaveBeenCalled();
+    visible.mockReturnValue("visible");
+    rects.mockReturnValue([] as any);
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(state.markRead).not.toHaveBeenCalled();
+  } finally { focus.mockRestore(); visible.mockRestore(); rects.mockRestore(); }
 });

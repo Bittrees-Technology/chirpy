@@ -21,6 +21,7 @@ import type {
   Transport,
   TransportStatus,
 } from "./types.js";
+import { ReadState } from "./readState.js";
 import { makeInjectedSigner } from "./xmtpSigner.js";
 
 type Sdk = typeof import("@xmtp/browser-sdk");
@@ -233,6 +234,7 @@ function toChatMessage(
     body = reply?.content ?? null;
     replyTo = reply?.inReplyTo?.id ?? reply?.referenceId;
   }
+  if (body === null && sdk.isReply(message)) body = "This reply contains content Chirpy cannot display yet.";
   if (body === null) return null;
 
   rememberSender(message.id, message.senderInboxId);
@@ -267,6 +269,8 @@ export class XmtpTransport implements Transport {
   private lastReceiptAt = new Map<string, number>();
   private changeCallback: (() => void) | null = null;
   private readonly myAddress: string;
+  private readonly readState: ReadState;
+  private messageCursors = new Map<string, { conversationId: string; at: bigint }>();
 
   constructor(
     private org: OrgConfig,
@@ -274,6 +278,7 @@ export class XmtpTransport implements Transport {
     private provider: Eip1193Provider | null,
   ) {
     this.myAddress = identity.address.toLowerCase();
+    this.readState = new ReadState(`${xmtpEnv()}:${this.myAddress}`);
     void this.org;
   }
 
@@ -517,6 +522,16 @@ export class XmtpTransport implements Transport {
     if (!passes) throw new Error("This wallet does not satisfy the room gate.");
   }
 
+  private async unreadCount(conversation: XmtpConversation): Promise<number> {
+    const sdk = await this.loadSdk();
+    const count = await conversation.countMessages({
+      contentTypes: [sdk.ContentType.Text, sdk.ContentType.Reply],
+      excludeSenderInboxIds: [this.requireInboxId()],
+      sentAfterNs: this.readState.get(conversation.id),
+    });
+    return Number(count > BigInt(Number.MAX_SAFE_INTEGER) ? BigInt(Number.MAX_SAFE_INTEGER) : count);
+  }
+
   private async mapRoomConversation(conversation: XmtpConversation): Promise<Conversation> {
     this.conversations.set(conversation.id, conversation);
     await conversation.sync().catch(() => undefined);
@@ -552,7 +567,7 @@ export class XmtpTransport implements Transport {
       gate: meta.gate,
       policy: meta.policy,
       lastMessage,
-      unread: 0,
+      unread: await this.unreadCount(conversation),
     };
   }
 
@@ -612,7 +627,7 @@ export class XmtpTransport implements Transport {
       title,
       peers: peer ? [this.myAddress, peer] : [this.myAddress],
       lastMessage: blocked ? undefined : lastMessage,
-      unread: 0,
+      unread: blocked ? 0 : await this.unreadCount(conversation),
       pending,
       blocked,
     };
@@ -658,6 +673,9 @@ export class XmtpTransport implements Transport {
       if (!this.isRoomConversation(sdk, conversation) && await conversation.consentState() === sdk.ConsentState.Denied) return [];
       await conversation.sync();
       const raw = await conversation.messages({ limit: 100000n });
+      for (const message of raw) {
+        if (sdk.isText(message) || sdk.isReply(message)) this.messageCursors.set(message.id, { conversationId, at: message.sentAtNs });
+      }
       const messages = raw
         .map((message) => toChatMessage(
           sdk,
@@ -667,7 +685,11 @@ export class XmtpTransport implements Transport {
           (messageId, senderInboxId) => this.senderInboxByMessage.set(messageId, senderInboxId),
         ))
         .filter((message): message is ChatMessage => Boolean(message))
-        .sort((a, b) => a.sentAt - b.sentAt);
+        .sort((a, b) => {
+          const left = this.messageCursors.get(a.id)?.at ?? 0n;
+          const right = this.messageCursors.get(b.id)?.at ?? 0n;
+          return left < right ? -1 : left > right ? 1 : a.id.localeCompare(b.id);
+        });
       return messages;
     } catch (error) {
       throw new Error(humanError(error));
@@ -733,17 +755,19 @@ export class XmtpTransport implements Transport {
     });
   }
 
-  async markRead(conversationId: string, options?: { sendReceipt: boolean }): Promise<void> {
-    if (options?.sendReceipt !== true) return;
+  async markRead(conversationId: string, options?: { sendReceipt: boolean; throughMessageId?: string }): Promise<void> {
     const conversation = this.conversations.get(conversationId);
-    if (!conversation) return;
-    if (this.roomMeta.has(conversationId)) return;
+    const cursor = options?.throughMessageId ? this.messageCursors.get(options.throughMessageId) : undefined;
+    if (!conversation || !cursor || cursor.conversationId !== conversationId) return;
     const sdk = await this.loadSdk();
-    if (await conversation.consentState() !== sdk.ConsentState.Allowed) return;
+    const room = this.isRoomConversation(sdk, conversation);
+    if (!room && await conversation.consentState() !== sdk.ConsentState.Allowed) return;
+    if (!this.readState.advance(conversationId, cursor.at)) return;
+    this.changeCallback?.();
+    if (room || options?.sendReceipt !== true) return;
     const now = Date.now();
     if (now - (this.lastReceiptAt.get(conversationId) ?? 0) < 3000) return;
-    this.lastReceiptAt.set(conversationId, now);
-    try { await conversation.sendReadReceipt(); } catch { /* best effort */ }
+    try { await conversation.sendReadReceipt(); this.lastReceiptAt.set(conversationId, now); } catch { /* Local read state is independent of best-effort receipts. */ }
   }
 
   private async assertConversationAccepted(conversation: XmtpConversation): Promise<void> {

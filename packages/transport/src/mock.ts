@@ -207,9 +207,14 @@ export class MockTransport implements Transport {
     this.persist(); this.emit();
   }
 
-  async markRead(conversationId: string): Promise<void> {
+  async markRead(conversationId: string, options?: { sendReceipt: boolean; throughMessageId?: string }): Promise<void> {
     const conv = this.snap.conversations.find((c) => c.id === conversationId);
-    if (conv && conv.unread !== 0) { conv.unread = 0; this.persist(); this.emit(); }
+    if (!conv || conv.blocked || conv.pending || !options?.throughMessageId) return;
+    const messages = this.snap.messages[conversationId] ?? [];
+    const index = messages.findIndex((m) => m.id === options.throughMessageId);
+    if (index < 0) return;
+    const unread = messages.slice(index + 1).filter((m) => m.sender.toLowerCase() !== this.identity.address.toLowerCase()).length;
+    if (conv.unread > unread) { conv.unread = unread; this.persist(); this.emit(); }
   }
 
   async setConversationConsent(conversationId: string, state: "allowed" | "denied"): Promise<void> {

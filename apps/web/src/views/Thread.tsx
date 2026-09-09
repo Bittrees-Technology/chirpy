@@ -8,7 +8,7 @@ import { useI18n } from "../i18n";
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
 export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) {
-  const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent } = useChat();
+  const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent, markRead } = useChat();
   const { identity } = useIdentity();
   const { t } = useI18n();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -29,8 +29,20 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const nearBottomRef = useRef(true);
   const previousConversationRef = useRef<string | null>(null);
   const [hasNewMessages, setHasNewMessages] = useState(false);
-  const scrollToLatest = () => { endRef.current?.scrollIntoView({ behavior: "auto" }); nearBottomRef.current = true; setHasNewMessages(false); };
+  const scrollToLatest = () => { endRef.current?.scrollIntoView({ behavior: "auto" }); nearBottomRef.current = true; setHasNewMessages(false); markVisibleRead(); };
   const selfAddress = identity.address.toLowerCase();
+  const latestMessageId = messages.at(-1)?.id;
+  const markVisibleRead = () => {
+    if (latestMessageId && messagesRef.current?.getClientRects().length && nearBottomRef.current && !activeConversation?.pending && !activeConversation?.blocked && document.visibilityState === "visible" && document.hasFocus()) {
+      void markRead?.(latestMessageId).catch(() => {});
+    }
+  };
+  useEffect(() => {
+    markVisibleRead();
+    window.addEventListener("focus", markVisibleRead);
+    document.addEventListener("visibilitychange", markVisibleRead);
+    return () => { window.removeEventListener("focus", markVisibleRead); document.removeEventListener("visibilitychange", markVisibleRead); };
+  }, [conversationKey, latestMessageId, markRead, activeConversation?.pending, activeConversation?.blocked]);
 
   const isRoomConv = activeConversation?.kind === "room";
   const peerAddress = activeConversation && !isRoomConv
@@ -154,7 +166,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           const element = messagesRef.current;
           if (!element) return;
           nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
-          if (nearBottomRef.current) setHasNewMessages(false);
+          if (nearBottomRef.current) { setHasNewMessages(false); markVisibleRead(); }
         }}>
         {messages.length === 0 && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
         {(activeConversation.blocked ? [] : messages).map((m) => {
