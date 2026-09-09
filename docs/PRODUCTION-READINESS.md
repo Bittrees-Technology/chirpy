@@ -249,6 +249,6 @@ Formatting tests cover selected-language times/dates and invalid timestamps. The
 
 ## Unsigned iOS simulator packaging
 
-Apple CI now generates the Xcode project and builds an unsigned simulator archive with the pinned Tauri CLI. Packaged bundle identity, simulator platform, executable and the `chirpy` return scheme are checked before installation. An isolated iPhone simulator installs and launches the app, opens its return URL, and retains a screenshot for visual review.
+Apple CI now generates the Xcode project and builds an unsigned simulator archive with the pinned Tauri CLI. Packaged bundle identity, simulator platform, executable and the `chirpy` return scheme are checked before installation. An isolated iPhone simulator installs and launches the app, requests its registered return URL, and retains launch and URL-confirmation screenshots for visual review. iOS may present an Open confirmation; URL dispatch alone does not prove completed handoff.
 
 This checks packaging and initial launch with XMTP dev and an inert API origin. It does not establish wallet handoff, authenticated messaging, persistent WKWebView storage, signing, TestFlight or physical-device acceptance. Production release artifacts still require the separate signed release workflow and service readiness gates.

@@ -33,13 +33,15 @@ def main():
         run('xcrun', 'simctl', 'bootstatus', udid, '-b', timeout=240)
         run('xcrun', 'simctl', 'install', udid, str(apps[0]))
         print(run('xcrun', 'simctl', 'launch', '--terminate-running-process', udid, 'org.bittrees.chirpy'))
-        run('xcrun', 'simctl', 'openurl', udid, 'chirpy://acceptance')
-        # Allow the bundled webview to paint; the screenshot is reviewed as visual evidence.
-        time.sleep(5)
+        # Allow the bundled webview to paint before the OS return-link prompt covers it.
+        time.sleep(15)
         output = Path('test-results/ios-simulator')
         output.mkdir(parents=True, exist_ok=True)
-        run('xcrun', 'simctl', 'io', udid, 'screenshot', str(output / 'chirpy.png'))
-        print(f'Installed and launched on {device["name"]}; return URL opened successfully.')
+        run('xcrun', 'simctl', 'io', udid, 'screenshot', str(output / 'launch.png'))
+        run('xcrun', 'simctl', 'openurl', udid, 'chirpy://acceptance')
+        time.sleep(3)
+        run('xcrun', 'simctl', 'io', udid, 'screenshot', str(output / 'return-url.png'))
+        print(f'Installed and launched on {device["name"]}; OS accepted the registered return URL. Confirmation and wallet handoff require separate acceptance.')
     finally:
         if booted_here:
             run('xcrun', 'simctl', 'shutdown', udid)
