@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, createContext, useContext } from "react";
 import { useChat, useIdentity, useOrgs } from "./state";
 import { useI18n } from "./i18n";
 import { autoUpdateOnLaunch } from "./update";
@@ -10,6 +10,13 @@ import { Settings } from "./views/Settings";
 import { NewDmDialog, NewRoomDialog, CreateOrgDialog, ImportOrgDialog } from "./views/dialogs";
 
 type View = "chats" | "rooms" | "settings";
+const AppViewContext = createContext<{ view: View; setView: (view: View) => void } | null>(null);
+/** Keep navigation stable while wallet-owned state is discarded on account changes. */
+export function AppViewProvider({ children }: { children: React.ReactNode }) {
+  const [view, setView] = useState<View>("chats");
+  return <AppViewContext.Provider value={{ view, setView }}>{children}</AppViewContext.Provider>;
+}
+
 type Dialog = null | "newDm" | "newRoom" | "createOrg" | "importOrg";
 type MobilePane = "list" | "thread";
 
@@ -92,7 +99,9 @@ function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }
 
 export function App() {
   const { transportId, transportStatus } = useChat();
-  const [view, setView] = useState<View>("chats");
+  const navigation = useContext(AppViewContext);
+  if (!navigation) throw new Error("App requires AppViewProvider");
+  const { view, setView } = navigation;
   const [mobilePane, setMobilePane] = useState<MobilePane>("list");
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = () => setDialog(null);

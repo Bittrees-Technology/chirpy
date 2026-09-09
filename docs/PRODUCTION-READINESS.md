@@ -6,8 +6,8 @@ We implement and merge independent changes in increasing complexity, while prese
 |---|---|---|
 | 1 | HTTP hardening: size/time limits, proxy trust, CORS, sanitized errors, security headers, real HTTP regression tests | Merged in PR #3; 63 tests, type checks, build and rollout proof pass |
 | 2 | Keyboard accessibility, message scrolling, translated chat controls | Merged in PR #4; 64 tests and three browser tests pass |
-| 3 | Unread counts, request acceptance/rejection, blocking and receipts | DM consent merged in PR #6; local unread cursors and visible-message receipt handling implemented |
-| 4 | Wallet-specific preferences and revocable sync authorization | Pending |
+| 3 | Unread counts, request acceptance/rejection, blocking and receipts | DM consent merged in PR #6; unread cursors and visible-message receipt handling merged in PR #7 |
+| 4 | Wallet-specific preferences and revocable sync authorization | Wallet preference/session isolation implemented; server-side revocable authorization remains pending |
 | 5 | Pagination, bounded refresh, long-history performance | Pending |
 | 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Pending |
 | 7 | Dependency remediation, live probes, backup/restore and release acceptance | Pending |
@@ -43,3 +43,11 @@ Unread counts query XMTP's local message database for text/reply messages after 
 Read state advances only through a loaded message that is visible at the end of an active, focused conversation. New messages received while the reader is in history or another tab remain unread. Receipt preference controls outgoing receipts independently of local unread state; requests and blocked conversations send neither. Read state is device-local and clearing browser data resets it.
 
 Validation: 75 unit tests, both type checks, six mock/browser tests and two XMTP dev-network tests pass. The two-wallet round trip asserts the recipient's actual unread badge before acceptance. Incoming receipt display and optional per-chat overrides remain follow-up work.
+
+## Wallet-switch isolation
+
+Preferences, local encrypted snapshots and update timestamps are scoped by wallet (or local demo identity). Switching wallets remounts session state and discards in-memory sync keys and pending timers. The active account changes immediately; delayed ENS results cannot restore an old account after switching or disconnecting. Sync key requests reject account mismatches.
+
+The old shared preference/blob keys remain untouched because their owner cannot be determined safely. Each wallet starts with read receipts and sync off and can opt in explicitly. Disabling sync clears the browser's cached signature but is not yet a server-side revocation; the v1 reusable write-signature protocol remains the next security increment.
+
+Validation: 76 unit tests, both type checks, six mock/browser tests and the two-wallet XMTP dev-network round trip pass. Navigation remains stable during connection while wallet-owned state is remounted. Tests cover account mismatch, malformed stored preferences, late profile responses and returning to a previously used wallet.

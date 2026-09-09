@@ -6,6 +6,7 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await page.locator(".nav-item", { hasText: "Settings" }).click();
   await page.getByRole("button", { name: "Connect wallet" }).click();
   await expect(page.getByText("test.eth").first()).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Address", exact: true })).toHaveValue(walletAddress);
   await expect(page.getByText(walletAddress.slice(0, 6), { exact: false }).first()).toBeVisible();
 
   await page.locator(".nav-item", { hasText: "Chats" }).click();
