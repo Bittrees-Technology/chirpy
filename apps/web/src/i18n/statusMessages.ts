@@ -1,5 +1,8 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "Organization storage could not be read. Restore access before importing or creating an organization.": "status.orgStorageUnreadable",
+  "Organization config exceeds the 256 KB import limit.": "status.importLimit",
+  "Invalid JSON": "status.invalidJson",
   "Encrypted sync is enabled for this browser session, for up to 24 hours.": "status.syncEnabled",
   "Sync is off and this device authorization was revoked.": "status.syncRevoked",
   "Sync is off locally. Use Revoke all sync devices to revoke earlier sessions.": "status.syncLocalOff",
@@ -32,5 +35,12 @@ const keys: Record<string, string> = {
   "Sync stopped locally, but server revocation was not confirmed. Revoke all sync devices when connected.": "status.revokeServerUnconfirmed"
 };
 export function translateStatus(t: (key: string, fallback?: string) => string, message: string): string {
+  if (message.startsWith("Invalid org config: ")) {
+    const details = message.slice("Invalid org config: ".length).split("; ").map(detail => {
+      const match = /^(.*) is invalid$/.exec(detail);
+      return match ? t("status.invalidField", "{field} is invalid").replace("{field}", () => match[1]) : detail;
+    }).join("; ");
+    return t("status.invalidConfig", "Invalid org config: {details}").replace("{details}", () => details);
+  }
   return Object.hasOwn(keys, message) ? t(keys[message], message) : message;
 }

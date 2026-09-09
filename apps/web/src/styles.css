@@ -187,7 +187,9 @@ input, textarea, select { font-family: inherit; }
 /* ---------- Gate editor ---------- */
 .gate-editor { display: flex; flex-direction: column; gap: 8px; }
 .gate-add { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.gate-row { display: flex; align-items: center; gap: 8px; }
+.gate-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gate-row > .input { flex: 1 1 130px; min-width: 0; }
+.gate-row > .input-xs { flex: 0 1 90px; }
 
 /* ---------- Modal ---------- */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(26,26,26,.40); display: grid; place-items: center; z-index: 50; padding: 20px; }
