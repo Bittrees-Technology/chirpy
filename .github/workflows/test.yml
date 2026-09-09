@@ -27,7 +27,8 @@ jobs:
         continue-on-error: true
       - run: pnpm typecheck
       - run: pnpm typecheck:api
-      - run: pnpm test
+      - name: Unit and hardening regression suite
+        run: pnpm test
       - run: pnpm rollout:proof
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
