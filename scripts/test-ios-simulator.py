@@ -7,7 +7,10 @@ import time
 
 
 def run(*args, timeout=120):
-    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=timeout).stdout
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(f'{args[0]} failed ({result.returncode}): {result.stderr or result.stdout}')
+    return result.stdout
 
 
 def main():

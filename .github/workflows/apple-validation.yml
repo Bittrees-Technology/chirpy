@@ -1,8 +1,8 @@
 name: apple-validation
 
 # Credential-free validation of the macOS/iOS (Tauri) build surface. These jobs
-# compile the native shell and check the deep-link / WalletConnect config, but do
-# do not sign/notarize or publish release artifacts — that path (Apple Developer ID + the
+# compile the native shell and exercise an unsigned iOS simulator application.
+# They do not sign/notarize or publish release artifacts — that path (Apple Developer ID + the
 # release workflow) requires secrets and stays in the tag-triggered release.yml.
 #
 # Runs on macOS runners (needed for the Apple targets), so it is scoped with
