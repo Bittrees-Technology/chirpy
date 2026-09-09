@@ -1,46 +1,25 @@
-# Self-hosted Chirpy gate — runs the XMTP gatekeeper room-join service.
-# Build context is the monorepo root (see selfhost/docker-compose.yml).
-#
-# Base image: Debian 13 "trixie" (glibc 2.41). @xmtp/node-bindings's native addon requires
-# GLIBC_2.38+, so a bookworm (2.36) / Vercel-serverless (older) runtime can't load it — that's
-# why /api/room-join 500s on Vercel. Keep a glibc base ≥ 2.38; do NOT downgrade to bookworm
-# or switch to alpine/musl (the gnu binding won't load).
-FROM node:22-trixie-slim
+# Build dependencies separately; package managers and shell tools do not ship.
+FROM node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284 AS dependencies
 WORKDIR /app
-
-# ca-certificates: the XMTP Rust binding opens its own gRPC/TLS connection using the SYSTEM
-# CA bundle (Node's fetch bundles its own, but the native client doesn't), and -slim images
-# omit it — without this, Client.create fails with "GrpcBuilder transport error".
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
-# Runtime deps installed at /app so bare imports (@xmtp/node-sdk, viem) resolve for both
-# server/room-join.js and packages/core/src/*. Copied first for layer caching.
 COPY selfhost/gate.package.json ./package.json
-RUN npm install --omit=dev --no-audit --no-fund
+COPY selfhost/gate.package-lock.json ./package-lock.json
+RUN npm ci --omit=dev --no-fund && npm audit --omit=dev --audit-level=moderate
+RUN mkdir -p /data && chown 65532:65532 /data
 
-# Only the source the gate actually needs: the shared room-join handler, the core gate
-# evaluator (TS), and the HTTP server.
+# Debian 13 supplies the glibc and CA bundle required by the native XMTP SDK.
+# Node 24 runs the shared erasable TypeScript directly, without a runtime compiler.
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:774b7d020b24214835769e24c3544835526cd0288f0b094eae48e8b2c2429a79
+WORKDIR /app
+COPY --from=dependencies /app/package.json /app/package-lock.json ./
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies --chown=65532:65532 /data /data
 COPY packages/core ./packages/core
-COPY server/room-join.js ./server/room-join.js
-COPY server/server-utils.js ./server/server-utils.js
-COPY server/ops-utils.js ./server/ops-utils.js
+COPY server/room-join.js server/server-utils.js server/ops-utils.js ./server/
 COPY selfhost/gate-server.mjs ./selfhost/gate-server.mjs
-
-ENV GATE_PORT=8788
+ENV GATE_PORT=8788 GATE_DATA_DIR=/data NODE_ENV=production PATH=/nodejs/bin
 EXPOSE 8788
-
-# The XMTP MLS store lives here on a persistent volume (see docker-compose.yml / fly.toml).
-# Keeping it durable across restarts means the gatekeeper reuses its existing XMTP installation
-# instead of registering a new one every boot (XMTP caps installations per inbox).
-ENV GATE_DATA_DIR=/data
-RUN mkdir -p /data
 VOLUME ["/data"]
-
-# /health needs no XMTP/secret, so it's a safe liveness probe.
+USER 65532:65532
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.GATE_PORT||8788)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-
-# tsx lets the .js handler import the .ts core files (../packages/core/src/*.ts) at runtime.
-# Call the binary directly — `npx tsx` can block on a prompt when stdin is closed (detached).
-CMD ["node_modules/.bin/tsx", "selfhost/gate-server.mjs"]
+  CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:'+(process.env.GATE_PORT||8788)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+CMD ["selfhost/gate-server.mjs"]
