@@ -195,5 +195,9 @@
   "status.syncReadFailed": "No se pueden leer los datos cifrados. Inténtalo de nuevo cuando el almacenamiento esté disponible.",
   "status.syncRevisionInvalid": "La revisión de sincronización no es válida.",
   "status.syncWrongService": "La autorización del servicio de sincronización no está disponible o tiene un origen incorrecto.",
-  "status.revokeServerUnconfirmed": "La sincronización se ha detenido localmente, pero no se ha confirmado la revocación en el servidor. Revoca todos los dispositivos sincronizados cuando haya conexión."
+  "status.revokeServerUnconfirmed": "La sincronización se ha detenido localmente, pero no se ha confirmado la revocación en el servidor. Revoca todos los dispositivos sincronizados cuando haya conexión.",
+  "settings.orgStorageError": "No se han podido guardar o cargar los cambios de organizaciones. Comprueba el acceso al almacenamiento del navegador antes de cerrar esta página.",
+  "settings.orgRecovery": "Recuperación de organizaciones",
+  "settings.orgRecoveryHelp": "No se han podido cargar algunos datos de organizaciones guardadas. Las organizaciones válidas siguen disponibles y los datos originales se han conservado para su recuperación.",
+  "settings.orgRecoveryDownload": "Descargar datos de recuperación"
 }

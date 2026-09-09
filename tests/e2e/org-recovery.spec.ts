@@ -1,0 +1,41 @@
+import { readFile } from 'node:fs/promises';
+import { expect, test } from '@playwright/test';
+import { createOrg } from '../../packages/core/src/org';
+
+test('recovers mixed saved organizations, downloads originals, and validates newly created data', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const valid = createOrg({ name: 'Valid saved organization' });
+  const raw = JSON.stringify([valid, { ...valid, id: 'bad-org', branding: { ...valid.branding, themeCss: {} } }]);
+  await page.addInitScript(raw => {
+    if (localStorage.getItem('seeded')) return;
+    localStorage.setItem('chat:orgs:v1', raw);
+    localStorage.setItem('chat:activeOrg:v1', JSON.stringify('bad-org'));
+    localStorage.setItem('seeded', 'yes');
+  }, raw);
+  await page.goto('/');
+  await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await expect(page.getByRole('heading', { name: 'Organization recovery', exact: true })).toBeVisible();
+  await expect(page.locator('.org-table')).toContainText('Valid saved organization');
+  await expect(page.locator('.org-detail')).toContainText('Personal');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download recovery data' }).click();
+  const downloaded = await downloadPromise;
+  expect(JSON.parse(await readFile((await downloaded.path())!, 'utf8')).snapshots).toEqual([raw]);
+  expect(await page.evaluate(() => localStorage.getItem('chat:orgs:v1'))).toBe(raw);
+  await page.reload();
+  await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await expect(page.getByRole('heading', { name: 'Organization recovery', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create organization' });
+  await dialog.getByRole('textbox', { name: 'Name', exact: true }).fill('New valid organization');
+  await dialog.getByRole('spinbutton', { name: 'Chain ID' }).fill('1.5');
+  await dialog.getByRole('button', { name: 'Create organization', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('chain.chainId');
+  await dialog.getByRole('spinbutton', { name: 'Chain ID' }).fill('1');
+  await dialog.getByRole('button', { name: 'Create organization', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.org-detail')).toContainText('New valid organization');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('chat:orgs:v2')!));
+  expect(stored.orgs).toHaveLength(2); expect(stored.recovery).toEqual([raw]);
+  expect(errors).toEqual([]);
+});

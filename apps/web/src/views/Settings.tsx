@@ -16,7 +16,7 @@ export function Settings(
     identity, mode, hasInjectedWallet, walletConnectAvailable, isConnecting, ensProfile, walletError,
     setHandle, reset, connectWallet, connectWalletConnect, disconnectWallet,
   } = useIdentity();
-  const { orgs, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
+  const { orgs, recoverySnapshots, organizationStorageError, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices } = useSettingsPrefs();
   const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging } = useChat();
   const { lang, setLang, t } = useI18n();
@@ -139,6 +139,14 @@ export function Settings(
   return (
     <div className="settings">
       <h1>{t("nav.settings")}</h1>
+      {organizationStorageError && <p role="alert">{t("settings.orgStorageError")}</p>}
+      {recoverySnapshots.length > 0 && <section className="card" aria-label={t("settings.orgRecovery")}>
+        <h2>{t("settings.orgRecovery")}</h2>
+        <p role="status">{t("settings.orgRecoveryHelp")}</p>
+        <Button variant="ghost" onClick={() => download("chirpy-organization-recovery.json", JSON.stringify({ snapshots: recoverySnapshots }, null, 2))}>
+          {t("settings.orgRecoveryDownload")}
+        </Button>
+      </section>}
 
       <section className="card">
         <div className="profile-row">

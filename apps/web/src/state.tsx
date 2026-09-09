@@ -1,12 +1,13 @@
 import { normalizeReceiptOverrides, receiptOverride, receiptPreferenceKey, type ReceiptOverrides } from "./receiptPreferences";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
-  PERSONAL_ORG, type Identity, type OrgConfig, type Policy,
+  PERSONAL_ORG, parseOrg, type Identity, type OrgConfig, type Policy,
 } from "@app/core";
 import {
   createTransport, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
 } from "@app/transport";
 import { createRefreshQueue } from "./refreshQueue";
+import { ORGANIZATIONS_KEY, loadOrganizationStore } from "./orgStorage";
 import { DEFAULT_TRANSPORT } from "./app.config";
 import { resolveEns, type EnsRecord } from "./ens";
 import {
@@ -294,6 +295,8 @@ export const useIdentity = () => {
 // ====================================================================
 interface OrgCtx {
   orgs: OrgConfig[];
+  recoverySnapshots: string[];
+  organizationStorageError: boolean;
   activeOrg: OrgConfig;
   activeOrgId: string;
   setActiveOrg: (id: string) => void;
@@ -301,14 +304,27 @@ interface OrgCtx {
   removeOrg: (id: string) => void;
 }
 const OrgContext = createContext<OrgCtx | null>(null);
-const ORGS_KEY = "chat:orgs:v1";
 const ACTIVE_KEY = "chat:activeOrg:v1";
 
 export function OrgProvider({ children }: { children: React.ReactNode }) {
-  const [userOrgs, setUserOrgs] = useState<OrgConfig[]>(() => LS.get<OrgConfig[]>(ORGS_KEY, []));
-  const [activeOrgId, setActiveOrgId] = useState<string>(() => LS.get<string>(ACTIVE_KEY, PERSONAL_ORG.id));
+  const [initialStore] = useState(() => {
+    try { return { ...loadOrganizationStore(localStorage), readFailed: false }; }
+    catch { return { version: 2 as const, orgs: [], recovery: [], readFailed: true }; }
+  });
+  const [userOrgs, setUserOrgs] = useState<OrgConfig[]>(initialStore.orgs);
+  const [organizationStorageError, setOrganizationStorageError] = useState(initialStore.readFailed);
+  const [activeOrgId, setActiveOrgId] = useState<string>(() => {
+    const saved = LS.get<unknown>(ACTIVE_KEY, PERSONAL_ORG.id);
+    return typeof saved === "string" && initialStore.orgs.some(org => org.id === saved) ? saved : PERSONAL_ORG.id;
+  });
 
-  useEffect(() => { LS.set(ORGS_KEY, userOrgs); }, [userOrgs]);
+  useEffect(() => {
+    if (initialStore.readFailed) return;
+    try {
+      localStorage.setItem(ORGANIZATIONS_KEY, JSON.stringify({ version: 2, orgs: userOrgs, recovery: initialStore.recovery }));
+      setOrganizationStorageError(false);
+    } catch { setOrganizationStorageError(true); }
+  }, [userOrgs, initialStore]);
   useEffect(() => { LS.set(ACTIVE_KEY, activeOrgId); }, [activeOrgId]);
 
   const orgs = useMemo(() => [PERSONAL_ORG, ...userOrgs], [userOrgs]);
@@ -332,13 +348,15 @@ export function OrgProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeOrg]);
 
-  const addOrg = useCallback((org: OrgConfig) => {
+  const addOrg = useCallback((input: OrgConfig) => {
+    if (initialStore.readFailed) throw new Error("Organization storage could not be read. Restore access before importing or creating an organization.");
+    const org = parseOrg(JSON.stringify(input));
     setUserOrgs((p) => {
       const without = p.filter((o) => o.id !== org.id);
       return [...without, org];
     });
     setActiveOrgId(org.id);
-  }, []);
+  }, [initialStore]);
 
   const removeOrg = useCallback((id: string) => {
     if (id === PERSONAL_ORG.id) return;
@@ -347,8 +365,8 @@ export function OrgProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<OrgCtx>(() => ({
-    orgs, activeOrg, activeOrgId, setActiveOrg: setActiveOrgId, addOrg, removeOrg,
-  }), [orgs, activeOrg, activeOrgId, addOrg, removeOrg]);
+    orgs, recoverySnapshots: initialStore.recovery, organizationStorageError, activeOrg, activeOrgId, setActiveOrg: setActiveOrgId, addOrg, removeOrg,
+  }), [orgs, activeOrg, activeOrgId, addOrg, removeOrg, initialStore, organizationStorageError]);
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
 }
