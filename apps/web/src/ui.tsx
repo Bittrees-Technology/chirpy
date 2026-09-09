@@ -112,11 +112,12 @@ export function Empty({ icon, title, hint }: { icon: string; title: string; hint
   );
 }
 
-export const fmtTime = (ms: number) => {
+export const fmtTime = (ms: number, locale?: string) => {
   const d = new Date(ms);
+  if (!Number.isFinite(d.getTime())) return "";
   const today = new Date();
   const sameDay = d.toDateString() === today.toDateString();
   return sameDay
-    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : d.toLocaleDateString([], { month: "short", day: "numeric" });
+    ? d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString(locale, { month: "short", day: "numeric" });
 };

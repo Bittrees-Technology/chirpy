@@ -1,9 +1,10 @@
 import { receiptOverride } from "../receiptPreferences";
 import React, { useEffect, useRef, useState } from "react";
-import { policySummary, type Policy } from "@app/core";
+import { formatBytes, type Policy } from "@app/core";
 import { useChat, useIdentity, useSettingsPrefs } from "../state";
 import { Avatar, Button, Empty, fmtTime, shortAddr } from "../ui";
 import { nameFor, useEnsProfiles } from "../useEns";
+import { translateStatus } from "../i18n/statusMessages";
 import { useI18n } from "../i18n";
 
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
@@ -12,7 +13,12 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent, markRead, historyLoading, isHistory, hasOlderMessages, navigateHistory } = useChat();
   const { identity } = useIdentity();
   const { prefs, setChatReadReceipts } = useSettingsPrefs();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const policySummary = (policy: Policy) => [
+    t(policy.mode === "read-only" ? "thread.policyReadOnly" : "thread.policyActive"),
+    ...(policy.attachments === "block" ? [t("thread.policyNoAttachments")] : []),
+    ...(policy.maxUploadBytes ? [`≤ ${formatBytes(policy.maxUploadBytes)}`] : []),
+  ].join(" · ");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const conversationKey = activeConversation?.id ?? "";
   const currentConversationRef = useRef(conversationKey);
@@ -136,7 +142,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           </div>
           <div className="thread-sub">
             {isRoom
-              ? `${activeConversation.peers.length} member${activeConversation.peers.length === 1 ? "" : "s"}${activeConversation.gate?.rules.length ? " · gated" : " · open"}${policy ? ` · ${policySummary(policy)}` : ""}`
+              ? `${t(activeConversation.peers.length === 1 ? "thread.member" : "thread.members", undefined, { count: new Intl.NumberFormat(lang).format(activeConversation.peers.length) })} · ${t(activeConversation.gate?.rules.length ? "thread.gated" : "thread.open")}${policy ? ` · ${policySummary(policy)}` : ""}`
               : shortAddr(activeConversation.peers.find((p) => p !== identity.address) ?? activeConversation.peers[0])}
           </div>
         </div>
@@ -158,7 +164,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
       {!isRoom && peerAddress?.toLowerCase() !== selfAddress && <div className="join-banner dm-controls">
         {!needsConsent && activeConversation.lastReadReceiptAt && <span data-testid="peer-receipt" title={t("thread.receiptMeaning", "The peer sent a read receipt at this time. It does not identify an exact message.")}>
-          {t("thread.lastReceipt", "Last read receipt")}: <time dateTime={new Date(activeConversation.lastReadReceiptAt).toISOString()}>{new Date(activeConversation.lastReadReceiptAt).toLocaleString()}</time>
+          {t("thread.lastReceipt", "Last read receipt")}: <time dateTime={new Date(activeConversation.lastReadReceiptAt).toISOString()}>{new Date(activeConversation.lastReadReceiptAt).toLocaleString(lang)}</time>
         </span>}
         {activeConversation.blocked ? t("thread.blockedNote", "This conversation is blocked. Messages and receipts are hidden.") : activeConversation.pending ? t("thread.requestNote", "Message request. Accept to reply; no read receipts are sent before acceptance.") : null}
         {needsConsent && <Button disabled={consentPending} onClick={() => void changeConsent("allowed")}>{activeConversation.blocked ? t("thread.unblock", "Unblock conversation") : t("thread.accept", "Accept request")}</Button>}
@@ -175,7 +181,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       </div>}
       {joinStatus && (
         <div role="status" className={`join-banner ${joinStatus.ok ? "ok" : "error"}`}>
-          {joinStatus.message}
+          {translateStatus(t, joinStatus.message)}
         </div>
       )}
 
@@ -206,7 +212,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                 )}
                 <div className="msg-bubble">
                   <span className="msg-body">{m.body}</span>
-                  <span className="msg-time">{fmtTime(m.sentAt)}</span>
+                  <span className="msg-time">{fmtTime(m.sentAt, lang)}</span>
                 </div>
                 <div className="msg-tools">
                   {EMOJIS.map((e) => (
@@ -238,7 +244,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         </div>
       )}
 
-      {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{sendError.message} {t("thread.draftKept", "Your draft has been kept.")}</div>}
+      {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{translateStatus(t, sendError.message)} {t("thread.draftKept", "Your draft has been kept.")}</div>}
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
       {readOnly && isAdmin && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chirpy. Administrators can still post; other clients may ignore this policy.")}</div>}
       {needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : postingBlocked ? (

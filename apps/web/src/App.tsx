@@ -21,6 +21,7 @@ type Dialog = null | "newDm" | "newRoom" | "createOrg" | "importOrg";
 type MobilePane = "list" | "thread";
 
 function OrgRail({ onCreateOrg }: { onCreateOrg: () => void }) {
+  const { t } = useI18n();
   const { orgs, activeOrgId, setActiveOrg } = useOrgs();
   return (
     <div className="org-rail">
@@ -35,7 +36,7 @@ function OrgRail({ onCreateOrg }: { onCreateOrg: () => void }) {
           <Avatar id={o.id} label={o.branding.name} size={42} />
         </button>
       ))}
-      <button className="org-pip add" title="Create organization" onClick={onCreateOrg}>＋</button>
+      <button className="org-pip add" title={t("dialog.createOrg")} onClick={onCreateOrg}>＋</button>
     </div>
   );
 }
@@ -59,7 +60,7 @@ function Sidebar(
           <div className="brand-name">{APP_NAME}</div>
           <div className="brand-org">{activeOrg.branding.name}</div>
         </div>
-        <nav className="nav">
+        <nav className="nav" aria-label={t("nav.primary")}>
           {nav.map((n) => (
             <button key={n.id} className={`nav-item ${view === n.id ? "active" : ""}`} onClick={() => setView(n.id)}>
               <span className="nav-icon">{n.icon}</span> {n.label}
@@ -86,7 +87,7 @@ function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
   return (
-    <nav className="mobile-nav" aria-label="Primary">
+    <nav className="mobile-nav" aria-label={t("nav.primary")}>
       {nav.map((n) => (
         <button key={n.id} className={`mobile-nav-item ${view === n.id ? "active" : ""}`} onClick={() => setView(n.id)}>
           <span className="nav-icon">{n.icon}</span>
