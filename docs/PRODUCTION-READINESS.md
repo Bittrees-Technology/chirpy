@@ -260,3 +260,7 @@ Creation/import rejects a new organization before the saved collection exceeds t
 The provider regression fails against the prior implementation and verifies back-to-back additions, replacement, removal, slot reuse and a reload with all 1,000 entries intact and no recovery quarantine. Existing malformed-store and read/write failure coverage remains in place.
 
 Extended acceptance was rerun on main `75ecae90da4fd2b6ddef7a9571e0bbfbdd4011ea`: [run 34357787147](https://github.com/Bittrees-Technology/chirpy/actions/runs/34357787147) passed both live XMTP dev browser tests under native CSP, encrypted fresh-volume restore with installation/message continuity and wrong-key rejection, and the membership audit/enforcement drill. The membership drill uses deterministic RPC/balance responses; production on-chain and operator acceptance remain outstanding.
+
+## Native warning platform review
+
+[Target-specific dependency evidence](security/NATIVE-DEPENDENCIES.md) identifies `glib` and `proc-macro-error` in the checked Linux graph and absent from the checked macOS ARM64, iOS ARM64 simulator and Windows x64 graphs. All five unmaintained Unicode crates remain present on every checked target through URL-pattern/Tauri utilities. The review records the lockfile digest, scope, reproduction method and upstream follow-ups. It establishes dependency presence, not exploitability or release approval; all seven audit warnings remain unsuppressed.

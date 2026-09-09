@@ -9,7 +9,7 @@ Use [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) for completed work and ev
 3. **Operations:** backup scheduling, independently controlled key backups, operator restore and measured recovery targets; alert destinations, incident owner and escalation process. Review membership audit outcomes before enforcement. Complete a moderation/reporting process and any required shared abuse controls.
 4. **Public policies:** identify the operator, actual retention/deletion rules and contacts, then publish approved privacy/terms. Support/security paths exist; no invented legal entity, retention period or response-time promise should fill this gap.
 5. **Native distribution:** supply Apple/platform signing credentials and repository variables (the updater key is verified and configured); verify signed/notarized macOS and Windows signing, downloaded artifact signatures, clean install and updater behavior. Complete signed device packaging and iOS real-device storage/wallet-return/deep-link and TestFlight acceptance. Prepared artifacts remain drafts.
-6. **Dependency follow-up:** review the seven native warnings, especially the Linux GTK/glib constraint, and the 20 unfixed medium/low container findings. Track upstream fixes and platform applicability; no warning suppression or certification is implied by the audit gates.
+6. **Dependency follow-up:** resolve or explicitly accept the seven native warnings and the 20 unfixed medium/low container findings. [Native platform applicability](security/NATIVE-DEPENDENCIES.md) is reviewed; track upstream fixes and recheck after dependency changes; no warning suppression or certification is implied by the audit gates.
 
 ## Product and integration completion
 

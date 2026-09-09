@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-09",
+  "method": "cargo tree --locked --target <target> -i <package> --depth 4",
+  "scope": "Default Cargo features; dependency presence, not binary reachability or exploitability.",
+  "lockfileSha256": "eb381b82f945afa147237dd6deb43f873c176b1d83135432d192a53a544a6ba0",
+  "targets": {
+    "aarch64-apple-darwin": {
+      "glib": false,
+      "proc-macro-error": false,
+      "unic-char-property": true,
+      "unic-char-range": true,
+      "unic-common": true,
+      "unic-ucd-ident": true,
+      "unic-ucd-version": true
+    },
+    "aarch64-apple-ios-sim": {
+      "glib": false,
+      "proc-macro-error": false,
+      "unic-char-property": true,
+      "unic-char-range": true,
+      "unic-common": true,
+      "unic-ucd-ident": true,
+      "unic-ucd-version": true
+    },
+    "x86_64-pc-windows-msvc": {
+      "glib": false,
+      "proc-macro-error": false,
+      "unic-char-property": true,
+      "unic-char-range": true,
+      "unic-common": true,
+      "unic-ucd-ident": true,
+      "unic-ucd-version": true
+    },
+    "x86_64-unknown-linux-gnu": {
+      "glib": true,
+      "proc-macro-error": true,
+      "unic-char-property": true,
+      "unic-char-range": true,
+      "unic-common": true,
+      "unic-ucd-ident": true,
+      "unic-ucd-version": true
+    }
+  }
+}
