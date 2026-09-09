@@ -22,6 +22,7 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await sendMessage(pageA, "hello from A");
 
       await pageB.getByRole("button", { name: "Requests", exact: true }).click();
+      await expect(pageB.locator(".list-item", { hasText: "hello from A" }).locator(".badge")).toHaveText("1", { timeout: 120_000 });
       await openConversationWithMessage(pageB, "hello from A");
       await expect(pageB.locator(".msg-body", { hasText: "hello from A" })).toBeVisible({ timeout: 120_000 });
 

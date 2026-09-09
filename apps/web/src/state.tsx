@@ -728,6 +728,7 @@ interface ChatCtx {
   messages: ChatMessage[];
   enableMessaging: (opts?: { revokeStale?: boolean }) => Promise<void>;
   select: (id: string | null) => void;
+  markRead: (throughMessageId: string) => Promise<void>;
   send: (body: string, replyTo?: string) => Promise<void>;
   react: (messageId: string, emoji: string) => Promise<void>;
   startDm: (address: string, handle?: string) => Promise<void>;
@@ -813,8 +814,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     messageLoadRef.current++;
     setMessages([]);
     setActiveId(id);
-    if (id) void transportRef.current?.markRead(id, { sendReceipt: prefs.readReceiptsDefault }).catch(() => {});
-  }, [prefs.readReceiptsDefault]);
+  }, []);
+
+  const markRead = useCallback(async (throughMessageId: string) => {
+    if (!activeId) return;
+    await transportRef.current?.markRead(activeId, { sendReceipt: prefs.readReceiptsDefault, throughMessageId });
+  }, [activeId, prefs.readReceiptsDefault]);
 
   const enableMessaging = useCallback(async (opts?: { revokeStale?: boolean }) => {
     const t = transportRef.current;
@@ -892,8 +897,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ChatCtx>(() => ({
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages,
-    enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+    enableMessaging, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
+  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, enableMessaging, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
