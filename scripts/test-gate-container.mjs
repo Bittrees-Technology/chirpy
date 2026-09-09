@@ -6,6 +6,17 @@ if (!image) throw new Error('Pass the built test image name.');
 const suffix = randomUUID(); const name = `chirpy-gate-test-${suffix}`; const volume = `${name}-data`;
 const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const node = script => docker('exec', name, 'node', '--input-type=module', '-e', script);
+// Keep a referenced deadline through body consumption so a pending fetch cannot
+// end the test process before finally cleans up its container and volume.
+async function request(url, options = {}) {
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 1000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const body = await response.text();
+    return { status: response.status, headers: response.headers, body };
+  } finally { clearTimeout(deadline); }
+}
 const run = () => docker('run', '--rm', '-d', '--name', name, '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=128',
   '--tmpfs', '/tmp:rw,nosuid,noexec,size=64m', '-p', '127.0.0.1::8788', '-v', `${volume}:/data`, '-e', 'GATE_ALLOW_ORIGIN=https://chirpy.test', image);
 try {
@@ -14,15 +25,15 @@ try {
   const url = `http://127.0.0.1:${port}`;
   let response;
   for (let attempt = 0; attempt < 30; attempt++) {
-    try { response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(1000) }); break; }
+    try { response = await request(`${url}/health`); break; }
     catch { await new Promise(resolve => setTimeout(resolve, 500)); }
   }
   assert.ok(response, 'Gate must start under restricted permissions');
-  assert.equal(response.status, 503); assert.equal((await response.json()).ok, false);
+  assert.equal(response.status, 503); assert.equal(JSON.parse(response.body).ok, false);
   assert.equal(response.headers.get('cache-control'), 'no-store');
-  response = await fetch(`${url}/api/room-join`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://untrusted.test' }, body: '{}' });
+  response = await request(`${url}/api/room-join`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://untrusted.test' }, body: '{}' });
   assert.equal(response.status, 403);
-  response = await fetch(`${url}/api/room-join`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://chirpy.test' }, body: '{' });
+  response = await request(`${url}/api/room-join`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://chirpy.test' }, body: '{' });
   assert.equal(response.status, 400);
   node(`import assert from 'node:assert/strict'; import fs from 'node:fs'; import { Client } from '@xmtp/node-sdk';
     assert.equal(process.getuid(), 65532); assert.equal(typeof Client.create, 'function');

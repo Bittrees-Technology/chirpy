@@ -1,29 +1,35 @@
 # Roadmap
 
-Forward-looking items, separate from the shipped v0.
+The [production readiness ledger](PRODUCTION-READINESS.md) records implementation and test evidence. Source completion and production acceptance are separate.
 
-## Shipped (XMTP / production phase)
-- ✅ **`XmtpTransport`** — real XMTP DMs + XMTP-MLS gated rooms behind the existing
-  `Transport` interface, selected by `VITE_TRANSPORT=xmtp`; no UI change vs mock.
-- ✅ **WalletConnect v2 + injected wallet login**, and **ENS** name/avatar resolution.
-- ✅ **Serverless gate** — `@app/core`'s `evalGate` wrapped behind HTTP as `api/room-join.js`
-  on Vercel (signature-verified, viem `ChainReader`, XMTP gatekeeper bot), plus
-  `api/usersync.js` for encrypted cross-device sync.
+## Implemented
 
-## Imported in v0
-- ✅ **Action policy layer** (read-only rooms, block attachments, size caps).
-- ✅ **File-based i18n** (EN/ES), **drop-in CSS theming**, **custom error page**.
+- XMTP DMs/scoped rooms, wallet/ENS login, consent/blocking and precise unread cursors.
+- Trusted external registry, one-use signed admission, bounded queue and supported fail-closed rules.
+- Opt-in membership audit/enforcement with repeated evidence and administrator protection.
+- Wallet-isolated preferences, expiring/revocable sync grants and atomic writes.
+- Bounded refresh/history, keyboard/focus improvements and EN/ES chat controls.
+- Restricted encrypted-storage container, dependency readiness and synthetic restore/membership drills.
+- Dependency audits, native CSP/API routing, draft-only release preparation and signing/service preflight.
+- Public support and security reporting paths.
 
-## Near-term
-- ◐ **Provision prod secrets** (`XMTP_GATEKEEPER_PRIVATE_KEY`, `MAINNET_RPC_URL`, KV) so the
-  live deploy runs the gate/sync instead of the mock transport.
-- ◐ **Self-host bundle + installer** — `selfhost/` has `install.sh` + compose; includes
-  `gate.Dockerfile` and an HTTP entrypoint. Deployment and real-wallet acceptance remain.
-- ☐ **Mirror the action policy server-side** (the gate currently trusts client-side enforcement).
-- ☐ **SSE realtime fallback** — for non-XMTP surfaces (rooms registry, presence); server-side.
+## Production acceptance remaining
+
+1. Deploy a gate with reviewed identity/registry, production RPC/storage and matching web/org configuration; prove allowed/denied admission and restart behavior.
+2. Configure alerts, backups/key custody, operator restore and moderation/retention ownership; review audit mode before enforcement.
+3. Supply signing credentials; pass desktop installation/updater, Windows signing, iOS wallet return and TestFlight acceptance. Review outstanding native/container advisories.
+4. Publish approved privacy/terms and finalize brand artwork.
+
+## Product and integration follow-ups
+
+- Incoming receipt display and optional per-chat overrides.
+- Very large inbox performance and incremental conversation synchronization.
+- Consistent room administrator controls, broader translations and mobile/accessibility acceptance.
+- Trusted role/power/delegate/multi-chain resolvers and verified presets where needed.
+- Long-running multi-device sync/conflict acceptance and explicit deletion/unblock merge semantics.
+- Shared UI/embed packaging and Governance/Research migration with rollback tests; framing requires an intentional origin allowlist.
+- Shared abuse limits where deployment topology needs them.
 
 ## Later
-- **Voice calls (WebRTC)** — neither XMTP nor Push do voice natively, so this is a separate
-  build (signaling server + media). A clear differentiator; sequence after the XMTP phase.
-- **Per-org relay** — optional reverse proxy in front of the gate for path/method policy +
-  censorship-resistance (a reverse-proxy relay pattern), for orgs that want it.
+
+Voice, presence/SSE and optional organization relays follow core acceptance. Protocol-wide posting freezes need a supported enforcement mechanism; current client policies cannot provide one.

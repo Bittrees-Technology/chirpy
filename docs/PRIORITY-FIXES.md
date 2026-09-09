@@ -20,9 +20,11 @@ The production web configuration inspected on 9 September has XMTP and KV sync c
 On the **external gate host**, configure:
 
 - `XMTP_GATEKEEPER_PRIVATE_KEY`: existing gatekeeper wallet key, in secret storage.
+- `GATE_DB_ENCRYPTION_KEY`: separate persistent 32-byte database key, backed up independently.
+- `GATE_XMTP_ENV=production`: use the same network across restarts and restores.
 - `MAINNET_RPC_URL`: server-side mainnet RPC.
 - `GATE_PUBLIC_URL`: canonical HTTPS endpoint, such as `https://gate.example.org/api/room-join`.
-- `CHIRPY_GATE_ROOMS_FILE`: absolute path to an operator-owned registry, typically `/data/rooms.json`.
+- `CHIRPY_GATE_ROOMS_FILE`: absolute path to an operator-owned registry, typically `/config/rooms.json`.
 - `GATE_ALLOW_ORIGIN`: Chirpy's exact web origin.
 - `GATE_DATA_DIR`: durable XMTP store, typically `/data`.
 
@@ -58,18 +60,8 @@ Deploy the gate with its persistent volume and registry, check `/health`, then r
 - Do not roll back the sync API to a version that lacks atomic revision checks while new clients are active. Keep client and API versions together.
 - Gate privacy and receipt fixes cannot withdraw old receipts or already decrypted room history.
 
-## Remaining work
+## Current follow-up work
 
-1. Provision/verify the external gate host, bot identity, reviewed room registry, and matching web/org configuration; run real multi-wallet and multi-device production acceptance.
-2. Enforceable room freeze/moderation, membership revalidation/removal, and clear treatment of restrictions other XMTP clients can bypass.
-3. Actual unread counts; accept/reject requests; transport-backed blocking/reporting; receipt display and optional per-chat overrides.
-4. Trusted role, voting-power, Safe delegate, and multi-chain resolvers; verified preset contract addresses; broader ERC-1155 discovery if needed.
-5. Paginated/virtualized history, bounded incremental refresh, stable scroll position, accessible icon labels, and complete EN/ES strings.
-6. Revocable/scoped sync device authorization, wallet-specific settings isolation, long-running sync recovery/merge testing, and defined unblock/delete conflict semantics. Current sync write signatures remain the existing v1 authorization format.
-7. Genuine support/security/privacy/terms artifacts and moderation/data-retention processes. The existing public-surface PR is included; it does not invent these policies.
-8. Successful signed desktop releases, notarization, download/install/updater verification; iOS project generation, real-device wallet/deep-link/store validation, and TestFlight acceptance.
-9. Shared UI/embed packaging and replacing duplicated chat code in Governance and Research, with migration/rollback tests.
-10. Live dependency probes, readiness alerts, shared abuse limits, backup/restore drills, and operational ownership. Health remains configuration-focused apart from registry validation.
-11. Release-blocking real gated-room tests, expanded accessibility/mobile acceptance, and dependency audit remediation. The existing XMTP nightly remains advisory.
-12. Final brand artwork and remaining roadmap/README reconciliation.
-13. Later roadmap: voice calls, presence/SSE, and optional organization relays.
+The original priority list has been superseded by the [production readiness ledger](PRODUCTION-READINESS.md) and [roadmap](ROADMAP.md). Consent/blocking, unread cursors, scoped revocable sync v2, bounded history/refresh, membership lifecycle, live readiness and synthetic backup/restore are now implemented and tested.
+
+Outstanding production acceptance includes gate hosting/identity/registry, real chain admission, operator backups/alerts/moderation, public privacy/terms, native signing/devices and remaining dependency applicability review. Receipt display/overrides, large inbox performance, shared UI/integrations and final artwork remain product work. Expanded XMTP nightly failures now fail the workflow; they are not advisory.

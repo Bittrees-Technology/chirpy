@@ -1,351 +1,60 @@
-# Chirpy rollout, rollback, and recovery runbook
+# Rollout, rollback and recovery
 
-This is the operator-facing release runbook for the current Chirpy production
-surface:
-
-- the web app plus `/api/health`, `/api/usersync`, and `/api/workflow-event`
-  on the linked Vercel project `chirpy`
-- the self-hosted gatekeeper service that serves `POST /api/room-join`
-  from `selfhost/gate-server.mjs`
-
-Use this runbook for rollout, health checks, rollback, and incident recovery.
-Keep workflow YAML changes, tag automation, and release-routing changes out of
-this document.
-
-## Release topology
-
-- **Web:** Vercel project `chirpy` (see `.vercel/project.json`).
-- **Gatekeeper:** always-on self-hosted process or container. The checked-in
-  Fly config is `selfhost/fly.toml`; the generic container path is documented
-  in `selfhost/DEPLOY.md`.
-- **Org routing:** every production gated org must set `OrgConfig.gateUrl` to
-  the self-hosted gate URL, for example
-  `https://gate.example.org/api/room-join`.
-
-Do **not** rely on the web deployment's same-origin `/api/room-join` for a
-production gated rollout. `@xmtp/node-sdk` requires native bindings that do not
-run on Vercel serverless.
-
-## Prerequisites
-
-Run all commands from the repo root unless stated otherwise.
-
-```bash
-pnpm install
-```
-
-Required operator tooling:
-
-- `pnpm`
-- `curl`
-- `jq`
-- `vercel`
-- `fly` if the gate runs on Fly.io
-
-Export the environment you are operating on:
-
-```bash
-export CHIRPY_URL=https://chirpy.bittrees.org
-export GATE_URL=https://gate.example.org
-export FLY_APP=chirpy-gate                # only if the gate runs on Fly
-```
-
-## Migration note
-
-This rollout has **no schema/data migration step**. The operator sequence covers deployment
-config, web promotion, gate promotion, health checks, and rollback only.
-
-## Equivalent local release proof
-
-Use this when you need rollout acceptance evidence before a staging or
-production promotion:
-
-```bash
-pnpm rollout:proof
-```
-
-The proof command:
-
-- validates `/api/health` under the supported external-gate topology
-- exercises `/api/workflow-event` with a release verification payload
-- starts the self-hosted gate locally and requires `GET /health` to return
-  `200 OK`
+Use [PRODUCTION.md](PRODUCTION.md) for configuration and [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) for evidence. Commands run from the repository root; replace example hosts with reviewed deployment values.
 
 ## Preflight
 
-1. Confirm the repo is locally healthy.
+1. Record the current web deployment, gate image digest, configuration version, registry hash, XMTP network and backup snapshot. Exclude secrets.
+2. Require green CI and review the latest XMTP nightly. Local checks: `pnpm typecheck`, `pnpm typecheck:api`, `pnpm test`, `pnpm build`, `pnpm rollout:proof`. CI requires real Redis tests; local runs without the test container skip those cases.
+3. Rollout proof tests local configuration/handlers. Its synthetic gate must return 503 because it lacks live authority/dependencies. It is not production acceptance.
+4. Before changing the gate, stop its single writer and copy the complete data directory, including salt and sidecar files. Verify hashes and preserve original keys separately. Plaintext databases require reviewed offline migration; old sync clients must refresh to v2.
+5. Record a compatible rollback target. Never revert sync to reusable signatures or non-atomic writes.
 
-```bash
-pnpm typecheck
+## Gate promotion
+
+Follow [selfhost/DEPLOY.md](../selfhost/DEPLOY.md) for secrets, reviewed rooms, TLS and durable storage. For the supplied Compose deployment:
+
+```sh
+docker compose -f selfhost/docker-compose.yml --env-file selfhost/gate.env up -d --build
+docker compose -f selfhost/docker-compose.yml --env-file selfhost/gate.env ps
+curl -fsS https://gate.example.org/health
 ```
 
-2. Capture the current production deployment and the gate release history
-   before changing anything.
+Keep one process per database and retain the runtime restrictions, volume and registry mount. The Fly configuration is a template, not evidence of a deployed service.
 
-```bash
-vercel list chirpy --environment production
-fly releases --app "$FLY_APP" --image
+Require HTTP 200, `ok: true`, `network: production` and `dependencies.ready: true`. Startup stays 503 until RPC chain/freshness, XMTP synchronization and every room's super-admin authority pass. Results expire after two minutes; a changed or empty registry cannot reuse healthy evidence.
+
+## Web promotion and acceptance
+
+Merge validated changes to main through the linked GitHub/Vercel deployment, or use the reviewed operator deployment procedure. Record the promoted commit and deployment.
+
+```sh
+curl -fsS https://chirpy.bittrees.org/api/health
+curl -fsS 'https://chirpy.bittrees.org/api/usersync?address=0x0000000000000000000000000000000000000001'
 ```
 
-3. Verify the current web runtime.
+Require XMTP and `readiness.releaseReady: true`. The sync read must return v2 authorization, the canonical service and valid revision/epoch; it writes no record. Web health is configuration evidence, so check the external gate separately.
 
-```bash
-curl -fsS "$CHIRPY_URL/api/health" | jq
-```
-
-Expected minimum pass conditions:
-
-- `.ok == true`
-- `.runtime.transport == "xmtp"` for the live XMTP surface
-- `.readiness.gateReady == true`
-- `.readiness.releaseReady == true`
-- the `usersync` check is not degraded
-- no unexpected spike in `.blockingIssues`
-
-Important nuance: `/api/health` reports the web runtime's view of routing and
-release metadata. When `CHIRPY_EXTERNAL_GATE_URL` is set it will report
-`runtime.gateMode == "external"` and treat the supported self-hosted topology as
-ready. The external gate `/health` probe below is still the authoritative
-liveness check for room-join service.
-
-4. Verify the gatekeeper before touching the web deployment.
-
-```bash
-curl -fsS "$GATE_URL/health" | jq
-```
-
-Expected response:
-
-```json
-{"ok":true,"status":"ok"}
-```
-
-5. Check for active production errors before rollout.
-
-```bash
-vercel logs --environment production --status-code 5xx --since 30m
-```
-
-If production is already unhealthy, stop and recover first instead of stacking a
-new deploy onto an incident.
-
-## Rollout sequence
-
-### 1. Record rollback targets
-
-Keep the previous good targets visible in your terminal or incident note:
-
-```bash
-vercel list chirpy --environment production
-fly releases --app "$FLY_APP" --image
-```
-
-- For Vercel, note the previous production deployment URL or `dpl_...` id.
-- For Fly, note the previous good `registry.fly.io/<app>:...` image reference.
-
-### 2. Roll out the gatekeeper first when the gate image or gate env changed
-
-Fly.io:
-
-```bash
-fly deploy \
-  --app "$FLY_APP" \
-  --config selfhost/fly.toml \
-  --dockerfile selfhost/gate.Dockerfile
-curl -fsS "$GATE_URL/health" | jq
-```
-
-Generic container host:
-
-```bash
-docker build -f selfhost/gate.Dockerfile -t chirpy-gate .
-docker run -d --name chirpy-gate \
-  -p 8788:8788 \
-  --env-file selfhost/gate.env \
-  chirpy-gate
-curl -fsS "$GATE_URL/health" | jq
-```
-
-If the gate image and gate secrets did not change, keep the existing gate
-release in place and move to the web deployment.
-
-### 3. Deploy the web app to production
-
-```bash
-vercel deploy --prod
-```
-
-If you are deploying a prebuilt output instead of building during deploy:
-
-```bash
-vercel build
-vercel deploy --prebuilt --prod
-```
-
-### 4. Verify production immediately after promotion
-
-Check the deployment summary or logs for the just-promoted web release:
-
-```bash
-vercel logs --environment production --status-code 5xx --since 5m
-curl -fsS "$CHIRPY_URL/api/health" | jq
-curl -fsS "$GATE_URL/health" | jq
-```
-
-Optional telemetry ping for release bookkeeping:
-
-```bash
-curl -fsS -X POST "$CHIRPY_URL/api/workflow-event" \
-  -H 'content-type: application/json' \
-  -d '{
-    "event":"release.verify",
-    "releasePhase":"postdeploy",
-    "result":"ok",
-    "environment":"production",
-    "deployment":"'"$CHIRPY_URL"'",
-    "check":"health"
-  }'
-```
-
-### 5. Run the operator smoke tests
-
-The release is not complete until all of the following are true:
-
-- A qualifying wallet can join a gated room through the configured external
-  `gateUrl`.
-- A non-qualifying wallet is denied.
-- Existing DMs still load after an org switch.
-- `/api/usersync` does not fail because of missing KV configuration.
+Exercise qualifying and denied wallets against the same registered room, challenge replay and inbox substitution rejection, restart continuity, accepted DM delivery, blocked/request behavior, organization switching and a second device. Use operator-controlled test identities and record cleanup. Verify native origins and wallet return on devices before approving native use.
 
 ## Rollback
 
-### Web rollback (Vercel)
+Use the recorded compatible Vercel deployment through the provider's rollback flow. Deploy the previous immutable gate image with the existing keys, network, registry and volume. Never run two gate writers concurrently. Recheck readiness and admission.
 
-Use this when the web deployment breaks the app or introduces a 5xx spike.
+Image rollback does not undo membership changes, sync revisions/revocations or database changes. For data recovery, stop the writer and restore into a fresh volume using the documented procedure. Preserve the failed volume; never delete the store or rotate keys to make startup pass.
 
-```bash
-vercel logs --environment production --status-code 5xx --since 30m
-vercel list chirpy --environment production
-vercel rollback <previous-deployment-url-or-id>
-vercel rollback status
-curl -fsS "$CHIRPY_URL/api/health" | jq
-vercel logs --environment production --status-code 5xx --since 5m
-```
+## Incident response
 
-If you need to re-promote a deployment after rollback:
+| Signal | Action |
+|---|---|
+| Web 5xx after promotion | Inspect logs; roll back the implicated release and verify web/sync independently |
+| Sync 503 | Check storage and canonical service configuration; restore existing credentials |
+| Sync 401/409 | Refresh/re-authorize an expired grant or pull/merge/retry a stale revision; retain signature/revision checks |
+| Gate 503 or stale dependencies | Inspect dependency logs, RPC freshness, storage permissions, registry and room authority |
+| Admission 503 with Retry-After | Investigate queue latency; retry with a fresh challenge |
+| Missing bot authority | Restore the reviewed role through an authorized room administrator, then wait for a fresh probe |
+| Gate denial | Check actual wallet bindings and on-chain policy using qualifying and denied identities |
+| Same-origin room-join 503 | Correct the organization's external gate URL; Vercel intentionally cannot admit members |
+| Unexpected removal | Turn membership maintenance off, preserve evidence, investigate, and use authorized administration for reinstatement |
 
-```bash
-vercel promote <deployment-url-or-id>
-vercel promote status
-```
-
-### Gate rollback (Fly)
-
-Use this when the external gate health check fails or room joins regress after a
-gate deploy.
-
-```bash
-fly releases --app "$FLY_APP" --image
-fly deploy \
-  --app "$FLY_APP" \
-  --image <previous-image-ref> \
-  --config selfhost/fly.toml
-curl -fsS "$GATE_URL/health" | jq
-```
-
-Fly rollback redeploys the previous VM image. It does **not** roll back any
-application data for you. For Chirpy that mainly means KV-backed sync state and
-room membership are not time-traveled by the platform.
-
-### Gate rollback (generic container host)
-
-Re-run the previous known-good image or compose release for the gate host, then
-re-check:
-
-```bash
-curl -fsS "$GATE_URL/health" | jq
-```
-
-## Recovery guide
-
-### `/api/health` is down or production 5xx spikes after the web deploy
-
-- Roll back the web release first with `vercel rollback`.
-- Verify the recovery with `vercel rollback status`, `vercel logs`, and
-  `curl "$CHIRPY_URL/api/health"`.
-
-### `/api/usersync` writes return `503`
-
-Likely cause: the web deployment is missing `KV_REST_API_URL` and
-`KV_REST_API_TOKEN` or the Upstash equivalents.
-
-Action:
-
-1. Restore the missing KV environment values on the web deployment.
-2. Redeploy the web app.
-3. Re-check `curl "$CHIRPY_URL/api/health" | jq`.
-
-Do not treat an XMTP rollout as healthy while usersync remains degraded.
-
-### `"$GATE_URL/health"` fails or times out
-
-Likely cause: the gate process is down, the host is unhealthy, or the gate
-secrets were lost.
-
-Action:
-
-1. If the gate changed, roll it back with the Fly or container rollback steps
-   above.
-2. Re-apply `XMTP_GATEKEEPER_PRIVATE_KEY`, `MAINNET_RPC_URL`, and
-   `GATE_ALLOW_ORIGIN` if a secrets change caused the outage.
-3. Re-check `curl "$GATE_URL/health" | jq` before touching the web deploy.
-
-### Room join returns `403 {"error":"gatekeeper is not a room super-admin"}`
-
-Likely cause: the gatekeeper bot was not added to an older gated room.
-
-Action:
-
-1. Add the current `VITE_GATEKEEPER_ADDRESS` as a super-admin to the affected
-   room.
-2. Re-run the qualifying wallet join test.
-
-This is usually a room-setup fix, not a code rollback.
-
-### Room join returns `403 {"error":"gate check failed"}`
-
-Likely cause: the wallet genuinely does not satisfy the room gate, or the room
-gate / org config was changed incorrectly.
-
-Action:
-
-1. Validate the room's gate rules and the org's config.
-2. Test both one qualifying and one non-qualifying wallet before escalating it
-   as a service incident.
-
-### Room join returns Vercel `FUNCTION_INVOCATION_FAILED` or other native-binding errors
-
-Likely cause: traffic is still pointing at the same-origin Vercel
-`/api/room-join` instead of the external self-hosted gate.
-
-Action:
-
-1. Restore the affected org's `gateUrl` to the external gate endpoint.
-2. Verify `curl "$GATE_URL/health" | jq`.
-3. Re-run the gated-room smoke test.
-
-Do not hotfix this by trying to force the XMTP gatekeeper back into Vercel
-serverless.
-
-### `/api/health` warns about the gatekeeper while the external gate is healthy
-
-This can happen if the web deployment intentionally omits gatekeeper secrets and
-all production orgs use the external `gateUrl`.
-
-Action:
-
-1. Treat the external gate `/health` probe as authoritative for room-join
-   readiness.
-2. Keep the web release if usersync and the rest of the runtime are healthy.
-3. Track any desire for a cleaner combined health signal as backlog work, not
-   as an in-incident docs or workflow change.
+Configure alerts for repeated gate failures, failed nightly checks, sync outages and admission latency. Assign incident ownership, escalation contacts and recovery targets before launch. These operator decisions and alert destinations remain pending.
