@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
+import { createGateDependencyMonitor, gateRegistryHash } from "../server/gate-health.js";
 import { configuredNativeOrigins } from "../server/native-origins.js";
 import { startMembershipWorker } from "../server/gate-membership-worker.js";
 import { buildGateHealthReport } from "../server/ops-utils.js";
@@ -9,7 +10,7 @@ import { checkRateLimit, logEvent } from "../server/server-utils.js";
 const MAX_BODY_BYTES = 32_768;
 const REQUEST_TIMEOUT_MS = 10_000;
 
-export function createGateServer({ handler = roomJoinHandler, registry = loadRooms, env = process.env } = {}) {
+export function createGateServer({ handler = roomJoinHandler, registry = loadRooms, env = process.env, dependencySnapshot = () => ({ ready: false, checkedAt: null }) } = {}) {
   const allowedOrigin = env.GATE_ALLOW_ORIGIN || "";
   const allowedOrigins = configuredNativeOrigins(env.GATE_NATIVE_ORIGINS);
   if (allowedOrigin && allowedOrigin !== "*") allowedOrigins.add(allowedOrigin);
@@ -40,8 +41,12 @@ export function createGateServer({ handler = roomJoinHandler, registry = loadRoo
       if (route === "/health" || route === "/") {
         if (!["GET", "HEAD"].includes(req.method)) { res.setHeader("Allow", "GET, HEAD"); return respond(405, { error: "method not allowed" }); }
         const report = buildGateHealthReport(env);
-        try { await registry(); }
+        let registryHash;
+        try { const rooms = await registry(); if (!rooms.length) throw new Error("No managed rooms"); registryHash = gateRegistryHash(rooms); }
         catch { report.ok = false; report.status = "degraded"; report.blockingIssues.push("Room registry cannot be loaded or validated."); }
+        const dependencies = dependencySnapshot();
+        report.dependencies = { ...dependencies, ready: dependencies.ready && dependencies.registryHash === registryHash && !!registryHash };
+        if (!report.dependencies.ready) { report.ok = false; report.status = "degraded"; report.blockingIssues.push("Live RPC/XMTP checks are unavailable or stale."); }
         return respond(report.ok ? 200 : 503, req.method === "HEAD" ? undefined : report);
       }
       if (req.method === "OPTIONS") {
@@ -94,7 +99,10 @@ export function createGateServer({ handler = roomJoinHandler, registry = loadRoo
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.GATE_PORT || 8788);
-  const server = createGateServer();
+  const dependencies = createGateDependencyMonitor();
+  const server = createGateServer({ dependencySnapshot: dependencies.snapshot });
+  dependencies.start();
+  server.once("close", dependencies.stop);
   const stopMembership = startMembershipWorker();
   server.once("close", stopMembership);
   server.listen(port, () => logEvent("server.started", { route: "selfhost/gate-server", port }));

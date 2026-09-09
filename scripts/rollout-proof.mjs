@@ -42,7 +42,7 @@ async function waitForGate(url, attempts = 40) {
     try {
       const response = await fetch(url);
       const body = await response.json();
-      if (response.ok) return { response, body };
+      if (response.status === 200 || response.status === 503) return { response, body };
     } catch {
       // Ignore startup races and retry.
     }
@@ -127,7 +127,9 @@ async function main() {
 
     try {
       const gate = await waitForGate(`http://127.0.0.1:${LOCAL_GATE_PORT}/health`);
-      assert.equal(gate.body?.ok, true, "Expected the local gate /health endpoint to report ready");
+      assert.equal(gate.response.status, 503, "Synthetic configuration must not claim live readiness");
+      assert.equal(gate.body?.ok, false);
+      assert.equal(gate.body?.dependencies?.ready, false);
       summary.checks.push({
         name: "gate-health",
         body: gate.body,
