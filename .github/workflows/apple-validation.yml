@@ -53,6 +53,7 @@ jobs:
 
   ios-config-check:
     name: iOS config check
+    timeout-minutes: 30
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -77,3 +78,29 @@ jobs:
       # neither invocation signs, packages, installs, or uploads an app.
       - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml
       - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target aarch64-apple-ios-sim
+
+      - name: Generate the iOS Xcode project
+        run: pnpm tauri ios init --ci --skip-targets-install
+      - name: Build unsigned iOS simulator archive
+        env:
+          VITE_TRANSPORT: xmtp
+          VITE_XMTP_ENV: dev
+          VITE_API_ORIGIN: https://example.invalid
+        run: pnpm tauri ios build --ci --debug --target aarch64-sim --no-sign --archive-only
+      - name: Inspect generated simulator archives
+        run: |
+          python3 - <<'PYIOS'
+          from pathlib import Path
+          import plistlib
+          apps = list(Path('apps/web/src-tauri/gen/apple').rglob('*.xcarchive/Products/Applications/*.app'))
+          assert apps, 'No archived simulator application was generated'
+          for app in apps:
+              with (app / 'Info.plist').open('rb') as source:
+                  info = plistlib.load(source)
+              assert info['CFBundleIdentifier'] == 'org.bittrees.chirpy'
+              assert info['CFBundleSupportedPlatforms'] == ['iPhoneSimulator']
+              schemes = [scheme for item in info.get('CFBundleURLTypes', []) for scheme in item.get('CFBundleURLSchemes', [])]
+              assert 'chirpy' in schemes, 'Wallet return scheme is absent from the built application'
+              assert (app / info['CFBundleExecutable']).is_file()
+              print(f'Validated unsigned simulator application: {app}')
+          PYIOS
