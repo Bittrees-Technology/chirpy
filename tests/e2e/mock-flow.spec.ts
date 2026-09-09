@@ -18,7 +18,7 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await page.getByPlaceholder("Message e2e peer").fill("hello from playwright");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".msg-body", { hasText: "hello from playwright" })).toBeVisible();
-  await page.getByRole("button", { name: "👍" }).first().click();
+  await page.getByRole("button", { name: "React with 👍" }).first().click();
   await expect(page.getByText("👍 1")).toBeVisible();
 
   if (await page.getByRole("button", { name: "+ Room" }).count() === 0) {

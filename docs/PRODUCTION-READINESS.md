@@ -4,8 +4,8 @@ We implement and merge independent changes in increasing complexity, while prese
 
 | Order | Increment | Status / completion evidence |
 |---|---|---|
-| 1 | HTTP hardening: size/time limits, proxy trust, CORS, sanitized errors, security headers, real HTTP regression tests | Implemented; validation in this PR |
-| 2 | Keyboard accessibility, message scrolling, translated chat controls | Next |
+| 1 | HTTP hardening: size/time limits, proxy trust, CORS, sanitized errors, security headers, real HTTP regression tests | Merged in PR #3; 63 tests, type checks, build and rollout proof pass |
+| 2 | Keyboard accessibility, message scrolling, translated chat controls | Implemented; native-dialog and message-history regression tests in this PR |
 | 3 | Unread counts, request acceptance/rejection, blocking and receipts | Pending |
 | 4 | Wallet-specific preferences and revocable sync authorization | Pending |
 | 5 | Pagination, bounded refresh, long-history performance | Pending |

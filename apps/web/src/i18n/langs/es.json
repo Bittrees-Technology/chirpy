@@ -3,7 +3,6 @@
   "nav.rooms": "Salas",
   "nav.settings": "Ajustes",
   "settings.language": "Idioma",
-
   "list.searchChats": "Buscar chats",
   "list.searchRooms": "Buscar salas",
   "list.newChat": "+ Chat",
@@ -19,7 +18,6 @@
   "list.emptyRoomsHint": "+ Sala para crear un espacio comunitario con token gate",
   "list.noResultsTitle": "Sin resultados",
   "list.noResultsHint": "Prueba otra búsqueda",
-
   "thread.selectTitle": "Selecciona una conversación",
   "thread.selectHint": "o empieza una nueva desde la izquierda",
   "thread.noMessagesTitle": "Aún no hay mensajes",
@@ -31,5 +29,18 @@
   "thread.readOnly": "🔒 Esta sala es de solo lectura. Las publicaciones están congeladas.",
   "thread.replyingTo": "Respondiendo a:",
   "thread.messagePrefix": "Mensaje para",
-  "thread.send": "Enviar"
+  "thread.send": "Enviar",
+  "common.close": "Cerrar",
+  "thread.back": "Volver a los chats",
+  "thread.history": "Historial de mensajes",
+  "thread.reactWith": "Reaccionar con",
+  "thread.reply": "Responder",
+  "thread.cancelReply": "Cancelar respuesta",
+  "thread.newMessages": "Mensajes nuevos — ir al último",
+  "thread.draftKept": "Se ha conservado tu borrador.",
+  "thread.roomId": "ID de la sala",
+  "thread.joinToSend": "Únete a esta sala para enviar mensajes.",
+  "thread.compose": "Escribe un mensaje",
+  "thread.sending": "Enviando…",
+  "thread.actionFailed": "La acción ha fallado. Inténtalo de nuevo."
 }

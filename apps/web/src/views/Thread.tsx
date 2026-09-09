@@ -24,6 +24,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [joinPending, setJoinPending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
+  const previousConversationRef = useRef<string | null>(null);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
+  const scrollToLatest = () => { endRef.current?.scrollIntoView({ behavior: "auto" }); nearBottomRef.current = true; setHasNewMessages(false); };
   const selfAddress = identity.address.toLowerCase();
 
   const isRoomConv = activeConversation?.kind === "room";
@@ -34,7 +39,12 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const profiles = useEnsProfiles([peerAddress, ...messages.map((m) => m.sender)]);
 
   useEffect(() => { setDrafts({}); setSendError(null); }, [selfAddress]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length, activeConversation?.id]);
+  useEffect(() => {
+    const switched = previousConversationRef.current !== conversationKey;
+    previousConversationRef.current = conversationKey;
+    if (switched || nearBottomRef.current) scrollToLatest();
+    else setHasNewMessages(true);
+  }, [messages.length, conversationKey]);
   useEffect(() => { setReplyTo(null); setJoinStatus(null); }, [activeConversation?.id]);
 
   if (!activeConversation) {
@@ -60,6 +70,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     setSending(id); setSendError(null);
     try {
       await send(body, replyTo ?? undefined);
+      if (currentConversationRef.current === id) scrollToLatest();
       setDrafts((current) => current[id] === body ? { ...current, [id]: "" } : current);
       if (currentConversationRef.current === id) setReplyTo(null);
     } catch (error) {
@@ -75,7 +86,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const isMember = activeConversation.peers.some((peer) => peer.toLowerCase() === identity.address.toLowerCase());
   const toggleFreeze = () => {
     if (!policy) return;
-    void setRoomPolicy({ ...policy, mode: readOnly ? "active" : "read-only" });
+    void setRoomPolicy({ ...policy, mode: readOnly ? "active" : "read-only" }).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
   };
   const requestJoin = async () => {
     setJoinPending(true);
@@ -88,7 +99,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     <div className="thread">
       <header className="thread-head">
         {showBack && (
-          <button className="thread-back" onClick={onBack} aria-label="Back to chats">
+          <button className="thread-back" onClick={onBack} aria-label={t("thread.back", "Back to chats")}>
             ‹
           </button>
         )}
@@ -120,12 +131,18 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       </header>
 
       {joinStatus && (
-        <div className={`join-banner ${joinStatus.ok ? "ok" : "error"}`}>
+        <div role="status" className={`join-banner ${joinStatus.ok ? "ok" : "error"}`}>
           {joinStatus.message}
         </div>
       )}
 
-      <div className={`messages ${messages.length ? "has-msgs" : ""}`}>
+      <div ref={messagesRef} role="region" aria-label={t("thread.history", "Message history")} tabIndex={0}
+        className={`messages ${messages.length ? "has-msgs" : ""}`} onScroll={() => {
+          const element = messagesRef.current;
+          if (!element) return;
+          nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+          if (nearBottomRef.current) setHasNewMessages(false);
+        }}>
         {messages.length === 0 && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
         {messages.map((m) => {
           const mine = m.sender.toLowerCase() === selfAddress;
@@ -144,9 +161,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                 </div>
                 <div className="msg-tools">
                   {EMOJIS.map((e) => (
-                    <button key={e} className="react-btn" onClick={() => react(m.id, e)}>{e}</button>
+                    <button key={e} className="react-btn" aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
+                      void react(m.id, e).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
+                    }}>{e}</button>
                   ))}
-                  <button className="react-btn" onClick={() => setReplyTo(m.id)}>↩</button>
+                  <button className="react-btn" aria-label={t("thread.reply", "Reply")} onClick={() => setReplyTo(m.id)}>↩</button>
                 </div>
                 {m.reactions && Object.keys(m.reactions).length > 0 && (
                   <div className="msg-reactions">
@@ -162,27 +181,29 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         <div ref={endRef} />
       </div>
 
+      {hasNewMessages && <button className="btn btn-ghost" onClick={scrollToLatest}>{t("thread.newMessages", "New messages — jump to latest")}</button>}
       {replyTarget && (
         <div className="reply-banner">
           {t("thread.replyingTo", "Replying to:")} <em>{replyTarget.body.slice(0, 80)}</em>
-          <button className="icon-btn" onClick={() => setReplyTo(null)}>✕</button>
+          <button className="icon-btn" aria-label={t("thread.cancelReply", "Cancel reply")} onClick={() => setReplyTo(null)}>✕</button>
         </div>
       )}
 
-      {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{sendError.message} Your draft has been kept.</div>}
-      {isGatedRoom && <div className="muted">Room ID: {activeConversation.id}</div>}
-      {isGatedRoom && !isMember ? <div className="composer readonly-note">Join this room to send messages.</div> : readOnly ? (
+      {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{sendError.message} {t("thread.draftKept", "Your draft has been kept.")}</div>}
+      {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
+      {isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : readOnly ? (
         <div className="composer readonly-note">{t("thread.readOnly", "🔒 This room is read-only. Posting is frozen.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>
           <input
+            aria-label={t("thread.compose", "Write a message")}
             className="composer-input"
             placeholder={`${t("thread.messagePrefix", "Message")} ${isRoom ? "#" + activeConversation.title : activeConversation.title}`}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             autoFocus
           />
-          <button className="btn btn-primary" type="submit" disabled={!draft.trim() || sending !== null}>{sending === conversationKey ? "Sending…" : t("thread.send", "Send")}</button>
+          <button className="btn btn-primary" type="submit" disabled={!draft.trim() || sending !== null}>{sending === conversationKey ? t("thread.sending", "Sending…") : t("thread.send", "Send")}</button>
         </form>
       )}
     </div>

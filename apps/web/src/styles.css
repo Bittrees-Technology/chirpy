@@ -266,3 +266,12 @@ input, textarea, select { font-family: inherit; }
   .list-actions { gap: 6px; }
   .profile-row, .pref-row { align-items: flex-start; flex-direction: column; }
 }
+
+/* Native dialogs provide focus containment, Escape and an inert background. */
+.modal { margin: auto; padding: 0; color: inherit; width: calc(100% - 40px); }
+.modal:not([open]) { display: none; }
+.modal::backdrop { background: rgba(26,26,26,.40); }
+.msg-bubble-wrap:focus-within .msg-tools { opacity: 1; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (hover: none) { .msg-tools { position: static; opacity: 1; width: fit-content; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; } }
