@@ -14,7 +14,7 @@ COPY --from=dependencies /app/package.json /app/package-lock.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies --chown=65532:65532 /data /data
 COPY packages/core ./packages/core
-COPY server/room-join.js server/server-utils.js server/ops-utils.js ./server/
+COPY server/room-join.js server/server-utils.js server/ops-utils.js server/gate-client.js server/gate-config.js ./server/
 COPY selfhost/gate-server.mjs ./selfhost/gate-server.mjs
 ENV GATE_PORT=8788 GATE_DATA_DIR=/data NODE_ENV=production PATH=/nodejs/bin
 EXPOSE 8788

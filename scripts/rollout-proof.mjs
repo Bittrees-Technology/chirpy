@@ -64,6 +64,8 @@ async function main() {
 
   try {
     Object.assign(process.env, {
+      GATE_DB_ENCRYPTION_KEY: "2".repeat(64),
+      GATE_DATA_DIR: "/tmp/chirpy-rollout-proof",
       GATE_PUBLIC_URL: "https://gate.example.org/api/room-join",
       CHIRPY_GATE_ROOMS_FILE: fileURLToPath(new URL("../selfhost/rooms.example.json", import.meta.url)),
       CHIRPY_BASE_URL: "https://chirpy.example.org",

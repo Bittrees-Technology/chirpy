@@ -1,3 +1,5 @@
+import { isAbsolute } from "node:path";
+import { validDatabaseKey, validGatekeeperKey } from "./gate-config.js";
 const DEFAULT_RELEASE_CHANNEL = "local";
 
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
@@ -16,7 +18,7 @@ function pickDeploymentHost(value) {
 }
 
 function normalizeGateState(env) {
-  const privateKeyConfigured = nonEmpty(env.XMTP_GATEKEEPER_PRIVATE_KEY);
+  const privateKeyConfigured = validGatekeeperKey(env.XMTP_GATEKEEPER_PRIVATE_KEY);
   const serverRpcConfigured = nonEmpty(env.MAINNET_RPC_URL);
   const externalUrl = firstNonEmpty(env.CHIRPY_EXTERNAL_GATE_URL);
   return {
@@ -43,7 +45,7 @@ function healthCheck(name, status, summary, extra = {}) {
 }
 
 export function buildGateHealthReport(env = process.env) {
-  const privateKeyConfigured = nonEmpty(env.XMTP_GATEKEEPER_PRIVATE_KEY);
+  const privateKeyConfigured = validGatekeeperKey(env.XMTP_GATEKEEPER_PRIVATE_KEY);
   const serverRpcConfigured = nonEmpty(env.MAINNET_RPC_URL);
   const allowOrigin = firstNonEmpty(env.GATE_ALLOW_ORIGIN, "*");
   const warnings = [];
@@ -56,6 +58,18 @@ export function buildGateHealthReport(env = process.env) {
     const summary = "XMTP_GATEKEEPER_PRIVATE_KEY is not configured.";
     checks.push(healthCheck("gatekeeper-key", "degraded", summary));
     blockingIssues.push(summary);
+  }
+
+  const databaseKeyConfigured = validDatabaseKey(env.GATE_DB_ENCRYPTION_KEY) &&
+    env.GATE_DB_ENCRYPTION_KEY.replace(/^0x/, "").toLowerCase() !== String(env.XMTP_GATEKEEPER_PRIVATE_KEY || "").replace(/^0x/, "").toLowerCase();
+  const dataDirectoryConfigured = isAbsolute(env.GATE_DATA_DIR || "");
+  for (const [name, ready, summary] of [
+    ["database-key", databaseKeyConfigured, "A separate persistent GATE_DB_ENCRYPTION_KEY is required."],
+    ["data-directory", dataDirectoryConfigured, "An explicit absolute GATE_DATA_DIR on persistent storage is required."],
+    ["xmtp-network", ["production", "dev"].includes(env.GATE_XMTP_ENV || "production"), "GATE_XMTP_ENV must be production or dev."],
+  ]) {
+    checks.push(healthCheck(name, ready ? "ok" : "degraded", ready ? `${name} is configured.` : summary));
+    if (!ready) blockingIssues.push(summary);
   }
 
   if (serverRpcConfigured) {
