@@ -1,3 +1,4 @@
+import { readMessagePage } from "./messagePage.js";
 import {
   decodeGate,
   encodeGate,
@@ -226,6 +227,7 @@ function toChatMessage(
 ): ChatMessage | null {
   let body: string | null = null;
   let replyTo: string | undefined;
+  let replyPreview: string | undefined;
 
   if (sdk.isText(message)) {
     body = String((message as DecodedMessage<string>).content ?? "");
@@ -233,6 +235,7 @@ function toChatMessage(
     const reply = message.content as EnrichedReply<string> | undefined;
     body = reply?.content ?? null;
     replyTo = reply?.inReplyTo?.id ?? reply?.referenceId;
+    if (typeof reply?.inReplyTo?.content === "string") replyPreview = reply.inReplyTo.content.slice(0, 200);
   }
   if (body === null && sdk.isReply(message)) body = "This reply contains content Chirpy cannot display yet.";
   if (body === null) return null;
@@ -245,7 +248,7 @@ function toChatMessage(
     body,
     sentAt: nsToMs(message.sentAtNs),
     reactions: aggregateReactions(sdk, message.reactions ?? [], inboxToAddress),
-    replyTo,
+    replyTo, replyPreview,
   };
 }
 
@@ -677,13 +680,22 @@ export class XmtpTransport implements Transport {
   }
 
   async listMessages(conversationId: string): Promise<ChatMessage[]> {
+    return (await this.listMessagePage(conversationId)).messages;
+  }
+
+  async listMessagePage(conversationId: string, before?: string) {
     const conversation = this.conversations.get(conversationId);
-    if (!conversation || this.status !== "ready") return [];
+    if (!conversation || this.status !== "ready") return { messages: [], olderCursor: undefined };
     try {
       const sdk = await this.loadSdk();
-      if (!this.isRoomConversation(sdk, conversation) && await conversation.consentState() === sdk.ConsentState.Denied) return [];
+      if (!this.isRoomConversation(sdk, conversation) && await conversation.consentState() === sdk.ConsentState.Denied) return { messages: [], olderCursor: undefined };
       await conversation.sync();
-      const raw = await conversation.messages({ limit: 100000n });
+      const page = await readMessagePage((query) => conversation.messages({
+        ...query, direction: sdk.SortDirection.Descending,
+        contentTypes: [sdk.ContentType.Text, sdk.ContentType.Reply],
+      }), before);
+      const raw = page.messages;
+      for (const message of raw) { this.messageCursors.delete(message.id); this.senderInboxByMessage.delete(message.id); }
       for (const message of raw) {
         if (sdk.isText(message) || sdk.isReply(message)) this.messageCursors.set(message.id, { conversationId, at: message.sentAtNs });
       }
@@ -701,7 +713,11 @@ export class XmtpTransport implements Transport {
           const right = this.messageCursors.get(b.id)?.at ?? 0n;
           return left < right ? -1 : left > right ? 1 : a.id.localeCompare(b.id);
         });
-      return messages;
+      // Bound metadata retained for replies, reactions and local read cursors.
+      for (const cache of [this.messageCursors, this.senderInboxByMessage]) {
+        while (cache.size > 2500) cache.delete(cache.keys().next().value!);
+      }
+      return { messages, olderCursor: page.olderCursor };
     } catch (error) {
       throw new Error(humanError(error));
     }
@@ -755,8 +771,10 @@ export class XmtpTransport implements Transport {
     if (!referenceInboxId) throw new Error("Reaction target is not loaded yet.");
 
     const sdk = await this.loadSdk();
-    const current = (await this.listMessages(conversationId)).find((message) => message.id === messageId);
-    const had = current?.reactions?.[emoji]?.some((address) => address.toLowerCase() === this.myAddress) ?? false;
+    const current = await this.client?.conversations.getMessageById(messageId);
+    if (!current || current.conversationId !== conversationId) throw new Error("Reaction target is no longer available.");
+    const reactions = aggregateReactions(sdk, current.reactions ?? [], (inbox) => this.addressForInbox(conversationId, inbox));
+    const had = reactions?.[emoji]?.some((address) => address.toLowerCase() === this.myAddress) ?? false;
     await conversation.sendReaction({
       reference: messageId,
       referenceInboxId,

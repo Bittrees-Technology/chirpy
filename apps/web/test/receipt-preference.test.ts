@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { IdentityProvider, OrgProvider, SettingsPrefsProvider, ChatProvider, useChat, useSettingsPrefs } from "../src/state";
 const mock = vi.hoisted(() => ({ markRead: vi.fn().mockResolvedValue(undefined) }));
-vi.mock("@app/transport", () => ({ createTransport: () => ({ id: "mock", status: "ready", init: async () => {}, listConversations: async () => [], listMessages: async () => [], subscribe: () => () => {}, markRead: mock.markRead }) }));
+vi.mock("@app/transport", () => ({ createTransport: () => ({ id: "mock", status: "ready", init: async () => {}, listConversations: async () => [], listMessages: async () => [], listMessagePage: async () => ({ messages: [] }), subscribe: () => () => {}, markRead: mock.markRead }) }));
 vi.mock("../src/ens", () => ({ resolveEns: async () => null }));
 it("passes the actual current Settings preference to the transport", async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;

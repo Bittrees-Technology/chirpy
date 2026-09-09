@@ -54,5 +54,12 @@
   "thread.reject": "Reject and block",
   "thread.block": "Block conversation",
   "thread.acceptToSend": "Accept or unblock this conversation to send messages.",
-  "settings.blockedHelp": "Manage blocked conversations in Chats → Blocked. Blocking hides this direct conversation and stops your outgoing messages and receipts. It does not remove messages from shared rooms."
+  "settings.blockedHelp": "Manage blocked conversations in Chats → Blocked. Blocking hides this direct conversation and stops your outgoing messages and receipts. It does not remove messages from shared rooms.",
+  "thread.historyNavigation": "Message history navigation",
+  "thread.older": "Older messages",
+  "thread.newer": "Newer messages",
+  "thread.latest": "Latest messages",
+  "thread.refresh": "Refresh messages",
+  "thread.loadingHistory": "Loading messages…",
+  "thread.earlierReply": "Reply to an earlier message"
 }

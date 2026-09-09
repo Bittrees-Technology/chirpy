@@ -778,6 +778,10 @@ interface ChatCtx {
   activeId: string | null;
   activeConversation: Conversation | null;
   messages: ChatMessage[];
+  historyLoading: boolean;
+  isHistory: boolean;
+  hasOlderMessages: boolean;
+  navigateHistory: (direction: "older" | "newer" | "latest" | "refresh") => void;
   enableMessaging: (opts?: { revokeStale?: boolean }) => Promise<void>;
   select: (id: string | null) => void;
   markRead: (throughMessageId: string) => Promise<void>;
@@ -805,6 +809,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [history, setHistory] = useState<{ before?: string; newer: (string | undefined)[] }>({ newer: [] });
+  const historyRef = useRef(history);
+  const [olderCursor, setOlderCursor] = useState<string>();
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const resetHistory = useCallback(() => {
+    historyRef.current = { newer: [] }; setHistory(historyRef.current); setOlderCursor(undefined);
+  }, []);
 
   const conversationLoadRef = useRef(0);
   const reloadConversations = useCallback(async () => {
@@ -818,14 +829,34 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const messageLoadRef = useRef(0);
   const reloadMessages = useCallback(async (id: string | null) => {
+    if (id !== activeIdRef.current) return;
     const request = ++messageLoadRef.current;
     const t = transportRef.current;
-    if (!t || !id) { setMessages([]); return; }
+    if (!t || !id) { setMessages([]); setOlderCursor(undefined); setHistoryLoading(false); return; }
+    const before = historyRef.current.before;
+    setHistoryLoading(true);
     try {
-      const next = await t.listMessages(id);
-      if (messageLoadRef.current === request && transportRef.current === t && activeIdRef.current === id) setMessages(next);
+      const page = await t.listMessagePage(id, before);
+      if (messageLoadRef.current === request && transportRef.current === t && activeIdRef.current === id && historyRef.current.before === before) {
+        setMessages(page.messages); setOlderCursor(page.olderCursor);
+      }
     } catch (error) { if (messageLoadRef.current === request) setTransportError(error instanceof Error ? error.message : "Unable to load messages."); }
+    finally { if (messageLoadRef.current === request) setHistoryLoading(false); }
   }, []);
+
+  const navigateHistory = useCallback((direction: "older" | "newer" | "latest" | "refresh") => {
+    const current = historyRef.current;
+    let next = current;
+    if (direction === "older") {
+      if (!olderCursor) return;
+      next = { before: olderCursor, newer: [...current.newer, current.before] };
+    } else if (direction === "newer") {
+      if (!current.newer.length) return;
+      next = { before: current.newer.at(-1), newer: current.newer.slice(0, -1) };
+    } else if (direction === "latest") next = { newer: [] };
+    historyRef.current = next; setHistory(next); setOlderCursor(undefined); setMessages([]);
+    void reloadMessages(activeIdRef.current);
+  }, [olderCursor, reloadMessages]);
 
   // (Re)build the transport whenever the org or identity changes.
   useEffect(() => {
@@ -835,6 +866,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setConversations([]);
     setMessages([]);
     setActiveId(null);
+    activeIdRef.current = null; resetHistory();
     messageLoadRef.current++;
     (async () => {
       const provider = mode === "wallet" ? getActiveProvider() : null;
@@ -867,11 +899,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { reloadMessages(activeId); }, [activeId, reloadMessages]);
 
   const select = useCallback((id: string | null) => {
+    const reselected = id === activeIdRef.current;
     activeIdRef.current = id;
     messageLoadRef.current++;
-    setMessages([]);
+    resetHistory(); setMessages([]);
     setActiveId(id);
-  }, []);
+    if (reselected) void reloadMessages(id);
+  }, [resetHistory, reloadMessages]);
 
   const markRead = useCallback(async (throughMessageId: string) => {
     if (!activeId) return;
@@ -898,9 +932,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const send = useCallback(async (body: string, replyTo?: string) => {
     if (!activeId || !body.trim()) return;
     if (!transportRef.current) throw new Error("Messaging is reconnecting. Try again shortly.");
-    await transportRef.current.send(activeId, body, { replyTo });
-    await reloadMessages(activeId);
-  }, [activeId, reloadMessages]);
+    const transport = transportRef.current;
+    await transport.send(activeId, body, { replyTo });
+    if (activeIdRef.current !== activeId || transportRef.current !== transport) return;
+    resetHistory(); await reloadMessages(activeId);
+  }, [activeId, reloadMessages, resetHistory]);
 
   const react = useCallback(async (messageId: string, emoji: string) => {
     if (!activeId) return;
@@ -954,8 +990,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ChatCtx>(() => ({
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages,
+    historyLoading, isHistory: history.before !== undefined, hasOlderMessages: olderCursor !== undefined, navigateHistory,
     enableMessaging, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, enableMessaging, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
