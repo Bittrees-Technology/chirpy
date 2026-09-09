@@ -46,6 +46,7 @@ describe("mergePayload", () => {
         readReceiptsDefault: true,
         syncAcrossDevices: false,
         blocked: ["0x123", "0xabc", "0xdef"],
+        readReceiptOverrides: {},
       },
       savedMessages: [
         { id: "dupe", body: "newer", updatedAt: 20 },
@@ -162,4 +163,21 @@ it("does not revive a receipt opt-in when an equal-time device removed the overr
   const b = payload({ settingsPrefs: { readReceiptsDefault: true, syncAcrossDevices: true, blocked: [], readReceiptOverrides: {} } });
   expect(mergePayload(a, b).settingsPrefs.readReceiptOverrides).toEqual({ room: false });
   expect(mergePayload(b, a)).toEqual(mergePayload(a, b));
+});
+
+
+it("converges mixed-age offline snapshots across exchange groupings", () => {
+  const choices = [undefined, {}, { room: true }, { room: false }];
+  const snapshots = Array.from({ length: 24 }, (_, i) => payload({
+    updatedAt: i % 3,
+    settingsPrefs: { readReceiptsDefault: i % 2 === 0, syncAcrossDevices: i % 4 === 0, blocked: [String(i % 3)], readReceiptOverrides: choices[i % choices.length] },
+    savedMessages: [{ id: String(i % 2), body: String(i), ...(i % 2 ? { updatedAt: i % 5 } : {}) }],
+  }));
+  for (const a of snapshots) for (const b of snapshots) {
+    const merged = mergePayload(a, b);
+    expect(merged).toEqual(mergePayload(b, a));
+    expect(mergePayload(merged, merged)).toEqual(merged);
+    const c = snapshots[(a.updatedAt + b.updatedAt + 7) % snapshots.length];
+    expect(mergePayload(merged, c)).toEqual(mergePayload(a, mergePayload(b, c)));
+  }
 });

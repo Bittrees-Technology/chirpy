@@ -121,7 +121,7 @@ export function mergePayload(
 
   return {
     version: 1,
-    settingsPrefs: { ...settingsPrefs, blocked },
+    settingsPrefs: { ...settingsPrefs, blocked, readReceiptOverrides: Object.fromEntries(Object.entries(settingsPrefs.readReceiptOverrides ?? {}).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) },
     savedMessages: Array.from(savedMessages.values()).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     updatedAt: Math.max(local.updatedAt, remote.updatedAt),
   };
