@@ -75,12 +75,8 @@ jobs:
       # Guards the deep-link / WalletConnect return config (chirpy:// scheme,
       # deep-link:default capability, WC metadata.redirect) against drift.
       - run: pnpm test
-      # Confirms the native shell (incl. the deep-link plugin) compiles both for
-      # the runner and for iOS. GitHub's macOS image supplies the simulator SDK;
-      # neither invocation signs, packages, installs, or uploads an app.
-      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml
-      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target aarch64-apple-ios-sim
-
+      # The archive build below compiles the actual simulator target. macOS
+      # compilation is covered by the separate dual-architecture job above.
       - name: Generate the iOS Xcode project
         run: pnpm tauri ios init --ci --skip-targets-install
       - name: Build unsigned iOS simulator archive

@@ -7,7 +7,13 @@ import time
 
 
 def run(*args, timeout=120):
-    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    print('Running: ' + ' '.join(args), flush=True)
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        print(error.stdout or '', flush=True)
+        print(error.stderr or '', flush=True)
+        raise
     if result.returncode:
         raise RuntimeError(f'{args[0]} failed ({result.returncode}): {result.stderr or result.stdout}')
     return result.stdout
@@ -30,7 +36,7 @@ def main():
     try:
         if booted_here:
             run('xcrun', 'simctl', 'boot', udid)
-        run('xcrun', 'simctl', 'bootstatus', udid, '-b', timeout=240)
+        run('xcrun', 'simctl', 'bootstatus', udid, '-b', timeout=600)
         run('xcrun', 'simctl', 'install', udid, str(apps[0]))
         print(run('xcrun', 'simctl', 'launch', '--terminate-running-process', udid, 'org.bittrees.chirpy'))
         # Allow the bundled webview to paint before the OS return-link prompt covers it.
