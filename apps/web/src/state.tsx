@@ -552,6 +552,20 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
   const authSigRef = useRef<SyncAuthorization | null>(null);
   const authSigAddressRef = useRef<string | null>(null);
   const savedMessagesRef = useRef<SettingsSyncPayload["savedMessages"]>([]);
+  // An async sync operation must never commit over a newer local choice.
+  const prefsRevisionRef = useRef(0);
+  const guardPrefsRevision = () => {
+    const revision = prefsRevisionRef.current;
+    return () => {
+      ensureActive();
+      if (revision !== prefsRevisionRef.current) throw new Error("Settings changed while syncing. Your local choices are saved; enable sync again to retry.");
+    };
+  };
+  const recordLocalEdit = () => {
+    prefsRevisionRef.current++;
+    prefsUpdatedAtRef.current = Math.max(Date.now(), prefsUpdatedAtRef.current + 1);
+    LS.set(updatedAtKey, prefsUpdatedAtRef.current);
+  };
   const pullOnSessionKeyRef = useRef(false);
   const pushTimerRef = useRef<number | null>(null);
   const [syncState, setSyncState] = useState<SettingsSyncState>({
@@ -574,17 +588,18 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
     authSig?: SyncAuthorization | null,
     repush = true,
   ): Promise<{ prefs: SettingsPrefs; blob: EncryptedSyncBlob; merged: boolean } | null> => {
-    ensureActive();
+    const ensureCurrent = guardPrefsRevision();
+    ensureCurrent();
     const remoteBlob = await pullRemoteBlob(address);
-    ensureActive();
+    ensureCurrent();
     if (!remoteBlob) return null;
     try {
       const remotePayload = await decryptSettingsPayload(remoteBlob as EncryptedSyncBlob, key);
-      ensureActive();
+      ensureCurrent();
       const localPayload = payloadFromPrefs(localPrefs, savedMessagesRef.current, prefsUpdatedAtRef.current);
       const mergedPayload = mergePayload(localPayload, remotePayload);
       const mergedBlob = await encryptSyncPayload(mergedPayload, key, address);
-      ensureActive();
+      ensureCurrent();
       savedMessagesRef.current = mergedPayload.savedMessages;
       prefsUpdatedAtRef.current = mergedPayload.updatedAt;
       LS.set(updatedAtKey, mergedPayload.updatedAt);
@@ -592,6 +607,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       if (repush && authSig) void pushBlob(address, authSig, mergedBlob);
       return { prefs: mergedPayload.settingsPrefs, blob: mergedBlob, merged: true };
     } catch {
+      ensureCurrent();
       throw new Error("Encrypted sync could not be decrypted. Remote data has been preserved.");
     }
   }, []);
@@ -684,10 +700,10 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
   const value = useMemo<SettingsPrefsCtx>(() => ({
     prefs,
     syncState,
-    setReadReceiptsDefault: (readReceiptsDefault) => { prefsUpdatedAtRef.current = Date.now(); LS.set(updatedAtKey, prefsUpdatedAtRef.current); setPrefs((p) => ({ ...p, readReceiptsDefault })); },
+    setReadReceiptsDefault: (readReceiptsDefault) => { recordLocalEdit(); setPrefs((p) => ({ ...p, readReceiptsDefault })); },
     setChatReadReceipts: (conversationId, on) => {
       if (!/^[a-zA-Z0-9_-]{1,256}$/.test(conversationId) || (on !== undefined && typeof on !== "boolean")) return;
-      prefsUpdatedAtRef.current = Date.now(); LS.set(updatedAtKey, prefsUpdatedAtRef.current);
+      recordLocalEdit();
       setPrefs((current) => {
         const overrides = { ...current.readReceiptOverrides };
         const key = receiptPreferenceKey(conversationId);
@@ -697,12 +713,13 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
     },
     enableSyncAcrossDevices: async () => {
       if (mode !== "wallet") return { ok: false, message: "Connect a wallet before enabling encrypted sync." };
+      const ensureCurrent = guardPrefsRevision();
       setSyncState((s) => ({ ...s, isEncrypting: true }));
       try {
         const { address, key } = await requestWalletSyncKey(mode === "wallet" ? identity.address : undefined);
-        ensureActive();
-        const authSig = await createSyncAuthorization(address, (message) => { ensureActive(); return signSyncMessage(address, message); });
-        ensureActive();
+        ensureCurrent();
+        const authSig = await createSyncAuthorization(address, (message) => { ensureCurrent(); return signSyncMessage(address, message); });
+        ensureCurrent();
         const nextPrefs = { ...prefs, syncAcrossDevices: true };
         syncKeyRef.current = key;
         syncAddressRef.current = address;
@@ -710,13 +727,15 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
         const remoteMerged = await pullMergePushOnce(key, address, nextPrefs, authSig, false);
         const mergedPrefs = { ...(remoteMerged?.prefs ?? nextPrefs), syncAcrossDevices: true };
         const blob = remoteMerged?.blob ?? await encryptSettingsPayload(mergedPrefs, key, address, savedMessagesRef.current);
-        ensureActive();
+        ensureCurrent();
         LS.set(blobKey, blob);
         const pushed = await pushBlob(address, authSig, blob);
+        ensureCurrent();
         if (!pushed.ok && pushed.stale) {
           const latest = await pullMergePushOnce(key, address, mergedPrefs, authSig, false);
           if (latest) {
             const retry = await pushBlob(address, authSig, latest.blob);
+            ensureCurrent();
             if (!retry.ok) throw new Error("Another device changed sync again. Try enabling sync again.");
             setPrefs(latest.prefs);
             setSyncState({ walletAddress: address, encryptedAt: latest.blob.updatedAt, hasSessionKey: true, isEncrypting: false });
@@ -741,6 +760,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       }
     },
     disableSyncAcrossDevices: async () => {
+      recordLocalEdit();
       const authorization = authSigRef.current;
       syncKeyRef.current = null;
       syncAddressRef.current = null;
@@ -756,6 +776,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
     },
     revokeAllSyncDevices: async () => {
       if (mode !== "wallet") return { ok: false, message: "Connect a wallet to revoke sync devices." };
+      recordLocalEdit();
       setSyncState((state) => ({ ...state, isEncrypting: true }));
       try {
         await revokeAllSyncAuthorizations(identity.address, (message) => { ensureActive(); return signSyncMessage(identity.address, message); });
