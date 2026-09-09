@@ -68,5 +68,8 @@
   "thread.receiptsOff": "Desactivadas",
   "thread.lastReceipt": "Última confirmación de lectura",
   "thread.receiptMeaning": "La otra persona envió una confirmación de lectura a esta hora. No identifica un mensaje concreto.",
-  "thread.adminPosting": "Las publicaciones de miembros están pausadas en Chirpy. Los administradores pueden publicar; otros clientes pueden ignorar esta política."
+  "thread.adminPosting": "Las publicaciones de miembros están pausadas en Chirpy. Los administradores pueden publicar; otros clientes pueden ignorar esta política.",
+  "list.pages": "Páginas de conversaciones",
+  "list.previous": "Anterior",
+  "list.next": "Siguiente"
 }

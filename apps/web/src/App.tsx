@@ -99,6 +99,8 @@ function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }
 
 export function App() {
   const { transportId, transportStatus } = useChat();
+  const { identity } = useIdentity();
+  const { activeOrg } = useOrgs();
   const navigation = useContext(AppViewContext);
   if (!navigation) throw new Error("App requires AppViewProvider");
   const { view, setView } = navigation;
@@ -121,6 +123,7 @@ export function App() {
         {(view === "chats" || view === "rooms") && (
           <div className={`split mobile-${mobilePane}`}>
             <ConversationColumn
+              key={`${identity.address}:${activeOrg.namespace}:${view}`}
               title={view === "rooms" ? "Rooms" : "Chats"}
               mode={view === "rooms" ? "rooms" : "chats"}
               needsConnect={needsConnect}

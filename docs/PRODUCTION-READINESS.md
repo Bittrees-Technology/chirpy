@@ -85,7 +85,7 @@ Validation: 94 tests include 1,000-event burst/concurrency coverage, failed-refr
 
 Threads query and render 50 text/reply messages per page with older/newer/latest navigation. Timestamp ties are kept together, with a hard 1,000-message ceiling and an explicit error for pathological timestamp floods. Queries never exceed 1,001 records; exact nanosecond cursors prevent millisecond rounding gaps. Replies preserve a bounded parent excerpt, and reactions load their target by ID. Reply/read metadata caches are capped at 2,500 entries.
 
-Background refreshes retain the selected history page. Sending returns to the latest page; local reads/receipts do not advance while browsing older history. Switching chats invalidates delayed page results. Validation: 99 tests include a synthetic 100,000-message source, timestamp ties/floods, stale page responses and old-message reactions. Eight browser tests include a 2,000-message history, navigation, bounded rendering and desktop/mobile screenshots; two live XMTP dev-network tests pass. These are bounded pages rather than an unbounded scrolling DOM. Inbox-wide synchronization and very large conversation lists remain performance follow-ups.
+Background refreshes retain the selected history page. Sending returns to the latest page; local reads/receipts do not advance while browsing older history. Switching chats invalidates delayed page results. Validation: 99 tests include a synthetic 100,000-message source, timestamp ties/floods, stale page responses and old-message reactions. Eight browser tests include a 2,000-message history, navigation, bounded rendering and desktop/mobile screenshots; two live XMTP dev-network tests pass. These are bounded pages rather than an unbounded scrolling DOM. Very large conversation rendering is now paginated; incremental inbox synchronization remains a follow-up.
 
 ## Supported gates and advisory posting policy
 
@@ -182,3 +182,9 @@ Validation: the two-wallet XMTP dev flow under native CSP confirms no receipt be
 Room policy controls are shown only after the transport confirms administrator or super-admin authority. Missing/failed role checks hide them. During an advisory pause, administrators retain the same posting/reaction exception already applied by the transport; ordinary members cannot compose or react. Actions still recheck current SDK authority, so stale UI permissions cannot authorize a change. New local demo rooms model creator administration and role loss consistently. Labels say pause/resume member posting rather than implying protocol-wide freezing.
 
 Validation: 209 tests and the browser create/pause/admin-post/role-loss flow pass, along with type checking.
+
+## Bounded inbox rendering and SDK reads
+
+Conversation lists render 50 rows per page and request ENS profiles only for visible rows. Search still covers every loaded conversation; query/filter changes reset the page and wallet/org/view changes reset list state. Per-conversation SDK mapping runs at most eight concurrent tasks, preserves order and drains active work after a failure before permitting a refresh retry.
+
+Validation: 211 tests, a 10,000-conversation browser scenario with 50 initial profile lookups, and both live XMTP dev tests under native CSP pass. The SDK still synchronizes/lists the full inbox; this change bounds rendering and application-level concurrency, not total initial synchronization cost. Incremental SDK synchronization and real large-inbox device benchmarking remain follow-ups.

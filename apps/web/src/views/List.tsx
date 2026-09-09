@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Conversation } from "@app/transport";
 import { useChat, useIdentity } from "../state";
 import { Avatar, Empty, fmtTime } from "../ui";
@@ -22,6 +22,8 @@ export function ConversationColumn(
   const { t } = useI18n();
   const [inboxView, setInboxView] = useState<"inbox" | "requests" | "blocked">("inbox");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const selfAddress = identity.address.toLowerCase();
   const isRooms = mode === "rooms";
   const peerOf = (conversation: Conversation) =>
@@ -35,7 +37,6 @@ export function ConversationColumn(
   const items = conversations.filter((conversation) =>
     conversation.kind === (isRooms ? "room" : "dm") && !isSelfConversation(conversation) &&
     (isRooms || (inboxView === "blocked" ? conversation.blocked : inboxView === "requests" ? conversation.pending && !conversation.blocked : !conversation.blocked && !conversation.pending)));
-  const dmProfiles = useEnsProfiles(items.filter((c) => c.kind === "dm").map(peerOf));
   const normalizedQuery = query.trim().toLowerCase();
   const filteredItems = useMemo(() => {
     if (!normalizedQuery) return items;
@@ -49,6 +50,11 @@ export function ConversationColumn(
       return text.includes(normalizedQuery);
     });
   }, [items, normalizedQuery]);
+  const pageCount = Math.max(1, Math.ceil(filteredItems.length / 50));
+  const currentPage = Math.min(page, pageCount - 1);
+  const visibleItems = filteredItems.slice(currentPage * 50, (currentPage + 1) * 50);
+  const dmProfiles = useEnsProfiles(visibleItems.filter((c) => c.kind === "dm").map(peerOf));
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [currentPage, normalizedQuery, inboxView]);
   const showConnectEmpty = needsConnect && items.length === 0;
   const savedLabel = t("list.savedMessages", "Saved Messages");
   const searchLabel = isRooms ? t("list.searchRooms", "Search rooms") : t("list.searchChats", "Search chats");
@@ -99,17 +105,22 @@ export function ConversationColumn(
           </button>
         )}
         {!isRooms && <div className="list-actions" role="group" aria-label={t("list.inboxView", "Conversation filter")}>
-          {(["inbox", "requests", "blocked"] as const).map((view) => <button key={view} className="btn btn-ghost btn-sm" aria-pressed={inboxView === view} onClick={() => setInboxView(view)}>{t(`list.${view}`, view === "inbox" ? "Inbox" : view === "requests" ? "Requests" : "Blocked")}</button>)}
+          {(["inbox", "requests", "blocked"] as const).map((view) => <button key={view} className="btn btn-ghost btn-sm" aria-pressed={inboxView === view} onClick={() => { setInboxView(view); setPage(0); }}>{t(`list.${view}`, view === "inbox" ? "Inbox" : view === "requests" ? "Requests" : "Blocked")}</button>)}
         </div>}
         <input
           className="input list-search"
           value={query}
           placeholder={searchLabel}
           aria-label={searchLabel}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { setQuery(e.target.value); setPage(0); }}
         />
       </div>
-      <div className="list-scroll">
+      {pageCount > 1 && <nav className="list-pages" aria-label={t("list.pages", "Conversation pages")}>
+        <button className="btn btn-ghost btn-sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("list.previous", "Previous")}</button>
+        <span role="status">{currentPage * 50 + 1}–{Math.min((currentPage + 1) * 50, filteredItems.length)} / {filteredItems.length}</span>
+        <button className="btn btn-ghost btn-sm" disabled={currentPage === pageCount - 1} onClick={() => setPage(currentPage + 1)}>{t("list.next", "Next")}</button>
+      </nav>}
+      <div className="list-scroll" ref={scrollRef}>
         {showConnectEmpty && (
           <div className="empty">
             <div className="empty-icon">💬</div>
@@ -128,7 +139,7 @@ export function ConversationColumn(
         {items.length > 0 && filteredItems.length === 0 && (
           <Empty icon="🔎" title={t("list.noResultsTitle", "No results")} hint={t("list.noResultsHint", "Try another search")} />
         )}
-        {filteredItems.map((c) => {
+        {visibleItems.map((c) => {
           const peer = c.kind === "dm" ? peerOf(c) : undefined;
           const record = peer ? dmProfiles.get(peer.toLowerCase()) : undefined;
           const peerLabel = c.kind === "room"

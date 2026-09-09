@@ -1,4 +1,5 @@
 import { readMessagePage } from "./messagePage.js";
+import { mapConversations } from "./mapConversations.js";
 import {
   decodeGate,
   encodeGate,
@@ -677,7 +678,7 @@ export class XmtpTransport implements Transport {
       const list = await client.conversations.list();
       this.conversations = new Map(list.map((conversation) => [conversation.id, conversation]));
       this.roomMeta.clear();
-      const mapped = await Promise.all(list.map((conversation) => this.mapConversation(conversation)));
+      const mapped = await mapConversations(list, (conversation) => this.mapConversation(conversation));
       const scoped = mapped.filter((c) => c.kind === "dm" || c.namespace === this.org.namespace ||
         (!c.namespace && this.org.namespace === "personal"));
       let directory: Conversation[] = [];
