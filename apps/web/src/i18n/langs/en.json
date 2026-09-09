@@ -68,5 +68,8 @@
   "thread.receiptsOff": "Off",
   "thread.lastReceipt": "Last read receipt",
   "thread.receiptMeaning": "The peer sent a read receipt at this time. It does not identify an exact message.",
-  "thread.adminPosting": "Member posting is paused in Chirpy. Administrators can still post; other clients may ignore this policy."
+  "thread.adminPosting": "Member posting is paused in Chirpy. Administrators can still post; other clients may ignore this policy.",
+  "list.pages": "Conversation pages",
+  "list.previous": "Previous",
+  "list.next": "Next"
 }
