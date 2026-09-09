@@ -10,7 +10,7 @@ test('rejects malformed imports without replacing the active organization and re
   await dialog.getByRole('textbox').fill(JSON.stringify({ ...config, roles: {} }));
   await dialog.getByRole('button', { name: 'Import', exact: true }).click();
   await expect(dialog.getByText('Invalid org config: roles is invalid')).toBeVisible();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('chat:orgs:v1') ?? '[]'))).toEqual([]);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('chat:orgs:v2') ?? '{"orgs":[]}').orgs)).toEqual([]);
   await dialog.getByRole('textbox').fill(JSON.stringify(config));
   await dialog.getByRole('button', { name: 'Import', exact: true }).click();
   await expect(dialog).toHaveCount(0);

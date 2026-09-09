@@ -189,6 +189,7 @@ export function NewRoomDialog({ onClose, onCreated }: { onClose: () => void; onC
 // ---------------- Create Org ----------------
 export function CreateOrgDialog({ onClose }: { onClose: () => void }) {
   const { addOrg } = useOrgs();
+  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [accent, setAccent] = useState("#F7931A");
   const [chainId, setChainId] = useState(1);
@@ -213,13 +214,17 @@ export function CreateOrgDialog({ onClose }: { onClose: () => void }) {
   };
 
   const create = () => {
-    const org = createOrg({ name, accent, chainId, gateUrl: gateUrl.trim() || undefined, entryGate, gating, policy, themeCss: themeCss.trim() || undefined });
-    addOrg(org);
-    onClose();
+    setError(null);
+    try {
+      const org = createOrg({ name, accent, chainId, gateUrl: gateUrl.trim() || undefined, entryGate, gating, policy, themeCss: themeCss.trim() || undefined });
+      addOrg(org);
+      onClose();
+    } catch (error) { setError(error instanceof Error ? error.message : "Organization creation failed."); }
   };
 
   return (
     <Modal title="Create organization" onClose={onClose} wide>
+      {error && <div role="alert" className="error-banner">{error}</div>}
       <div className="grid2">
         <Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme DAO" autoFocus /></Field>
         <Field label="Accent color"><input className="input input-color" type="color" value={accent} onChange={(e) => setAccent(e.target.value)} /></Field>

@@ -195,5 +195,9 @@
   "status.syncReadFailed": "Unable to read encrypted sync. Try again when storage is available.",
   "status.syncRevisionInvalid": "Invalid sync revision.",
   "status.syncWrongService": "Sync service authorization is unavailable or has the wrong origin.",
-  "status.revokeServerUnconfirmed": "Sync stopped locally, but server revocation was not confirmed. Revoke all sync devices when connected."
+  "status.revokeServerUnconfirmed": "Sync stopped locally, but server revocation was not confirmed. Revoke all sync devices when connected.",
+  "settings.orgStorageError": "Organization changes could not be saved or loaded. Check browser storage access before closing this page.",
+  "settings.orgRecovery": "Organization recovery",
+  "settings.orgRecoveryHelp": "Some saved organization data could not be loaded. Valid organizations remain available, and the original data has been retained for recovery.",
+  "settings.orgRecoveryDownload": "Download recovery data"
 }
