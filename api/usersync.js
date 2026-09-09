@@ -1,5 +1,6 @@
 import { recoverMessageAddress, keccak256, stringToHex } from "viem";
 import { SYNC_AUTH_MAX_AGE, syncGrantMessage, syncWriteMessage, syncRevokeDeviceMessage, syncRevokeAllMessage } from "../packages/core/src/syncAuth.js";
+import { syncCors } from "../server/sync-cors.js";
 import { checkRateLimit, logEvent } from "../server/server-utils.js";
 
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -70,9 +71,11 @@ export default async function handler(req, res) {
     return res.status(status).json(body);
   };
   try {
+    const cors = syncCors(req, res, { service: SERVICE, allowedOrigins: process.env.CHIRPY_SYNC_ALLOWED_ORIGINS || "" });
+    if (cors) return respond(cors.status, cors.body);
     const decision = checkRateLimit(req, route);
     if (!decision.allowed) { res.setHeader("Retry-After", String(decision.retryAfterSeconds)); return respond(429, { error: "too many requests" }); }
-    if (method !== "GET" && method !== "POST") { res.setHeader("Allow", "GET, POST"); return respond(405, { error: "method not allowed" }); }
+    if (method !== "GET" && method !== "POST") { res.setHeader("Allow", "GET, POST, OPTIONS"); return respond(405, { error: "method not allowed" }); }
     if (!SERVICE || !/^https:\/\//.test(SERVICE)) return respond(503, { error: "Sync service identity is not configured." });
     if (method === "GET") {
       const address = String(req.query?.address || "");

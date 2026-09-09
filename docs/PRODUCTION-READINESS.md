@@ -120,3 +120,11 @@ Admission uses one shared serial queue with at most 32 waiting operations. Waiti
 An opt-in internal worker now supports audit and enforcement using the shared gate client/queue. Confirmed nonholders require repeated observations at least five minutes apart; uncertain RPC/identity state preserves membership, administrators are exempt, and policy/identity changes reset removal evidence. Batches and observations are bounded. Maintenance is off until an operator configures and reviews it.
 
 The synthetic XMTP dev drill passed actual wallet-to-inbox binding, eligible-member retention, audit-only outcomes, delayed SDK removal, and gatekeeper protection. Unit tests additionally cover RPC failures, multiple wallets, changed policy/bindings, admin promotion, lost authority, batch limits, shutdown and non-overlapping passes. Production activation, real on-chain multi-wallet acceptance, monitoring and the operator moderation/reporting process remain pending. Previously decrypted history is not revocable.
+
+## Native sync routing
+
+Packaged native apps require `VITE_API_ORIGIN` pointing at the hosted HTTPS origin. The release workflow defaults this to `https://chirpy.bittrees.org` and supports a repository variable override. Web builds retain same-origin routing when unset. Sync refuses credentials, paths in the configured origin, redirects and mismatched server authorization identities; requests omit cookies.
+
+The server allows its canonical service origin plus explicitly configured `CHIRPY_SYNC_ALLOWED_ORIGINS`. Native release origins are `tauri://localhost`, `http://tauri.localhost`, and `https://tauri.localhost`; wildcard/null and unlisted origins are rejected. Preflight allows only GET/POST and Content-Type, with no credentialed CORS. Scoped wallet/device signatures remain required for mutations. See [Tauri's platform URL implementation](https://docs.rs/tauri/latest/src/tauri/manager/mod.rs.html) for the platform origin differences.
+
+Endpoint and CORS tests cover native configuration, untrusted origins, invalid preflights, redirects, service-identity mismatch and signed versus unsigned writes. Native shell/device acceptance, a stricter native content-security policy and signed/notarized distribution remain pending.

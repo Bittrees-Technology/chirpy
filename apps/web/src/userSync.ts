@@ -2,7 +2,7 @@ import { keccak256, stringToHex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { SYNC_AUTH_MAX_AGE, syncGrantMessage, syncWriteMessage, syncRevokeDeviceMessage, syncRevokeAllMessage, type SyncDeviceGrant } from "@app/core";
 
-const URL_ = "/api/usersync";
+import { syncEndpoint } from "./apiEndpoint";
 export interface SettingsPrefsSnapshot { readReceiptsDefault: boolean; syncAcrossDevices: boolean; blocked: string[]; }
 export interface SavedMessageSnapshot { id: string; [key: string]: unknown; }
 export interface SettingsSyncPayload { version: 1; settingsPrefs: SettingsPrefsSnapshot; savedMessages: SavedMessageSnapshot[]; updatedAt: number; }
@@ -15,11 +15,11 @@ export interface SyncAuthorization {
 const revisions = new Map<string, number>();
 const contexts = new Map<string, { service: string; epoch: number }>();
 type WalletSign = (message: string) => Promise<string>;
-function serviceUrl() { return new URL(URL_, window.location.href).href; }
+function serviceUrl() { return syncEndpoint().service; }
 
 export async function pullRemoteBlob(address: string): Promise<EncryptedSyncBlobSnapshot | null> {
   const key = address.toLowerCase();
-  const response = await fetch(`${URL_}?address=${encodeURIComponent(address)}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+  const response = await fetch(`${syncEndpoint().requestUrl}?address=${encodeURIComponent(address)}`, { credentials: "omit", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error("Unable to read encrypted sync. Try again when storage is available.");
   const result = await response.json();
   const blob = result?.blob ? JSON.parse(result.blob) as EncryptedSyncBlobSnapshot : null;
@@ -48,7 +48,7 @@ export async function pushBlob(address: string, authorization: SyncAuthorization
   try {
     const blob = JSON.stringify(enc);
     const signature = await authorization.sign(syncWriteMessage(authorization.grant, expectedRevision, keccak256(stringToHex(blob))));
-    const response = await fetch(URL_, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "write", address, authorization: authorization.grant, signature, blob, expectedRevision }), signal: AbortSignal.timeout(10_000) });
+    const response = await fetch(syncEndpoint().requestUrl, { credentials: "omit", redirect: "error", method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "write", address, authorization: authorization.grant, signature, blob, expectedRevision }), signal: AbortSignal.timeout(10_000) });
     if (!response.ok) return { ok: false, stale: response.status === 409 };
     const result = await response.json();
     if (!Number.isSafeInteger(result.revision) || result.revision <= expectedRevision) return { ok: false };
@@ -59,7 +59,7 @@ export async function pushBlob(address: string, authorization: SyncAuthorization
 export async function revokeSyncAuthorization(authorization: SyncAuthorization): Promise<void> {
   if (authorization.grant.expiresAt <= Date.now()) return; // Expired grants cannot write.
   const signature = await authorization.sign(syncRevokeDeviceMessage(authorization.grant));
-  const response = await fetch(URL_, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "revoke-device", address: authorization.grant.address, authorization: authorization.grant, signature }), signal: AbortSignal.timeout(10_000) });
+  const response = await fetch(syncEndpoint().requestUrl, { credentials: "omit", redirect: "error", method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "revoke-device", address: authorization.grant.address, authorization: authorization.grant, signature }), signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error("Sync stopped locally, but server revocation was not confirmed. Revoke all sync devices when connected.");
 }
 export async function revokeAllSyncAuthorizations(address: string, walletSign: WalletSign): Promise<void> {
@@ -67,7 +67,7 @@ export async function revokeAllSyncAuthorizations(address: string, walletSign: W
   const { service, epoch } = contexts.get(address.toLowerCase())!;
   const expiresAt = Date.now() + 300_000;
   const signature = await walletSign(syncRevokeAllMessage(service, address, epoch, expiresAt));
-  const response = await fetch(URL_, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "revoke-all", address, epoch, expiresAt, signature }), signal: AbortSignal.timeout(10_000) });
+  const response = await fetch(syncEndpoint().requestUrl, { credentials: "omit", redirect: "error", method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "revoke-all", address, epoch, expiresAt, signature }), signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error("Revocation was not confirmed. Refresh and retry.");
   contexts.delete(address.toLowerCase());
 }
