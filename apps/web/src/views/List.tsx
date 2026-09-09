@@ -19,7 +19,7 @@ export function ConversationColumn(
 ) {
   const { conversations, activeId, select, startDm } = useChat();
   const { identity } = useIdentity();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [inboxView, setInboxView] = useState<"inbox" | "requests" | "blocked">("inbox");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -96,7 +96,7 @@ export function ConversationColumn(
             <div className="list-item-main">
               <div className="list-item-top">
                 <span className="list-item-title">{savedLabel}</span>
-                {savedConversation?.lastMessage && <span className="list-item-time">{fmtTime(savedConversation.lastMessage.sentAt)}</span>}
+                {savedConversation?.lastMessage && <span className="list-item-time">{fmtTime(savedConversation.lastMessage.sentAt, lang)}</span>}
               </div>
               <div className="list-item-bottom">
                 <span className="list-item-preview">{savedConversation?.lastMessage?.body ?? t("list.notesToSelf", "Notes to self")}</span>
@@ -155,7 +155,7 @@ export function ConversationColumn(
               <div className="list-item-main">
                 <div className="list-item-top">
                   <span className="list-item-title">{peerLabel}</span>
-                  {c.lastMessage && <span className="list-item-time">{fmtTime(c.lastMessage.sentAt)}</span>}
+                  {c.lastMessage && <span className="list-item-time">{fmtTime(c.lastMessage.sentAt, lang)}</span>}
                 </div>
                 <div className="list-item-bottom">
                   <span className="list-item-preview">{c.lastMessage?.body ?? c.description ?? "—"}</span>

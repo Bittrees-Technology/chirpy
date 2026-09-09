@@ -240,3 +240,9 @@ Storage read failures prevent overwriting unread data. Write failures are surfac
 Chat, room, policy, gate-rule and organization creation/import dialogs now provide Spanish controls and explanations. Import syntax/schema failures are localized while preserving technical field names and unknown provider diagnostics. Gate fields have explicit accessible names and numbered groups; rule rows wrap on narrow screens so token standards remain readable. Preset and gate-service hints distinguish illustrative configuration from production setup.
 
 The Spanish browser flow creates a DM and room, edits/removes an ERC-1155 rule using accessible labels, checks a mobile dialog, rejects malformed JSON and an invalid organization chain, then successfully creates an organization. Catalog/placeholder checks and existing English flows remain regression coverage. Broader operational pages, transport diagnostics and real assistive-technology acceptance remain follow-ups.
+
+## Chat locale and known transport feedback
+
+Conversation-list/message timestamps and incoming receipt display follow the selected interface language. Room member counts, access state, policy summaries, navigation labels and creation tooltips are translated. Known admission, consent, messaging and policy failures use the Spanish catalog; unknown provider diagnostics remain unchanged.
+
+Formatting tests cover selected-language times/dates and invalid timestamps. The Spanish browser flow now verifies rendered message/list times, the room member/access/policy summary and mobile navigation labeling. This covers the main chat interface; operational pages and vendor-specific diagnostic localization remain outside this increment.

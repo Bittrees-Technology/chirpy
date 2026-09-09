@@ -14,6 +14,10 @@ test('Spanish dialogs create chats, edit labeled gate rules and recover from imp
   await dm.getByRole('textbox', { name: 'Nombre visible (opcional)' }).fill('Amiga');
   await dm.getByRole('button', { name: 'Iniciar chat' }).click();
   await expect(page.locator('.thread-title')).toContainText('Amiga');
+  await page.getByRole('textbox', { name: 'Escribe un mensaje' }).fill('Hola');
+  await page.getByRole('button', { name: 'Enviar', exact: true }).click();
+  await expect(page.locator('.msg-time').last()).toHaveText(/^\d{2}:\d{2}$/);
+  await expect(page.locator('.list-item-time').first()).toHaveText(/^\d{2}:\d{2}$/);
   await page.locator('.nav-item', { hasText: 'Salas' }).click();
   await page.getByRole('button', { name: '+ Sala' }).click();
   const room = page.getByRole('dialog', { name: 'Nueva sala' });
@@ -33,6 +37,8 @@ test('Spanish dialogs create chats, edit labeled gate rules and recover from imp
   await room.getByRole('checkbox', { name: 'Pausar las publicaciones de miembros en Chirpy' }).check();
   await room.getByRole('button', { name: 'Crear sala' }).click();
   await expect(page.locator('.thread-title')).toContainText('sala de prueba');
+  await expect(page.locator('.thread-sub')).toContainText('1 miembro · abierta · solo lectura');
+  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
   await page.getByRole('button', { name: /Ajustes/ }).click();
   await page.getByRole('button', { name: 'Importar', exact: true }).click();
   const importer = page.getByRole('dialog', { name: 'Importar organización' });
