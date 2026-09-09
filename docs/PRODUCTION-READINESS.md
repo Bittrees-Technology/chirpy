@@ -1,6 +1,6 @@
 # Production readiness execution ledger
 
-We implement and merge independent changes in increasing complexity, while preserving dependency order. A merged implementation is not evidence that an external deployment or device acceptance test has passed.
+See [REMAINING-WORK.md](REMAINING-WORK.md) for the consolidated unfinished backlog. We implement and merge independent changes in increasing complexity, while preserving dependency order. A merged implementation is not evidence that an external deployment or device acceptance test has passed.
 
 | Order | Increment | Status / completion evidence |
 |---|---|---|
@@ -14,7 +14,7 @@ We implement and merge independent changes in increasing complexity, while prese
 | 8 | Production gate deployment and multi-wallet acceptance | Needs hosting/bot identity and reviewed room registry |
 | 9 | Public support/security/privacy/terms material | Support/security pages merged in PR #5 and GitHub private reporting enabled; privacy/terms still need actual operator/retention decisions |
 | 10 | Native release/signing, iOS real-device and TestFlight acceptance | Needs release credentials and device/store access |
-| 11 | Shared UI/embed and Governance/Research integration | Pending |
+| 11 | Shared UI/embed and Governance/Research integration | Consumer inspection and migration contract in INTEGRATION.md; history/authority decisions and implementation pending |
 | 12 | Final artwork and documentation reconciliation | Operations/roadmap/native guides reconciled; final artwork pending |
 | Later | Voice, presence, optional relays | Product expansion, after core production readiness |
 
@@ -188,3 +188,7 @@ Validation: 209 tests and the browser create/pause/admin-post/role-loss flow pas
 Conversation lists render 50 rows per page and request ENS profiles only for visible rows. Search still covers every loaded conversation; query/filter changes reset the page and wallet/org/view changes reset list state. Per-conversation SDK mapping runs at most eight concurrent tasks, preserves order and drains active work after a failure before permitting a refresh retry.
 
 Validation: 211 tests, a 10,000-conversation browser scenario with 50 initial profile lookups, and both live XMTP dev tests under native CSP pass. The SDK still synchronizes/lists the full inbox; this change bounds rendering and application-level concurrency, not total initial synchronization cost. Incremental SDK synchronization and real large-inbox device benchmarking remain follow-ups.
+
+## Consumer migration review
+
+Read-only inspection confirms both consumers still have Push room registries and separate wallet/UI adapters. INTEGRATION.md records the actual source revisions, history/authority decisions, staged adoption tests and rollback requirements. Their code, existing registries and Research draft branch remain unchanged. REMAINING-WORK.md consolidates the outstanding release dependencies and product follow-ups.
