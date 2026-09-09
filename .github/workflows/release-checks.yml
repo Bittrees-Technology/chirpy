@@ -1,0 +1,19 @@
+name: release-checks
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - '.github/workflows/release-checks.yml'
+      - '.github/workflows/test.yml'
+      - '.github/workflows/xmtp-nightly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    uses: ./.github/workflows/test.yml
+  acceptance:
+    uses: ./.github/workflows/xmtp-nightly.yml

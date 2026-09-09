@@ -296,3 +296,9 @@ Received Chirpy room metadata validates its version, namespace, description, gat
 Invalid configuration yields a safe read-only policy and a repair message in English/Spanish. The UI disables composition, reactions and policy/join controls; transport checks reject writes even for administrators. Directory metadata cannot erase the error. Creation and policy updates use the same validation before writing network metadata, avoiding newly created rooms that fail their own read validation. This does not grant a client authority to repair an unknown gate or weaken protocol membership.
 
 Regressions cover nested malformed values, corrupt encoding, unknown versions, unsupported gates, resource bounds, directory overlays, writer validation and the repair UI. An integrated case reproduces an unintended synthetic send through the previous damaged-gate fallback and rejects it with the new boundary.
+
+## Release hardening prerequisites
+
+The desktop draft-release workflow requires both the regular validation workflow and live XMTP dev acceptance to succeed on the release's own revision before any platform artifact/signing job starts. Local reusable workflow references bind the checks to the caller commit/tag. Failures or cancellation prevent the dependent release job from running. The acceptance path includes browser messaging under native CSP, encrypted-storage recovery and membership lifecycle drills.
+
+Both prerequisite jobs receive read-only repository access and do not inherit signing secrets. Existing production configuration, live readiness and signing preflight checks still apply afterward. Passing these dev-network checks does not replace production on-chain acceptance, signed installation/updater tests or operator approval of draft artifacts.
