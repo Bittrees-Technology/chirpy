@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
+import { configuredNativeOrigins } from "../server/native-origins.js";
 import { startMembershipWorker } from "../server/gate-membership-worker.js";
 import { buildGateHealthReport } from "../server/ops-utils.js";
 import roomJoinHandler, { loadRooms } from "../server/room-join.js";
@@ -10,6 +11,8 @@ const REQUEST_TIMEOUT_MS = 10_000;
 
 export function createGateServer({ handler = roomJoinHandler, registry = loadRooms, env = process.env } = {}) {
   const allowedOrigin = env.GATE_ALLOW_ORIGIN || "";
+  const allowedOrigins = configuredNativeOrigins(env.GATE_NATIVE_ORIGINS);
+  if (allowedOrigin && allowedOrigin !== "*") allowedOrigins.add(allowedOrigin);
   const server = createServer(async (req, res) => {
     const startedAt = Date.now();
     let route = "invalid";
@@ -32,8 +35,8 @@ export function createGateServer({ handler = roomJoinHandler, registry = loadRoo
         route = "unknown"; return respond(404, { error: "not found" });
       }
       const origin = req.headers.origin;
-      if (origin && (allowedOrigin === "*" || !allowedOrigin || origin !== allowedOrigin)) return respond(403, { error: "origin not allowed" });
-      if (origin) res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+      if (origin && !allowedOrigins.has(origin)) return respond(403, { error: "origin not allowed" });
+      if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
       if (route === "/health" || route === "/") {
         if (!["GET", "HEAD"].includes(req.method)) { res.setHeader("Allow", "GET, HEAD"); return respond(405, { error: "method not allowed" }); }
         const report = buildGateHealthReport(env);

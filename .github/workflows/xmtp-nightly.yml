@@ -22,3 +22,5 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm e2e:xmtp
+        env:
+          CHIRPY_TEST_NATIVE_CSP: "1"

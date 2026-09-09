@@ -18,7 +18,8 @@ export type UpdateStatus =
 
 /** True only inside a Tauri desktop shell. */
 export function isDesktopApp(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+    && ["darwin", "windows", "linux"].includes(import.meta.env.VITE_NATIVE_PLATFORM || "");
 }
 
 /**
@@ -74,11 +75,10 @@ export async function relaunchApp(): Promise<void> {
 }
 
 /**
- * Silent background check on launch. If an update is available it auto-downloads,
- * installs, and relaunches. Call once at startup; safe everywhere.
+ * Check availability on launch. Installation and restart are explicit actions in
+ * Settings, so an update cannot interrupt an active conversation or draft.
  */
 export async function autoUpdateOnLaunch(): Promise<void> {
   if (!isDesktopApp()) return;
-  const installed = await runUpdate(() => {}, { autoInstall: true });
-  if (installed) await relaunchApp();
+  await runUpdate(() => {}, { autoInstall: false });
 }
