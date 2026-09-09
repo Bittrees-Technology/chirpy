@@ -78,18 +78,14 @@ export function makeViemChainReader(
     },
     ensAddress: async (name) => await client.getEnsAddress({ name }) ?? null,
     ensName: async (user) => await client.getEnsName({ address: addr(user) }) ?? null,
-    safeOwners: async (safe) => {
-      try {
-        return [...await client.readContract({
-          ...callOptions,
-          address: addr(safe),
-          abi: safeAbi,
-          functionName: "getOwners",
-        })];
-      } catch {
-        return [];
-      }
-    },
+    // Propagate RPC failures so membership revalidation can distinguish unknown
+    // eligibility from a confirmed non-owner. Admission still fails closed.
+    safeOwners: async (safe) => [...await client.readContract({
+      ...callOptions,
+      address: addr(safe),
+      abi: safeAbi,
+      functionName: "getOwners",
+    })],
     safeDelegates: opts.safeDelegates ?? (async () => []),
     rolesOf: opts.rolesOf ?? (async () => []),
     power: opts.power ?? (async () => 0),

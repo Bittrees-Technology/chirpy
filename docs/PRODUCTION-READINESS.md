@@ -9,7 +9,7 @@ We implement and merge independent changes in increasing complexity, while prese
 | 3 | Unread counts, request acceptance/rejection, blocking and receipts | DM consent merged in PR #6; unread cursors and visible-message receipt handling merged in PR #7 |
 | 4 | Wallet-specific preferences and revocable sync authorization | Wallet isolation merged in PR #8; expiring device authorization and atomic revocation merged in PR #9 |
 | 5 | Pagination, bounded refresh, long-history performance | Refresh coalescing merged in PR #12; bounded message pages and history navigation merged in PR #13 |
-| 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Supported-rule UI and advisory policy hardening merged in PR #14; membership revalidation and operator moderation remain pending |
+| 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Supported-rule UI and advisory policy hardening merged in PR #14; opt-in membership revalidation implemented; production activation and operator moderation remain pending |
 | 7 | Dependency remediation, live probes, backup/restore and release acceptance | JavaScript dependency patches and required audit merged in PR #10; hosted sync probe passed; backup/restore and full release acceptance pending |
 | 8 | Production gate deployment and multi-wallet acceptance | Needs hosting/bot identity and reviewed room registry |
 | 9 | Public support/security/privacy/terms material | Support/security pages merged in PR #5 and GitHub private reporting enabled; privacy/terms still need actual operator/retention decisions |
@@ -114,3 +114,9 @@ The installer validates domains, HTTPS origins/RPC values and the reviewed regis
 ## Gate work backpressure
 
 Admission uses one shared serial queue with at most 32 waiting operations. Waiting work expires after 10 seconds and overload returns 503 with Retry-After; the caller must obtain a fresh one-use challenge. An active native operation retains its slot until it finishes, so a timeout cannot accidentally create overlapping database writers. Registry policy is reloaded after queue admission and checked again immediately before membership addition; challenge expiry is also checked again. Tests cover saturation, expired waiting work, active-operation exclusion, recovery after failure, and policy removal/expiry during an in-flight eligibility read. Fleet-wide throttling and runtime dependency monitoring remain pending.
+
+## Membership lifecycle implementation
+
+An opt-in internal worker now supports audit and enforcement using the shared gate client/queue. Confirmed nonholders require repeated observations at least five minutes apart; uncertain RPC/identity state preserves membership, administrators are exempt, and policy/identity changes reset removal evidence. Batches and observations are bounded. Maintenance is off until an operator configures and reviews it.
+
+The synthetic XMTP dev drill passed actual wallet-to-inbox binding, eligible-member retention, audit-only outcomes, delayed SDK removal, and gatekeeper protection. Unit tests additionally cover RPC failures, multiple wallets, changed policy/bindings, admin promotion, lost authority, batch limits, shutdown and non-overlapping passes. Production activation, real on-chain multi-wallet acceptance, monitoring and the operator moderation/reporting process remain pending. Previously decrypted history is not revocable.
