@@ -2,7 +2,7 @@ name: apple-validation
 
 # Credential-free validation of the macOS/iOS (Tauri) build surface. These jobs
 # compile the native shell and check the deep-link / WalletConnect config, but do
-# NOT sign, notarize, or upload anything — that path (Apple Developer ID + the
+# do not sign/notarize or publish release artifacts — that path (Apple Developer ID + the
 # release workflow) requires secrets and stays in the tag-triggered release.yml.
 #
 # Runs on macOS runners (needed for the Apple targets), so it is scoped with
@@ -14,6 +14,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/apple-validation.yml"
+      - "scripts/test-ios-simulator.py"
   push:
     branches: [main]
     paths:
@@ -21,6 +22,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/apple-validation.yml"
+      - "scripts/test-ios-simulator.py"
   workflow_dispatch:
 
 concurrency:
@@ -104,3 +106,12 @@ jobs:
               assert (app / info['CFBundleExecutable']).is_file()
               print(f'Validated unsigned simulator application: {app}')
           PYIOS
+      - name: Install and launch the simulator app
+        run: python3 scripts/test-ios-simulator.py
+      - name: Upload simulator screenshot evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-smoke
+          path: test-results/ios-simulator/
+          if-no-files-found: error
+          retention-days: 7
