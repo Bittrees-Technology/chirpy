@@ -270,3 +270,9 @@ Extended acceptance was rerun on main `75ecae90da4fd2b6ddef7a9571e0bbfbdd4011ea`
 The public support and security pages now have Spanish versions with reciprocal language links, document-language metadata and dedicated deployment routes. Public bug reports still go to the existing GitHub issue template; security findings still go to the private advisory flow. Preview limitations, account requirements, sensitive-data guidance and the absence of guaranteed response times are preserved. This translation does not establish approved privacy/terms or new operator commitments.
 
 Four browser scenarios verify the existing English pages and Spanish mobile pages, language navigation, keyboard focus, reporting URLs and no horizontal overflow. Both Spanish pages were visually inspected. Production routing is verified separately after deployment.
+
+## Posting restrictions during directory refresh
+
+A published room's directory entry supplies its trusted admission gate while the joined group's current posting policy remains authoritative for Chirpy's send/reaction checks. Refreshing the directory no longer replaces a paused group's policy with the directory's organization defaults. The room card uses the same directory gate as the transport.
+
+Known room restrictions remain available during asynchronous inbox mapping and after a failed metadata refresh. Metadata for conversations no longer present in either the inbox or directory is pruned after a successful refresh. Regression tests reproduce both the directory override and an actual unintended synthetic send during the former metadata-clear window; the fixed code rejects member sends/reactions and retains restrictions on refresh failure. This strengthens Chirpy's advisory client policy, not protocol-wide enforcement against other clients.
