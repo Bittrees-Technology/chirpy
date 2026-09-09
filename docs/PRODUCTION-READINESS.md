@@ -128,3 +128,9 @@ Packaged native apps require `VITE_API_ORIGIN` pointing at the hosted HTTPS orig
 The server allows its canonical service origin plus explicitly configured `CHIRPY_SYNC_ALLOWED_ORIGINS`. Native release origins are `tauri://localhost`, `http://tauri.localhost`, and `https://tauri.localhost`; wildcard/null and unlisted origins are rejected. Preflight allows only GET/POST and Content-Type, with no credentialed CORS. Scoped wallet/device signatures remain required for mutations. See [Tauri's platform URL implementation](https://docs.rs/tauri/latest/src/tauri/manager/mod.rs.html) for the platform origin differences.
 
 Endpoint and CORS tests cover native configuration, untrusted origins, invalid preflights, redirects, service-identity mismatch and signed versus unsigned writes. Native shell/device acceptance, a stricter native content-security policy and signed/notarized distribution remain pending.
+
+## Native dependency audit
+
+The native lockfile updates plist to 1.10.1 (quick-xml 0.42.0) and anyhow to 1.0.104, clearing RUSTSEC-2026-0194, RUSTSEC-2026-0195 and the anyhow unsoundness warning RUSTSEC-2026-0190. The declared minimum Rust version is now 1.88, matching plist's requirement. CI audits the native lockfile with pinned cargo-audit 0.22.2 and retains its report; vulnerability advisories fail the job.
+
+Seven warnings remain visible in `docs/security/native-baseline-2026-09-09.json`: six unmaintained transitive crates and the older glib safety advisory constrained by Tauri's GTK3/Linux dependency graph. They are not suppressed or represented as fixed. Upstream migration and platform applicability review remain release work, particularly for Linux. This audit covers Cargo dependencies, separately from npm and the gate container.

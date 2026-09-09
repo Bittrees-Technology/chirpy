@@ -56,3 +56,24 @@ jobs:
         run: |
           docker save chirpy-gate-hardening:test -o /tmp/chirpy-gate-image.tar
           docker run --rm -v /tmp/chirpy-gate-image.tar:/scan/image.tar:ro aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image --input /scan/image.tar --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --no-progress
+
+  native-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        id: audit-tool
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-0.22.2-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.audit-tool.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Audit the native lockfile
+        run: cargo audit --file apps/web/src-tauri/Cargo.lock --json > native-audit.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-dependency-audit
+          path: native-audit.json

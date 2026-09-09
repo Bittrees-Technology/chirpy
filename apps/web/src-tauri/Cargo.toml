@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Chirpy — wallet-native chat for any community"
 authors = ["Bittrees Technology"]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.88"
 
 [lib]
 # The shared library that both the desktop binary and the mobile entrypoints use.
