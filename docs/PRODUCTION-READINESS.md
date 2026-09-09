@@ -246,3 +246,9 @@ The Spanish browser flow creates a DM and room, edits/removes an ERC-1155 rule u
 Conversation-list/message timestamps and incoming receipt display follow the selected interface language. Room member counts, access state, policy summaries, navigation labels and creation tooltips are translated. Known admission, consent, messaging and policy failures use the Spanish catalog; unknown provider diagnostics remain unchanged.
 
 Formatting tests cover selected-language times/dates and invalid timestamps. The Spanish browser flow now verifies rendered message/list times, the room member/access/policy summary and mobile navigation labeling. This covers the main chat interface; operational pages and vendor-specific diagnostic localization remain outside this increment.
+
+## Unsigned iOS simulator packaging
+
+Apple CI now generates the Xcode project and builds an unsigned simulator archive with the pinned Tauri CLI. Packaged bundle identity, simulator platform, executable and the `chirpy` return scheme are checked before installation. An isolated iPhone simulator installs and launches the app, requests its registered return URL, and retains launch and URL-confirmation screenshots for visual review. iOS may present an Open confirmation; URL dispatch alone does not prove completed handoff.
+
+This checks packaging and initial launch with XMTP dev and an inert API origin. It does not establish wallet handoff, authenticated messaging, persistent WKWebView storage, signing, TestFlight or physical-device acceptance. Production release artifacts still require the separate signed release workflow and service readiness gates.

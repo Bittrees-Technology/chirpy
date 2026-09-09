@@ -1,8 +1,8 @@
 name: apple-validation
 
 # Credential-free validation of the macOS/iOS (Tauri) build surface. These jobs
-# compile the native shell and check the deep-link / WalletConnect config, but do
-# NOT sign, notarize, or upload anything — that path (Apple Developer ID + the
+# compile the native shell and exercise an unsigned iOS simulator application.
+# They do not sign/notarize or publish release artifacts — that path (Apple Developer ID + the
 # release workflow) requires secrets and stays in the tag-triggered release.yml.
 #
 # Runs on macOS runners (needed for the Apple targets), so it is scoped with
@@ -14,6 +14,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/apple-validation.yml"
+      - "scripts/test-ios-simulator.py"
   push:
     branches: [main]
     paths:
@@ -21,6 +22,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/apple-validation.yml"
+      - "scripts/test-ios-simulator.py"
   workflow_dispatch:
 
 concurrency:
@@ -53,6 +55,7 @@ jobs:
 
   ios-config-check:
     name: iOS config check
+    timeout-minutes: 30
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,8 +75,39 @@ jobs:
       # Guards the deep-link / WalletConnect return config (chirpy:// scheme,
       # deep-link:default capability, WC metadata.redirect) against drift.
       - run: pnpm test
-      # Confirms the native shell (incl. the deep-link plugin) compiles both for
-      # the runner and for iOS. GitHub's macOS image supplies the simulator SDK;
-      # neither invocation signs, packages, installs, or uploads an app.
-      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml
-      - run: cargo check --manifest-path apps/web/src-tauri/Cargo.toml --target aarch64-apple-ios-sim
+      # The archive build below compiles the actual simulator target. macOS
+      # compilation is covered by the separate dual-architecture job above.
+      - name: Generate the iOS Xcode project
+        run: pnpm tauri ios init --ci --skip-targets-install
+      - name: Build unsigned iOS simulator archive
+        env:
+          VITE_TRANSPORT: xmtp
+          VITE_XMTP_ENV: dev
+          VITE_API_ORIGIN: https://example.invalid
+        run: pnpm tauri ios build --ci --debug --target aarch64-sim --no-sign --archive-only
+      - name: Inspect generated simulator archives
+        run: |
+          python3 - <<'PYIOS'
+          from pathlib import Path
+          import plistlib
+          apps = list(Path('apps/web/src-tauri/gen/apple').rglob('*.xcarchive/Products/Applications/*.app'))
+          assert apps, 'No archived simulator application was generated'
+          for app in apps:
+              with (app / 'Info.plist').open('rb') as source:
+                  info = plistlib.load(source)
+              assert info['CFBundleIdentifier'] == 'org.bittrees.chirpy'
+              assert info['CFBundleSupportedPlatforms'] == ['iPhoneSimulator']
+              schemes = [scheme for item in info.get('CFBundleURLTypes', []) for scheme in item.get('CFBundleURLSchemes', [])]
+              assert 'chirpy' in schemes, 'Wallet return scheme is absent from the built application'
+              assert (app / info['CFBundleExecutable']).is_file()
+              print(f'Validated unsigned simulator application: {app}')
+          PYIOS
+      - name: Install and launch the simulator app
+        run: python3 scripts/test-ios-simulator.py
+      - name: Upload simulator screenshot evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-smoke
+          path: test-results/ios-simulator/
+          if-no-files-found: error
+          retention-days: 7

@@ -133,6 +133,6 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROLLOUT-RUNBOOK.md
 
 See [ROADMAP.md](docs/ROADMAP.md) for the current backlog and [PRODUCTION.md](docs/PRODUCTION.md) for release requirements. Production gate hosting/identity/registry, operator recovery/alerts, privacy/terms, signed desktop and real-device iOS acceptance are still required. Large inbox performance, shared UI/integrations and final artwork remain follow-ups.
 
-Preset token addresses in `examples/` are illustrative until verified. Native CI checks Rust compilation for macOS and the iOS simulator; Xcode project generation and packaging remain outstanding; compilation does not establish device or store acceptance. Release automation requires signing inputs and healthy production services and creates drafts for manual artifact acceptance.
+Preset token addresses in `examples/` are illustrative until verified. Native CI checks macOS Rust compilation and generates, archives and launches an unsigned iOS simulator app. Signed distribution and real-device/store acceptance remain outstanding. Release automation requires signing inputs and healthy production services and creates drafts for manual artifact acceptance.
 
 MIT.
