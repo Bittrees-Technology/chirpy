@@ -39,6 +39,7 @@ const keys: Record<string, string> = {
   "Join request approved. Syncing room membership.": "status.joinApproved",
   "This room is read-only.": "status.readOnly",
   "Attachments are disabled here.": "status.attachmentsBlocked",
+  "Organization limit reached. Remove an organization before adding another.": "status.orgLimitReached",
   "Organization storage could not be read. Restore access before importing or creating an organization.": "status.orgStorageUnreadable",
   "Organization config exceeds the 256 KB import limit.": "status.importLimit",
   "Invalid JSON": "status.invalidJson",

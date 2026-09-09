@@ -7,7 +7,7 @@ import {
   createTransport, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
 } from "@app/transport";
 import { createRefreshQueue } from "./refreshQueue";
-import { ORGANIZATIONS_KEY, loadOrganizationStore } from "./orgStorage";
+import { MAX_SAVED_ORGANIZATIONS, ORGANIZATIONS_KEY, loadOrganizationStore } from "./orgStorage";
 import { DEFAULT_TRANSPORT } from "./app.config";
 import { resolveEns, type EnsRecord } from "./ens";
 import {
@@ -312,6 +312,7 @@ export function OrgProvider({ children }: { children: React.ReactNode }) {
     catch { return { version: 2 as const, orgs: [], recovery: [], readFailed: true }; }
   });
   const [userOrgs, setUserOrgs] = useState<OrgConfig[]>(initialStore.orgs);
+  const userOrgsRef = useRef(initialStore.orgs);
   const [organizationStorageError, setOrganizationStorageError] = useState(initialStore.readFailed);
   const [activeOrgId, setActiveOrgId] = useState<string>(() => {
     const saved = LS.get<unknown>(ACTIVE_KEY, PERSONAL_ORG.id);
@@ -351,16 +352,19 @@ export function OrgProvider({ children }: { children: React.ReactNode }) {
   const addOrg = useCallback((input: OrgConfig) => {
     if (initialStore.readFailed) throw new Error("Organization storage could not be read. Restore access before importing or creating an organization.");
     const org = parseOrg(JSON.stringify(input));
-    setUserOrgs((p) => {
-      const without = p.filter((o) => o.id !== org.id);
-      return [...without, org];
-    });
+    const without = userOrgsRef.current.filter((o) => o.id !== org.id);
+    if (without.length >= MAX_SAVED_ORGANIZATIONS) throw new Error("Organization limit reached. Remove an organization before adding another.");
+    const next = [...without, org];
+    userOrgsRef.current = next;
+    setUserOrgs(next);
     setActiveOrgId(org.id);
   }, [initialStore]);
 
   const removeOrg = useCallback((id: string) => {
     if (id === PERSONAL_ORG.id) return;
-    setUserOrgs((p) => p.filter((o) => o.id !== id));
+    const next = userOrgsRef.current.filter((o) => o.id !== id);
+    userOrgsRef.current = next;
+    setUserOrgs(next);
     setActiveOrgId((cur) => (cur === id ? PERSONAL_ORG.id : cur));
   }, []);
 
