@@ -26,7 +26,7 @@
   "thread.requesting": "Solicitando...",
   "thread.freeze": "Congelar",
   "thread.unfreeze": "Descongelar",
-  "thread.readOnly": "🔒 Esta sala es de solo lectura. Las publicaciones están congeladas.",
+  "thread.readOnly": "Las publicaciones de miembros están pausadas en Chirpy. Otros clientes aún pueden enviar mensajes.",
   "thread.replyingTo": "Respondiendo a:",
   "thread.messagePrefix": "Mensaje para",
   "thread.send": "Enviar",

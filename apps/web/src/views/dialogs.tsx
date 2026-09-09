@@ -89,7 +89,7 @@ function defaultRule(kind: RoomRule["kind"]): RoomRule {
 }
 
 export function GateRuleEditor(
-  { rules, onChange, gating }: { rules: RoomRule[]; onChange: (r: RoomRule[]) => void; gating: GatingConfig },
+  { rules, onChange, gating, production = false }: { rules: RoomRule[]; onChange: (r: RoomRule[]) => void; gating: GatingConfig; production?: boolean },
 ) {
   const update = (i: number, patch: Partial<RoomRule>) =>
     onChange(rules.map((r, idx) => (idx === i ? { ...r, ...patch } as RoomRule : r)));
@@ -101,11 +101,12 @@ export function GateRuleEditor(
       <div className="gate-add">
         <span className="field-label">Add rule:</span>
         <button className="chip" onClick={() => add("token")}>Token</button>
-        {gating.enableSafeRules && <button className="chip" onClick={() => add("safe")}>Safe</button>}
+        {gating.enableSafeRules && <button className="chip" onClick={() => add("safe")}>{production ? "Safe owners" : "Safe"}</button>}
         {gating.enableEnsRules && <button className="chip" onClick={() => add("ens")}>ENS</button>}
-        <button className="chip" onClick={() => add("role")}>Role</button>
-        {gating.powerTier && <button className="chip" onClick={() => add("power")}>{gating.powerTier.label}</button>}
+        {!production && <button className="chip" onClick={() => add("role")}>Role</button>}
+        {!production && gating.powerTier && <button className="chip" onClick={() => add("power")}>{gating.powerTier.label}</button>}
       </div>
+      {production && <p className="field-hint">Supported on Ethereum mainnet: token holdings with an explicit ERC-1155 token ID, Safe owners, and ENS. Role, voting-power and Safe-delegate gates are unavailable.</p>}
       {rules.length === 0 && <div className="field-hint">No rules = open to everyone.</div>}
       {rules.map((r, i) => (
         <div key={i} className="gate-row">
@@ -119,12 +120,12 @@ export function GateRuleEditor(
               <input className="input input-sm" placeholder="token 0x…" value={r.token} onChange={(e) => update(i, { token: e.target.value })} />
               <input className="input input-sm input-xs" placeholder="min" value={r.min} onChange={(e) => update(i, { min: e.target.value })} />
               {r.standard === "erc1155" && (
-                <input className="input input-sm input-xs" placeholder="id (opt)" value={(r as any).tokenId ?? ""} onChange={(e) => update(i, { tokenId: e.target.value } as any)} />
+                <input className="input input-sm input-xs" placeholder={production ? "token ID (required)" : "id (opt)"} value={(r as any).tokenId ?? ""} onChange={(e) => update(i, { tokenId: e.target.value } as any)} />
               )}
             </>
           )}
           {r.kind === "safe" && <input className="input input-sm" placeholder="Safe 0x…" value={r.safe} onChange={(e) => update(i, { safe: e.target.value })} />}
-          {r.kind === "ens" && <input className="input input-sm" placeholder="name.eth (blank = any ENS)" value={r.name ?? ""} onChange={(e) => update(i, { name: e.target.value })} />}
+          {r.kind === "ens" && <input className="input input-sm" placeholder="name.eth (blank = any ENS)" value={r.name ?? ""} onChange={(e) => update(i, { name: e.target.value.trim() || undefined })} />}
           {r.kind === "role" && <input className="input input-sm" placeholder="role label" value={r.role} onChange={(e) => update(i, { role: e.target.value })} />}
           {r.kind === "power" && <input className="input input-sm input-xs" type="number" value={r.tier} onChange={(e) => update(i, { tier: Number(e.target.value) || 0 })} />}
           <button className="icon-btn" onClick={() => remove(i)} aria-label="Remove rule">✕</button>
@@ -141,7 +142,8 @@ export function PolicyEditor(
   const maxMb = value.maxUploadBytes ? Math.round(value.maxUploadBytes / (1024 * 1024)) : 0;
   return (
     <div className="checks">
-      <label className="check"><input type="checkbox" checked={value.mode === "read-only"} onChange={(e) => onChange({ ...value, mode: e.target.checked ? "read-only" : "active" })} /> Read-only (freeze posting)</label>
+      <p className="field-hint">Posting and attachment policies apply in Chirpy. Other clients can ignore them; they do not remove members or erase message history.</p>
+      <label className="check"><input type="checkbox" checked={value.mode === "read-only"} onChange={(e) => onChange({ ...value, mode: e.target.checked ? "read-only" : "active" })} /> Pause member posting in Chirpy</label>
       <label className="check"><input type="checkbox" checked={value.attachments === "block"} onChange={(e) => onChange({ ...value, attachments: e.target.checked ? "block" : "allow" })} /> Block attachments</label>
       <Field label="Max upload size (MB · 0 = no limit)">
         <input className="input input-sm input-xs" type="number" min={0} value={maxMb} onChange={(e) => onChange({ ...value, maxUploadBytes: (Number(e.target.value) || 0) * 1024 * 1024 })} />
@@ -173,7 +175,7 @@ export function NewRoomDialog({ onClose, onCreated }: { onClose: () => void; onC
           <option value="all">Match ALL rules</option>
         </select>
       </Field>
-      <GateRuleEditor rules={rules} onChange={setRules} gating={activeOrg.gating} />
+      <GateRuleEditor rules={rules} onChange={setRules} gating={activeOrg.gating} production={transportId === "xmtp"} />
       <div className="section-title">Policy <span className="field-hint">(what may happen — overrides the org default)</span></div>
       <PolicyEditor value={policy} onChange={setPolicy} />
       <div className="modal-actions">
