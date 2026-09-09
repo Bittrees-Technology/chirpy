@@ -1,5 +1,5 @@
 import { recoverMessageAddress, keccak256, stringToHex } from "viem";
-import { SYNC_AUTH_MAX_AGE, syncGrantMessage, syncWriteMessage, syncRevokeDeviceMessage, syncRevokeAllMessage } from "../packages/core/src/syncAuth.ts";
+import { SYNC_AUTH_MAX_AGE, syncGrantMessage, syncWriteMessage, syncRevokeDeviceMessage, syncRevokeAllMessage } from "../packages/core/src/syncAuth.js";
 import { checkRateLimit, logEvent } from "./server-utils.js";
 
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
