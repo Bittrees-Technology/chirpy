@@ -72,37 +72,57 @@ export async function revokeAllSyncAuthorizations(address: string, walletSign: W
   contexts.delete(address.toLowerCase());
 }
 
+// JSON objects can arrive with different key insertion orders on each device.
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
+  return JSON.stringify(value) ?? "null";
+}
+
 export function mergePayload(
   local: SettingsSyncPayload,
   remote: SettingsSyncPayload,
 ): SettingsSyncPayload {
   const savedMessages = new Map<string, SavedMessageSnapshot>();
-  const isNewerMessage = (next: SavedMessageSnapshot, prev: SavedMessageSnapshot) => {
-    const nextUpdated = typeof next.updatedAt === "number" ? next.updatedAt : remote.updatedAt;
-    const prevUpdated = typeof prev.updatedAt === "number" ? prev.updatedAt : local.updatedAt;
-    return nextUpdated >= prevUpdated;
-  };
-  for (const msg of local.savedMessages) {
-    if (msg?.id) savedMessages.set(msg.id, msg);
-  }
-  for (const msg of remote.savedMessages) {
-    const prev = msg?.id ? savedMessages.get(msg.id) : undefined;
-    if (msg?.id && (!prev || isNewerMessage(msg, prev))) savedMessages.set(msg.id, msg);
+  for (const source of [local, remote]) {
+    for (const message of source.savedMessages) {
+      if (!message?.id) continue;
+      // Persist legacy fallback times so an unrelated later preference update
+      // cannot make an old message appear newer during the next exchange.
+      const updatedAt = typeof message.updatedAt === "number" && Number.isFinite(message.updatedAt) && message.updatedAt >= 0
+        ? message.updatedAt : source.updatedAt;
+      const next = { ...message, updatedAt };
+      const prev = savedMessages.get(message.id);
+      if (!prev || updatedAt > (prev.updatedAt as number) ||
+          (updatedAt === prev.updatedAt && canonicalJson(next) > canonicalJson(prev))) {
+        savedMessages.set(message.id, next);
+      }
+    }
   }
 
   const blocked = Array.from(new Set([
     ...local.settingsPrefs.blocked.map((address) => address.toLowerCase()),
     ...remote.settingsPrefs.blocked.map((address) => address.toLowerCase()),
-  ].filter(Boolean)));
-  const newer = remote.updatedAt > local.updatedAt ? remote : local;
+  ].filter(Boolean))).sort();
+  let settingsPrefs = (remote.updatedAt > local.updatedAt ? remote : local).settingsPrefs;
+  if (local.updatedAt === remote.updatedAt) {
+    const a = local.settingsPrefs;
+    const b = remote.settingsPrefs;
+    const keys = Array.from(new Set([...Object.keys(a.readReceiptOverrides ?? {}), ...Object.keys(b.readReceiptOverrides ?? {})])).sort();
+    // An equal-time conflict must not enable receipts or sync on either device.
+    // Missing versus explicit overrides also resolve to an explicit off choice.
+    settingsPrefs = {
+      readReceiptsDefault: a.readReceiptsDefault && b.readReceiptsDefault,
+      syncAcrossDevices: a.syncAcrossDevices && b.syncAcrossDevices,
+      blocked,
+      ...(keys.length ? { readReceiptOverrides: Object.fromEntries(keys.map(key => [key, a.readReceiptOverrides?.[key] === true && b.readReceiptOverrides?.[key] === true])) } : {}),
+    };
+  }
 
   return {
     version: 1,
-    settingsPrefs: {
-      ...newer.settingsPrefs,
-      blocked,
-    },
-    savedMessages: Array.from(savedMessages.values()),
+    settingsPrefs: { ...settingsPrefs, blocked },
+    savedMessages: Array.from(savedMessages.values()).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     updatedAt: Math.max(local.updatedAt, remote.updatedAt),
   };
 }
