@@ -34,9 +34,14 @@ try {
 const client = await get(); const group = await client.conversations.createGroup([]); await group.sendText(data.message);
 console.log(JSON.stringify({ inbox: client.inboxId, installation: client.installationId, group: group.id })); process.exit(0);`, { key, databaseKey, message });
   const identity = JSON.parse(result.split('\n').at(-1));
+  // Each writer process has exited before sealing or copying its snapshot.
+  const sealed = run(volumes[0], `import { sealSnapshot, verifySnapshot } from './selfhost/gate-snapshot.mjs';
+const result = sealSnapshot('/data'); verifySnapshot('/data', result.manifestSha256); console.log(result.manifestSha256);`, {});
+  const manifestSha256 = sealed.split('\n').at(-1);
   // Each writer process has exited before a snapshot is copied. Both destinations are new volumes.
-  for (const target of volumes.slice(1)) run(target, `import fs from 'node:fs'; import assert from 'node:assert/strict'; import { createHash } from 'node:crypto'; import { DatabaseSync } from 'node:sqlite';
+  for (const target of volumes.slice(1)) run(target, `import fs from 'node:fs'; import assert from 'node:assert/strict'; import { createHash } from 'node:crypto'; import { DatabaseSync } from 'node:sqlite'; import { verifySnapshot } from './selfhost/gate-snapshot.mjs';
 const input = JSON.parse(fs.readFileSync(0,'utf8'));
+verifySnapshot('/backup', input.manifestSha256);
 const files = fs.readdirSync('/backup'); assert.ok(files.some(name => name.endsWith('.db3')));
 assert.equal(fs.readdirSync('/data').length, 0);
 for (const name of files) { const source = '/backup/' + name; assert.ok(fs.lstatSync(source).isFile());
@@ -45,7 +50,9 @@ if (name.endsWith('.db3')) { const db = new DatabaseSync(source, { readOnly: tru
 assert.ok(!bytes.includes(Buffer.from(input.message)));
 fs.copyFileSync(source, '/data/' + name);
 assert.equal(createHash('sha256').update(fs.readFileSync('/data/' + name)).digest('hex'), createHash('sha256').update(bytes).digest('hex')); }
-console.log('snapshot verified');`, { message }, ['-v', `${volumes[0]}:/backup:ro`]);
+verifySnapshot('/data', input.manifestSha256);
+// Keep the integrity record in the original backup, outside the active database.
+fs.unlinkSync('/data/chirpy-snapshot.json'); console.log('snapshot verified');`, { message, manifestSha256 }, ['-v', `${volumes[0]}:/backup:ro`]);
   const restored = run(volumes[1], `${prelude}
 const client = await get(); assert.equal(client.inboxId, data.inbox); assert.equal(client.installationId, data.installation);
 const group = await client.conversations.getConversationById(data.group); assert.ok(group);

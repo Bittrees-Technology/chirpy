@@ -44,6 +44,28 @@ Run only one gate process against a database. Stop the gate and verify the proce
 
 Restore only into a new, empty persistent volume. Preserve file ownership for UID/GID 65532, supply the original wallet key and database key, and start a single gate instance with the original XMTP network. Verify the same installation identity, retained local conversation state, readiness, and a controlled admission before routing production traffic. A wrong key must fail; never delete the database or silently create a replacement identity to recover from an open failure. An existing unencrypted database needs a separately reviewed offline migration; simply adding a key does not migrate it. Keep the original snapshot untouched until migration and recovery acceptance pass.
 
+### Verify an offline snapshot before restore
+
+After stopping and confirming exit of the only writer, copy the **entire** data directory to a new, private backup directory. Seal that offline copy with the supplied Node 24 utility:
+
+```sh
+node selfhost/gate-snapshot.mjs seal /secure/backups/gate-snapshot
+```
+
+Store the printed manifest SHA-256 in a separately controlled recovery record, alongside the reviewed deployment/registry version and XMTP network. Keep `chirpy-snapshot.json` with the backup. It records every data file's name, size and SHA-256, including WAL and salt files, and is created with mode 600. Sealing refuses an existing manifest. The utility supports the current flat SDK data directory, up to 10,000 files and a 1 MiB manifest; directories, symbolic links and hard links are rejected.
+
+After transfer, verify using the digest from that separate trusted record:
+
+```sh
+node selfhost/gate-snapshot.mjs verify /secure/backups/gate-snapshot TRUSTED_MANIFEST_SHA256
+```
+
+Require a successful exit before restoring. Verification rejects changed, missing and extra files, unsafe entries, malformed manifests and a manifest that does not match the trusted digest. Do not regenerate the manifest or take a replacement digest from a failed backup to bypass a failure. Preserve the original backup for investigation.
+
+Copy the verified data files into a new empty restore volume, verify the staged copy with the same manifest/digest, then keep the manifest outside the active data directory when starting the restored gate. Leave the original backup and recovery record untouched. Preserve UID/GID 65532 ownership. A running database will change, so its old backup manifest must not be treated as a current integrity record or carried into a newly sealed snapshot.
+
+The utility does not stop writers, make a live copy atomic, encrypt the backup, authenticate an untrusted recovery record, or establish database/key validity. The existing offline-copy, encryption, separate key custody and actual restore/admission requirements still apply. Schedule and test this process on the selected production host before release.
+
 A repeatable synthetic drill is available after building the gate image:
 
 ```sh
