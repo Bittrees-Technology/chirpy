@@ -22,6 +22,7 @@ super-admin) adds the wallet's inbox to the XMTP-MLS group.
 ## Quick start
 
 ```bash
+pnpm install --frozen-lockfile       # Node 24+ and pnpm 10
 cd selfhost
 ./install.sh                       # prompts, writes gate.env, runs docker compose up -d --build
 ```
@@ -31,16 +32,18 @@ cd selfhost
 ```bash
 cd selfhost
 node gen-gatekeeper-key.mjs        # note the private key + address
-cp gate.env.example gate.env       # fill in the values (incl. the key above)
-docker compose up -d --build
+umask 077
+cp -n gate.env.example gate.env    # preserve existing keys; fill every required value
+# Copy your reviewed registry to rooms.json; the empty example is not release-ready.
+chmod 644 rooms.json              # registry is public policy; container UID 65532 must read it
+docker compose --env-file gate.env up -d --build
 curl localhost:8788/health         # HTTP 200 + {"ok":true,"status":"ok",...}
 ```
 
 Then:
 
 1. Add the **gatekeeper address** as a **super-admin** of each gated room it manages.
-2. Point the org's `OrgConfig.gateUrl` at `https://<your-domain>/api/room-join` (blank uses
-   the Chirpy deployment's own gate instead).
+2. Point the org's `OrgConfig.gateUrl` at `https://<your-domain>/api/room-join` (an explicit external gate URL is required).
 
 ## Environment (`gate.env`)
 
@@ -48,17 +51,20 @@ Then:
 |---|---|---|
 | `XMTP_GATEKEEPER_PRIVATE_KEY` | ✅ | 0x EOA key for the bot; must be a room super-admin. Generate with `gen-gatekeeper-key.mjs`. |
 | `MAINNET_RPC_URL` | ✅ | Unrestricted mainnet RPC for on-chain reads (token/Safe/ENS). Not a browser-allowlisted key. |
-| `GATE_ALLOW_ORIGIN` | ↺ | CORS origin of your Chirpy web app (default `*`; set the exact origin in prod). |
+| `GATE_ALLOW_ORIGIN` | ✅ | Exact HTTPS origin of your Chirpy web app. |
+| `GATE_DB_ENCRYPTION_KEY` | ✅ | Separate persistent 32-byte hex key; preserve it with every database restore. |
+| `GATE_PUBLIC_URL` | ✅ | Canonical HTTPS URL ending in `/api/room-join`. |
+| `CHIRPY_GATE_ROOMS_FILE` | ✅ | `/config/rooms.json` for Compose; host registry is mounted read-only. |
 | `GATE_PORT` | ↺ | Listen port (default `8788`). |
 | `GATE_DOMAIN` | ↺ | Informational; used by your reverse proxy/TLS. |
-| `GATE_DATA_DIR` | ↺ | Persistent XMTP MLS store path (default `/data`, backed by a volume). Keeps the gatekeeper's XMTP installation stable across restarts; don't point it at ephemeral storage. |
+| `GATE_DATA_DIR` | ✅ | Persistent XMTP MLS store path (default `/data`, backed by a volume). Keeps the gatekeeper's XMTP installation stable across restarts; don't point it at ephemeral storage. |
 
 > Encrypted cross-device **sync** (`api/usersync.js`) is a separate concern that needs a KV
 > store; it isn't part of this gate bundle.
 
-`GET /health` now returns HTTP `503` when either `XMTP_GATEKEEPER_PRIVATE_KEY`
-or `MAINNET_RPC_URL` is missing, so a green probe means the gate has the minimum
-required secrets to serve room joins.
+`GET /health` returns HTTP `503` for missing required configuration. Configuration health does not prove RPC connectivity, valid room permissions, or successful live admission. Complete the controlled release checks before routing users.
+
+The installer refuses existing `gate.env` or `rooms.json`, validates the registry with the admission rules, creates secret files with mode 600, and generates distinct wallet/database keys once. Key input is hidden and keys are never passed as command-line arguments. Back up the generated secrets immediately. If setup stops after creating one file, inspect and preserve that partial configuration; rerunning will not overwrite it. TLS and reverse-proxy setup remain operator responsibilities.
 
 ## Why self-host
 

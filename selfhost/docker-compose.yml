@@ -24,6 +24,12 @@ services:
     # its existing XMTP installation across restarts instead of registering a new one each boot.
     volumes:
       - gate-data:/data
+      - type: bind
+        source: ./rooms.json
+        target: /config/rooms.json
+        read_only: true
+        bind:
+          create_host_path: false
 
 volumes:
   gate-data:
