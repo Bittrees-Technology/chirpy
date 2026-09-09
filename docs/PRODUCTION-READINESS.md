@@ -310,3 +310,7 @@ Equal-timestamp preference conflicts now converge in either merge direction: con
 Saved-message duplicates use their own update time and a deterministic content tie-breaker independent of JSON object key order. Legacy messages receive a persisted fallback time from their original snapshot, so later unrelated settings updates cannot make old content appear newer. Stable output ordering prevents device-dependent array order. Regression tests reproduce four failures in the previous merge and check opposite merge directions, three-device exchange orders, JSON round trips, duplicate IDs, non-mutation and conservative receipt removal conflicts. A further 576 mixed-age snapshot pairs check exchange direction, repeated merge stability and three-device grouping; empty override maps normalize consistently.
 
 This establishes deterministic synthetic merge behavior. Explicit legacy deletion/unblock semantics and prolonged real-device offline/reconnect/revocation acceptance remain unfinished.
+
+## Bounded release validation runtime
+
+The regular test job has a 20-minute deadline covering dependency setup, audits, type checks, unit/hardening tests, build and browser acceptance. A stalled setup or test therefore terminates as a failed/cancelled prerequisite and cannot advance draft artifact creation. This applies to pull requests, main and the reusable release checks; existing container/native audit and XMTP acceptance deadlines remain in place. It does not convert infrastructure failures into passing checks.
