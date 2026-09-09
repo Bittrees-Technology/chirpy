@@ -11,7 +11,15 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin } = useChat();
   const { identity } = useIdentity();
   const { t } = useI18n();
-  const [draft, setDraft] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const conversationKey = activeConversation?.id ?? "";
+  const currentConversationRef = useRef(conversationKey);
+  currentConversationRef.current = conversationKey;
+  const draft = drafts[conversationKey] ?? "";
+  const setDraft = (value: string) => setDrafts((current) => ({ ...current, [conversationKey]: value }));
+  const [sending, setSending] = useState<string | null>(null);
+  const sendingRef = useRef(false);
+  const [sendError, setSendError] = useState<{ id: string; message: string } | null>(null);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [joinPending, setJoinPending] = useState(false);
@@ -25,8 +33,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   // Resolve the peer + every message sender to ENS (name + avatar), cached app-wide.
   const profiles = useEnsProfiles([peerAddress, ...messages.map((m) => m.sender)]);
 
+  useEffect(() => { setDrafts({}); setSendError(null); }, [selfAddress]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length, activeConversation?.id]);
-  useEffect(() => { setReplyTo(null); setDraft(""); setJoinStatus(null); }, [activeConversation?.id]);
+  useEffect(() => { setReplyTo(null); setJoinStatus(null); }, [activeConversation?.id]);
 
   if (!activeConversation) {
     return (
@@ -44,9 +53,18 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (sendingRef.current || !draft.trim()) return;
     const body = draft;
-    setDraft(""); setReplyTo(null);
-    await send(body, replyTo ?? undefined);
+    const id = activeConversation.id;
+    sendingRef.current = true;
+    setSending(id); setSendError(null);
+    try {
+      await send(body, replyTo ?? undefined);
+      setDrafts((current) => current[id] === body ? { ...current, [id]: "" } : current);
+      if (currentConversationRef.current === id) setReplyTo(null);
+    } catch (error) {
+      setSendError({ id, message: error instanceof Error ? error.message : "Message was not sent. Your draft is saved; try again." });
+    } finally { sendingRef.current = false; setSending(null); }
   };
 
   const replyTarget = replyTo ? messages.find((m) => m.id === replyTo) : null;
@@ -151,7 +169,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         </div>
       )}
 
-      {readOnly ? (
+      {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{sendError.message} Your draft has been kept.</div>}
+      {isGatedRoom && <div className="muted">Room ID: {activeConversation.id}</div>}
+      {isGatedRoom && !isMember ? <div className="composer readonly-note">Join this room to send messages.</div> : readOnly ? (
         <div className="composer readonly-note">{t("thread.readOnly", "🔒 This room is read-only. Posting is frozen.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>
@@ -162,7 +182,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
             onChange={(e) => setDraft(e.target.value)}
             autoFocus
           />
-          <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>{t("thread.send", "Send")}</button>
+          <button className="btn btn-primary" type="submit" disabled={!draft.trim() || sending !== null}>{sending === conversationKey ? "Sending…" : t("thread.send", "Send")}</button>
         </form>
       )}
     </div>

@@ -368,6 +368,7 @@ interface EncryptedSyncBlob extends EncryptedSyncBlobSnapshot {
   updatedAt: number;
 }
 interface SettingsSyncState {
+  error?: string;
   walletAddress: string | null;
   encryptedAt: number | null;
   hasSessionKey: boolean;
@@ -482,11 +483,11 @@ async function encryptSyncPayload(payload: SettingsSyncPayload, key: CryptoKey, 
   };
 }
 
-const payloadFromPrefs = (prefs: SettingsPrefs, savedMessages: SettingsSyncPayload["savedMessages"] = []): SettingsSyncPayload => ({
+const payloadFromPrefs = (prefs: SettingsPrefs, savedMessages: SettingsSyncPayload["savedMessages"] = [], updatedAt = Date.now()): SettingsSyncPayload => ({
   version: 1,
   settingsPrefs: prefs,
   savedMessages,
-  updatedAt: Date.now(),
+  updatedAt,
 });
 
 async function encryptSettingsPayload(
@@ -494,8 +495,9 @@ async function encryptSettingsPayload(
   key: CryptoKey,
   address: string,
   savedMessages: SettingsSyncPayload["savedMessages"] = [],
+  updatedAt = Date.now(),
 ): Promise<EncryptedSyncBlob> {
-  return encryptSyncPayload(payloadFromPrefs(prefs, savedMessages), key, address);
+  return encryptSyncPayload(payloadFromPrefs(prefs, savedMessages, updatedAt), key, address);
 }
 
 async function decryptSettingsPayload(blob: EncryptedSyncBlob, key: CryptoKey): Promise<SettingsSyncPayload> {
@@ -522,6 +524,7 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
   const [prefs, setPrefs] = useState<SettingsPrefs>(() =>
     ({ ...DEFAULT_SETTINGS_PREFS, ...LS.get<Partial<SettingsPrefs>>(SETTINGS_PREFS_KEY, {}) }));
   const existingSyncBlob = useMemo(() => LS.get<EncryptedSyncBlob | null>(SETTINGS_SYNC_BLOB_KEY, null), []);
+  const prefsUpdatedAtRef = useRef(LS.get<number>("chat:settingsPrefsUpdatedAt:v1", existingSyncBlob?.updatedAt ?? 0));
   const syncKeyRef = useRef<CryptoKey | null>(null);
   const syncAddressRef = useRef<string | null>(existingSyncBlob?.address ?? null);
   const authSigRef = useRef<string | null>(null);
@@ -566,15 +569,17 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
     if (!remoteBlob) return null;
     try {
       const remotePayload = await decryptSettingsPayload(remoteBlob as EncryptedSyncBlob, key);
-      const localPayload = payloadFromPrefs(localPrefs, savedMessagesRef.current);
+      const localPayload = payloadFromPrefs(localPrefs, savedMessagesRef.current, prefsUpdatedAtRef.current);
       const mergedPayload = mergePayload(localPayload, remotePayload);
       const mergedBlob = await encryptSyncPayload(mergedPayload, key, address);
       savedMessagesRef.current = mergedPayload.savedMessages;
+      prefsUpdatedAtRef.current = mergedPayload.updatedAt;
+      LS.set("chat:settingsPrefsUpdatedAt:v1", mergedPayload.updatedAt);
       LS.set(SETTINGS_SYNC_BLOB_KEY, mergedBlob);
       if (repush && authSig) void pushBlob(address, authSig, mergedBlob);
       return { prefs: mergedPayload.settingsPrefs, blob: mergedBlob, merged: true };
     } catch {
-      return null;
+      throw new Error("Encrypted sync could not be decrypted. Remote data has been preserved.");
     }
   }, []);
 
@@ -584,7 +589,7 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
     const key = syncKeyRef.current;
     const address = syncAddressRef.current;
     let cancelled = false;
-    encryptSettingsPayload(prefs, key, address, savedMessagesRef.current)
+    encryptSettingsPayload(prefs, key, address, savedMessagesRef.current, prefsUpdatedAtRef.current)
       .then((blob) => {
         if (cancelled) return;
         LS.set(SETTINGS_SYNC_BLOB_KEY, blob);
@@ -595,15 +600,18 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
         pushTimerRef.current = window.setTimeout(() => {
           pushTimerRef.current = null;
           pushBlob(address, authSig, blob).then(async (result) => {
-            if (result.ok || !result.stale || cancelled) return;
+            if (cancelled) return;
+            if (result.ok) { setSyncState((s) => ({ ...s, error: undefined })); return; }
+            if (!result.stale) throw new Error("Sync write failed");
             const merged = await pullMergePushOnce(key, address, prefs, authSig, false);
             if (!merged || cancelled) return;
             const retry = await pushBlob(address, authSig, merged.blob);
-            if (retry.ok && !cancelled) {
+            if (!retry.ok) throw new Error("Sync conflict; retry required");
+            if (!cancelled) {
               setPrefs(merged.prefs);
               setSyncState((s) => ({ ...s, walletAddress: merged.blob.address, encryptedAt: merged.blob.updatedAt, hasSessionKey: true }));
             }
-          });
+          }).catch(() => setSyncState((s) => ({ ...s, error: "Sync failed. Local changes are saved on this device; retry sync when available." })));
         }, 1500);
       })
       .catch(() => {
@@ -638,13 +646,13 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
       if (!merged) return;
       setPrefs(merged.prefs);
       setSyncState((s) => ({ ...s, walletAddress: merged.blob.address, encryptedAt: merged.blob.updatedAt, hasSessionKey: true }));
-    });
+    }).catch(() => setSyncState((s) => ({ ...s, error: "Remote sync could not be read. Local data is unchanged." })));
   }, [getAuthSig, prefs, pullMergePushOnce, syncState.hasSessionKey]);
 
   const value = useMemo<SettingsPrefsCtx>(() => ({
     prefs,
     syncState,
-    setReadReceiptsDefault: (readReceiptsDefault) => setPrefs((p) => ({ ...p, readReceiptsDefault })),
+    setReadReceiptsDefault: (readReceiptsDefault) => { prefsUpdatedAtRef.current = Date.now(); LS.set("chat:settingsPrefsUpdatedAt:v1", prefsUpdatedAtRef.current); setPrefs((p) => ({ ...p, readReceiptsDefault })); },
     enableSyncAcrossDevices: async () => {
       setSyncState((s) => ({ ...s, isEncrypting: true }));
       try {
@@ -662,12 +670,14 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
         if (!pushed.ok && pushed.stale) {
           const latest = await pullMergePushOnce(key, address, mergedPrefs, authSig, false);
           if (latest) {
-            await pushBlob(address, authSig, latest.blob);
+            const retry = await pushBlob(address, authSig, latest.blob);
+            if (!retry.ok) throw new Error("Another device changed sync again. Try enabling sync again.");
             setPrefs(latest.prefs);
             setSyncState({ walletAddress: address, encryptedAt: latest.blob.updatedAt, hasSessionKey: true, isEncrypting: false });
             return { ok: true, message: "Encrypted sync is enabled for this browser session." };
           }
         }
+        if (!pushed.ok) throw new Error("Encrypted sync was not saved. Try again; local data has been kept.");
         setPrefs(mergedPrefs);
         setSyncState({ walletAddress: address, encryptedAt: blob.updatedAt, hasSessionKey: true, isEncrypting: false });
         return { ok: true, message: "Encrypted sync is enabled for this browser session." };
@@ -728,6 +738,7 @@ interface ChatCtx {
 const ChatContext = createContext<ChatCtx | null>(null);
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
+  const { prefs } = useSettingsPrefs();
   const { identity, mode } = useIdentity();
   const { activeOrg } = useOrgs();
   const transportRef = useRef<Transport | null>(null);
@@ -737,23 +748,38 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [transportNeedsRevoke, setTransportNeedsRevoke] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const reloadConversations = useCallback(async () => {
     const t = transportRef.current; if (!t) return;
-    setConversations(await t.listConversations());
+    try {
+      const next = await t.listConversations();
+      if (transportRef.current === t) { setConversations(next); setTransportError(t.warning ?? null); }
+    } catch (error) { if (transportRef.current === t) setTransportError(error instanceof Error ? error.message : "Unable to load conversations."); }
   }, []);
 
+  const messageLoadRef = useRef(0);
   const reloadMessages = useCallback(async (id: string | null) => {
+    const request = ++messageLoadRef.current;
     const t = transportRef.current;
     if (!t || !id) { setMessages([]); return; }
-    setMessages(await t.listMessages(id));
+    try {
+      const next = await t.listMessages(id);
+      if (messageLoadRef.current === request && transportRef.current === t && activeIdRef.current === id) setMessages(next);
+    } catch (error) { if (messageLoadRef.current === request) setTransportError(error instanceof Error ? error.message : "Unable to load messages."); }
   }, []);
 
   // (Re)build the transport whenever the org or identity changes.
   useEffect(() => {
     let unsub = () => {};
     let cancelled = false;
+    transportRef.current = null;
+    setConversations([]);
+    setMessages([]);
+    setActiveId(null);
+    messageLoadRef.current++;
     (async () => {
       const provider = mode === "wallet" ? getActiveProvider() : null;
       const t = createTransport(DEFAULT_TRANSPORT, activeOrg, identity, provider);
@@ -768,6 +794,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setActiveId(null);
       setMessages([]);
       await reloadConversations();
+      if (cancelled) return;
       unsub = t.subscribe(() => {
         reloadConversations();
         setActiveId((cur) => { reloadMessages(cur); return cur; });
@@ -779,9 +806,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { reloadMessages(activeId); }, [activeId, reloadMessages]);
 
   const select = useCallback((id: string | null) => {
+    activeIdRef.current = id;
+    messageLoadRef.current++;
+    setMessages([]);
     setActiveId(id);
-    if (id) transportRef.current?.markRead(id);
-  }, []);
+    if (id) void transportRef.current?.markRead(id, { sendReceipt: prefs.readReceiptsDefault }).catch(() => {});
+  }, [prefs.readReceiptsDefault]);
 
   const enableMessaging = useCallback(async (opts?: { revokeStale?: boolean }) => {
     const t = transportRef.current;
@@ -802,7 +832,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const send = useCallback(async (body: string, replyTo?: string) => {
     if (!activeId || !body.trim()) return;
-    await transportRef.current?.send(activeId, body, { replyTo });
+    if (!transportRef.current) throw new Error("Messaging is reconnecting. Try again shortly.");
+    await transportRef.current.send(activeId, body, { replyTo });
     await reloadMessages(activeId);
   }, [activeId, reloadMessages]);
 

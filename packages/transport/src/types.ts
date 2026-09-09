@@ -16,6 +16,7 @@ export interface Conversation {
   id: string;
   kind: ConversationKind;
   title: string;
+  namespace?: string;
   /** Member addresses (DMs: 2; rooms: N). */
   peers: string[];
   description?: string;
@@ -42,6 +43,7 @@ export type TransportStatus = "idle" | "enabling" | "ready" | "error";
 export interface Transport {
   readonly id: "mock" | "xmtp";
   readonly status?: TransportStatus;
+  readonly warning?: string;
   /** Identity this transport is acting as. */
   me(): Identity;
   init(): Promise<void>;
@@ -52,7 +54,7 @@ export interface Transport {
   listMessages(conversationId: string): Promise<ChatMessage[]>;
   send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage>;
   react(conversationId: string, messageId: string, emoji: string): Promise<void>;
-  markRead(conversationId: string): Promise<void>;
+  markRead(conversationId: string, options?: { sendReceipt: boolean }): Promise<void>;
   startDm(address: string, handle?: string): Promise<Conversation>;
   createRoom(input: StartRoomInput): Promise<Conversation>;
   /** Ask the configured gatekeeper bot to add this wallet/inbox to a gated room. */

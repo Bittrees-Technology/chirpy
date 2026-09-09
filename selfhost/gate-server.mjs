@@ -10,7 +10,7 @@
 // MAINNET_RPC_URL. Optional: GATE_PORT (default 8788), GATE_ALLOW_ORIGIN (default *).
 import { createServer } from "node:http";
 import { buildGateHealthReport } from "../api/ops-utils.js";
-import roomJoinHandler from "../api/room-join.js";
+import roomJoinHandler, { loadRooms } from "../api/room-join.js";
 import {
   checkRateLimit,
   logEvent,
@@ -45,7 +45,12 @@ function vercelRes(nodeRes) {
 
 async function readJson(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 32_768) throw new Error("request too large");
+    chunks.push(chunk);
+  }
   const raw = Buffer.concat(chunks).toString("utf8");
   return raw ? JSON.parse(raw) : {};
 }
@@ -74,6 +79,11 @@ const server = createServer(async (req, res) => {
 
   if (pathname === "/health" || pathname === "/") {
     const report = buildGateHealthReport(process.env);
+    try { await loadRooms(); }
+    catch {
+      report.ok = false; report.status = "degraded";
+      report.blockingIssues.push("Room registry cannot be loaded or validated.");
+    }
     res.statusCode = report.ok ? 200 : 503;
     res.setHeader("content-type", "application/json");
     logCompletion(pathname, res.statusCode, report.ok ? "completed" : "error");

@@ -1,7 +1,6 @@
 :root {
-  /* Bittrees Brand Standard — light theme.
-     Bitcoin orange is a *sparing* accent; treasury green is the positive tone.
-     Mirrors the @theme tokens in the Bittrees Research / Gov / Capital apps. */
+  /* Chirpy public preview theme. The current palette retains Bittrees provenance
+     while product copy and org presets keep Chirpy community-first and reusable. */
   --accent: #F7931A;        /* primary — Bitcoin orange */
   --accent-hover: #E07E00;
   --accent-text: #1A1A1A;   /* ink on orange (brand spec; accessible, white is not) */

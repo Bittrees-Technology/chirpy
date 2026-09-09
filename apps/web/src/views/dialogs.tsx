@@ -152,7 +152,9 @@ export function PolicyEditor(
 
 // ---------------- New Room ----------------
 export function NewRoomDialog({ onClose, onCreated }: { onClose: () => void; onCreated?: () => void }) {
-  const { createRoom } = useChat();
+  const { createRoom, transportId } = useChat();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const { activeOrg } = useOrgs();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -161,6 +163,8 @@ export function NewRoomDialog({ onClose, onCreated }: { onClose: () => void; onC
   const [policy, setPolicy] = useState<Partial<Policy>>({});
   return (
     <Modal title="New room" onClose={onClose} wide>
+      {error && <div role="alert" className="error-banner">{error}</div>}
+      {transportId === "xmtp" && <p>Gated rooms need an external gatekeeper. After creation, publish the room ID in the gatekeeper registry so other members can discover and join it.</p>}
       <Field label="Room name"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="general" autoFocus /></Field>
       <Field label="Description (optional)"><input className="input" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
       <Field label="Access" hint="Who may join. Multiple rules combine by the mode below.">
@@ -174,7 +178,7 @@ export function NewRoomDialog({ onClose, onCreated }: { onClose: () => void; onC
       <PolicyEditor value={policy} onChange={setPolicy} />
       <div className="modal-actions">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!title.trim()} onClick={async () => { await createRoom({ title: title.trim(), description: description.trim() || undefined, gate: { combine, rules }, policy }); onCreated?.(); onClose(); }}>Create room</Button>
+        <Button variant="primary" disabled={!title.trim() || busy} onClick={async () => { setBusy(true); setError(null); try { await createRoom({ title: title.trim(), description: description.trim() || undefined, gate: { combine, rules }, policy }); onCreated?.(); onClose(); } catch (e) { setError(e instanceof Error ? e.message : "Room creation failed."); } finally { setBusy(false); } }}>Create room</Button>
       </div>
     </Modal>
   );

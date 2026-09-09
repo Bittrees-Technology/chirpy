@@ -2,6 +2,7 @@ import {
   decodeGate,
   encodeGate,
   evalGate,
+  validateProductionGate,
   evaluatePolicy,
   makeViemChainReader,
   mergePolicy,
@@ -51,17 +52,13 @@ let SDK: Sdk | null = null;
 let sharedXmtp: { address: string; client: XmtpClient } | null = null;
 
 const READY_PREFIX = "chirpy.xmtp.ready.";
-const ROOM_SEED_PREFIX = "chirpy.xmtp.rooms.seeded.";
 const PEER_KEY = "chirpy.xmtp.peers";
 const ETH_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const ROOM_META_VERSION = 1;
 const OPEN_GATE: Gate = { combine: "any", rules: [] };
-const JOIN_MESSAGE =
-  "Chirpy room join — authorize gated room request (v1)\n\nSign to ask the gatekeeper to add your XMTP inbox to a gated room. Gas-free; proves wallet ownership only.";
+
 
 const readyKey = (address: string) => `${READY_PREFIX}${address.toLowerCase()}`;
-const roomSeedKey = (address: string, namespace: string) =>
-  `${ROOM_SEED_PREFIX}${address.toLowerCase()}.${namespace}`;
 const normalizeAddress = (address: string) => {
   const next = address.trim().toLowerCase();
   if (!ETH_ADDRESS.test(next)) throw new Error("Enter a valid 0x address.");
@@ -86,14 +83,6 @@ function markEnabled(address: string) {
 function forgetEnabled(address: string) {
   if (sharedXmtp?.address.toLowerCase() === address.toLowerCase()) sharedXmtp = null;
   try { localStorage.removeItem(readyKey(address)); } catch { /* ignore */ }
-}
-
-function roomsWereSeeded(address: string, namespace: string) {
-  try { return localStorage.getItem(roomSeedKey(address, namespace)) === "1"; } catch { return false; }
-}
-
-function markRoomsSeeded(address: string, namespace: string) {
-  try { localStorage.setItem(roomSeedKey(address, namespace), "1"); } catch { /* ignore */ }
 }
 
 function isUnregisteredIdentity(error: unknown) {
@@ -227,55 +216,6 @@ export function classifyConversation(
     : "dm";
 }
 
-/** Normalize a room title for comparison: trim, drop a leading "#", lowercase.
- *  Lets legacy rooms named "#general" / "General" match the canonical seed title. */
-export function canonicalizeRoomTitle(title: string): string {
-  return title.trim().replace(/^#+/, "").trim().toLowerCase();
-}
-
-/** Canonical seed-room titles for an org: the org's default rooms, or "general"
- *  when none are configured (matches the ensureOrgRooms fallback seed). */
-export function seedRoomTitles(org: Pick<OrgConfig, "defaultRooms">): Set<string> {
-  const titles = org.defaultRooms.length
-    ? org.defaultRooms.map((seed) => seed.title)
-    : ["general"];
-  return new Set(titles.map(canonicalizeRoomTitle));
-}
-
-/** True when a room title matches one of the org's canonical seed titles,
- *  regardless of casing or a leading "#" and even without Chirpy metadata. */
-export function isSeedRoomTitle(title: string, seedTitles: Set<string>): boolean {
-  return seedTitles.has(canonicalizeRoomTitle(title));
-}
-
-/** Collapse duplicate seed rooms (e.g. six legacy "#general" rooms) down to a
- *  single conversation per canonical seed title, keeping the most recently
- *  active one. Non-seed rooms and DMs pass through untouched. */
-export function dedupeSeedRooms(
-  conversations: Conversation[],
-  seedTitles: Set<string>,
-): Conversation[] {
-  const indexByTitle = new Map<string, number>();
-  const result: Conversation[] = [];
-  for (const conversation of conversations) {
-    if (conversation.kind === "room" && isSeedRoomTitle(conversation.title, seedTitles)) {
-      const key = canonicalizeRoomTitle(conversation.title);
-      const existingIndex = indexByTitle.get(key);
-      if (existingIndex === undefined) {
-        indexByTitle.set(key, result.length);
-        result.push(conversation);
-      } else {
-        const keptAt = result[existingIndex].lastMessage?.sentAt ?? 0;
-        const currentAt = conversation.lastMessage?.sentAt ?? 0;
-        if (currentAt > keptAt) result[existingIndex] = conversation;
-      }
-      continue;
-    }
-    result.push(conversation);
-  }
-  return result;
-}
-
 function toChatMessage(
   sdk: Sdk,
   message: DecodedMessage,
@@ -310,6 +250,7 @@ function toChatMessage(
 export class XmtpTransport implements Transport {
   readonly id = "xmtp" as const;
   status: TransportStatus = "idle";
+  warning: string | undefined;
 
   private sdk: Sdk | null = null;
   private client: XmtpClient | null = null;
@@ -548,8 +489,7 @@ export class XmtpTransport implements Transport {
       })
       .filter((inboxId): inboxId is string => Boolean(inboxId)))];
 
-    if (!inboxIds.includes(myInboxId)) inboxIds.push(myInboxId);
-    if (!inboxIds.length) return [this.myAddress];
+    if (!inboxIds.length) return [];
 
     let states: PeerState[] = await client.preferences.getInboxStates(inboxIds) as PeerState[];
     if (states.some((state) => !state?.accountIdentifiers?.length)) {
@@ -607,7 +547,8 @@ export class XmtpTransport implements Transport {
       kind: "room",
       title: group.name || "Room",
       description: meta.description,
-      peers: await this.addressesForMembers(conversation).catch(() => [this.myAddress]),
+      peers: await this.addressesForMembers(conversation).catch(() => []),
+      namespace: meta.namespace,
       gate: meta.gate,
       policy: meta.policy,
       lastMessage,
@@ -615,36 +556,25 @@ export class XmtpTransport implements Transport {
     };
   }
 
-  private async ensureOrgRooms(conversations: Conversation[]) {
-    const seedTitles = seedRoomTitles(this.org);
-    // Treat a room as an existing org room when its Chirpy metadata namespace
-    // matches OR its title matches a canonical seed title. The latter recognizes
-    // legacy/general rooms created without Chirpy metadata, so we don't seed a
-    // second #general on top of them.
-    const existingRooms = conversations.filter((conversation) =>
-      conversation.kind === "room" &&
-      (this.roomMeta.get(conversation.id)?.namespace === this.org.namespace ||
-        isSeedRoomTitle(conversation.title, seedTitles))
-    );
-    if (existingRooms.length || roomsWereSeeded(this.myAddress, this.org.namespace)) {
-      markRoomsSeeded(this.myAddress, this.org.namespace);
-      return dedupeSeedRooms(conversations, seedTitles);
-    }
+  private catalogCache: { at: number; rooms: Conversation[] } | null = null;
 
-    const seeds: Array<Pick<RoomSeed, "title" | "description" | "gate" | "policy">> = this.org.defaultRooms.length
-      ? this.org.defaultRooms
-      : [{ title: "general", description: "Open room", gate: OPEN_GATE }];
-    const created: Conversation[] = [];
-    for (const seed of seeds) {
-      created.push(await this.createRoom({
-        title: seed.title,
-        description: seed.description,
-        gate: seed.gate,
-        policy: seed.policy,
-      }));
-    }
-    markRoomsSeeded(this.myAddress, this.org.namespace);
-    return dedupeSeedRooms([...conversations, ...created], seedTitles);
+  private async publishedRooms(): Promise<Conversation[]> {
+    if (!this.org.gateUrl) return [];
+    if (this.catalogCache && Date.now() - this.catalogCache.at < 60_000) return this.catalogCache.rooms;
+    const response = await fetch(this.gateEndpoint(), {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "catalog", namespace: this.org.namespace }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error("Published rooms are unavailable. Try again shortly.");
+    const payload = await response.json();
+    if (!Array.isArray(payload.rooms)) throw new Error("Invalid room directory.");
+    const rooms: Conversation[] = payload.rooms.filter((r: any) =>
+      r.namespace === this.org.namespace && typeof r.id === "string" && typeof r.title === "string" && validateProductionGate(r.gate)
+    ).map((r: any) => ({ id: r.id, namespace: r.namespace, kind: "room", title: r.title,
+      peers: [], gate: r.gate, policy: mergePolicy(this.org.policy), unread: 0 }));
+    this.catalogCache = { at: Date.now(), rooms };
+    return rooms;
   }
 
   private async mapConversation(conversation: XmtpConversation): Promise<Conversation> {
@@ -701,8 +631,17 @@ export class XmtpTransport implements Transport {
       this.conversations = new Map(list.map((conversation) => [conversation.id, conversation]));
       this.roomMeta.clear();
       const mapped = await Promise.all(list.map((conversation) => this.mapConversation(conversation)));
-      const withSeeds = await this.ensureOrgRooms(mapped);
-      return withSeeds.sort((a, b) => (b.lastMessage?.sentAt ?? 0) - (a.lastMessage?.sentAt ?? 0));
+      const scoped = mapped.filter((c) => c.kind === "dm" || c.namespace === this.org.namespace ||
+        (!c.namespace && this.org.namespace === "personal"));
+      let directory: Conversation[] = [];
+      try { directory = await this.publishedRooms(); this.warning = undefined; }
+      catch { this.warning = "Published rooms are unavailable. Existing chats still work; room joins may need to be retried."; directory = this.catalogCache?.rooms ?? []; }
+      for (const room of directory) {
+        const existing = scoped.find((c) => c.id === room.id);
+        if (!existing) scoped.push(room);
+        this.roomMeta.set(room.id, { namespace: room.namespace, gate: room.gate!, policy: room.policy! });
+      }
+      return scoped.sort((a, b) => (b.lastMessage?.sentAt ?? 0) - (a.lastMessage?.sentAt ?? 0));
     } catch (error) {
       if (isUnregisteredIdentity(error)) {
         forgetEnabled(this.myAddress);
@@ -794,7 +733,8 @@ export class XmtpTransport implements Transport {
     });
   }
 
-  async markRead(conversationId: string): Promise<void> {
+  async markRead(conversationId: string, options?: { sendReceipt: boolean }): Promise<void> {
+    if (options?.sendReceipt !== true) return;
     const conversation = this.conversations.get(conversationId);
     if (!conversation) return;
     if (this.roomMeta.has(conversationId)) return;
@@ -829,6 +769,12 @@ export class XmtpTransport implements Transport {
       description: input.description,
       namespace: this.org.namespace,
     };
+    if (hasGate(gate) && (!this.org.gateUrl || !this.gatekeeperAddress())) {
+      throw new Error("Gated rooms need an external gate service and gatekeeper address. Ask your organization administrator to configure them first.");
+    }
+    if (hasGate(gate) && (this.org.chain.chainId !== 1 || !validateProductionGate(gate))) {
+      throw new Error("Production gates currently support mainnet token rules (explicit ERC-1155 IDs), Safe owners, and ENS. Check the rule and a positive minimum.");
+    }
     const gatekeeperAddress = hasGate(gate) ? this.gatekeeperAddress() : null;
     const gatekeeperInboxId = gatekeeperAddress
       ? await client.fetchInboxIdByIdentifier(await this.identifier(gatekeeperAddress))
@@ -868,32 +814,33 @@ export class XmtpTransport implements Transport {
   }
 
   async requestRoomJoin(conversationId: string): Promise<void> {
-    const conversation = this.conversations.get(conversationId);
     const meta = this.roomMeta.get(conversationId);
-    if (!conversation || !meta) throw new Error("Room not found.");
+    if (!meta || meta.namespace !== this.org.namespace) throw new Error("Room not found in this organization.");
     if (!hasGate(meta.gate)) throw new Error("This room is open.");
-    if (!this.provider) throw new Error("Connect a wallet to request access.");
-
-    const signature = await this.provider.request({
-      method: "personal_sign",
-      params: [bytesToHex(textEncoder.encode(JOIN_MESSAGE)), this.myAddress],
+    if (!this.provider || !this.org.gateUrl) throw new Error("Connect a wallet and configure the organization's external gate.");
+    const endpoint = this.gateEndpoint();
+    const challengeResponse = await fetch(endpoint, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "challenge", convId: conversationId, namespace: this.org.namespace,
+        address: this.myAddress, inboxId: this.requireInboxId() }),
+      signal: AbortSignal.timeout(10_000),
     });
+    if (!challengeResponse.ok) throw new Error("The gate could not authorize this room. Ask an administrator to publish it in the room registry.");
+    const challenge = await challengeResponse.json();
+    const expectedService = new URL(endpoint, window.location.href);
+    if (challenge.convId !== conversationId || challenge.namespace !== this.org.namespace ||
+        String(challenge.address).toLowerCase() !== this.myAddress || challenge.inboxId !== this.requireInboxId() ||
+        challenge.service !== expectedService.origin + expectedService.pathname ||
+        !/^[a-f0-9]{64}$/.test(challenge.nonce) || !Number.isSafeInteger(challenge.expiresAt) ||
+        challenge.expiresAt <= Date.now() || challenge.expiresAt > Date.now() + 300_000) throw new Error("Invalid join challenge.");
+    // Construct the message locally; never sign arbitrary text returned by a gate URL.
+    const message = `Chirpy room join (v2)\nService: ${challenge.service}\nRoom: ${conversationId}\nNamespace: ${this.org.namespace}\nWallet: ${challenge.address}\nInbox: ${challenge.inboxId}\nNonce: ${challenge.nonce}\nExpires: ${challenge.expiresAt}\nGas-free authorization for this room only.`;
+    const signature = await this.provider.request({ method: "personal_sign", params: [bytesToHex(textEncoder.encode(message)), this.myAddress] });
     if (typeof signature !== "string") throw new Error("Wallet did not return a join signature.");
-
-    const response = await fetch(this.gateEndpoint(), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        convId: conversation.id,
-        address: this.myAddress,
-        signature,
-        inboxId: this.requireInboxId(),
-        gate: encodeGate(meta.gate),
-        gating: {
-          roleCascade: this.org.gating.roleCascade,
-          powerTier: this.org.gating.powerTier,
-        },
-      }),
+    const response = await fetch(endpoint, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "join", nonce: challenge.nonce, signature }),
+      signal: AbortSignal.timeout(30_000),
     });
     if (response.status === 503) {
       throw new Error("Self-serve joins are not configured. Ask a room admin to add you.");

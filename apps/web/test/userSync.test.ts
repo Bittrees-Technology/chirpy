@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { mergePayload, type SettingsSyncPayload } from "../src/userSync";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mergePayload, pullRemoteBlob, pushBlob, type SettingsSyncPayload } from "../src/userSync";
 
 const payload = (overrides: Partial<SettingsSyncPayload>): SettingsSyncPayload => ({
   version: 1,
@@ -71,4 +71,22 @@ describe("mergePayload", () => {
       syncAcrossDevices: false,
     });
   });
+});
+
+
+afterEach(() => vi.unstubAllGlobals());
+it("requires a successful read and carries its revision on writes", async () => {
+  const address = "new-device"; const blob = { updatedAt: 10 } as any;
+  const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ blob: null, revision: 4 }) })
+    .mockResolvedValueOnce({ ok: false, status: 409 });
+  vi.stubGlobal("fetch", fetcher);
+  expect(await pushBlob(address, "sig", blob)).toEqual({ ok: false, stale: true });
+  expect(fetcher).not.toHaveBeenCalled();
+  await pullRemoteBlob(address); await pushBlob(address, "sig", blob);
+  expect(JSON.parse(fetcher.mock.calls[1][1].body).expectedRevision).toBe(4);
+});
+it("does not interpret an unavailable store as empty", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+  await expect(pullRemoteBlob("offline-device")).rejects.toThrow("Unable to read");
+  expect(await pushBlob("offline-device", "sig", {} as any)).toEqual({ ok: false, stale: true });
 });

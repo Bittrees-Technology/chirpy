@@ -108,8 +108,8 @@ export function ConversationColumn(
         {showConnectEmpty && (
           <div className="empty">
             <div className="empty-icon">💬</div>
-            <div className="empty-title">{t("list.connectTitle", "Start messaging")}</div>
-            <div className="empty-hint">{t("list.connectHint", "Connect your wallet in Settings to enable encrypted chats.")}</div>
+            <div className="empty-title">{t("list.connectTitle", "Start wallet-native chat")}</div>
+            <div className="empty-hint">{t("list.connectHint", "Connect your wallet to enable encrypted DMs and community rooms.")}</div>
             <button className="empty-link" onClick={onOpenSettings}>{t("list.openSettings", "Open Settings →")}</button>
           </div>
         )}
@@ -117,7 +117,7 @@ export function ConversationColumn(
           <Empty
             icon={isRooms ? "🏛️" : "📭"}
             title={isRooms ? t("list.emptyRoomsTitle", "No rooms yet") : t("list.emptyChatsTitle", "No chats yet")}
-            hint={isRooms ? t("list.emptyRoomsHint", "+ Room to create one") : t("list.emptyChatsHint", "+ Chat to start one")}
+            hint={isRooms ? t("list.emptyRoomsHint", "+ Room to create a token-gated community space") : t("list.emptyChatsHint", "+ Chat to start an encrypted DM")}
           />
         )}
         {items.length > 0 && filteredItems.length === 0 && (

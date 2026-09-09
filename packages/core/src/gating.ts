@@ -107,7 +107,7 @@ export async function evalRule(
       if (rule.standard === "erc20") {
         const decimals = await reader.erc20Decimals(rule.token);
         const min = humanToUnits(rule.min || "0", decimals);
-        return (await reader.erc20Balance(rule.token, user)) >= min;
+        return min > 0n && (await reader.erc20Balance(rule.token, user)) >= min;
       }
       // erc721 -> min is a token count
       let min: bigint; try { min = BigInt(rule.min || "1"); } catch { min = 1n; }
@@ -182,3 +182,20 @@ export function ruleSummary(rule: RoomRule): string {
   }
 }
 const short = (a: string) => (a && a.length > 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
+
+/** Production admission supports only fully wired mainnet rules; malformed and
+ * unimplemented rules fail closed even when another rule in an `any` gate passes. */
+export function validateProductionGate(value: unknown): value is Gate {
+  if (!value || typeof value !== "object") return false;
+  const gate = value as Gate;
+  if (!["all", "any"].includes(gate.combine) || !Array.isArray(gate.rules) || !gate.rules.length || gate.rules.length > 32) return false;
+  return gate.rules.every((r) => {
+    if (!r || typeof r !== "object") return false;
+    if (r.kind === "safe") return isAddr(r.safe);
+    if (r.kind === "ens") return r.name === undefined || (typeof r.name === "string" && r.name.length > 0 && r.name.length <= 255);
+    if (r.kind !== "token" || !isAddr(r.token) || !["erc20", "erc721", "erc1155"].includes(r.standard)) return false;
+    if (typeof r.min !== "string" || r.min.length > 100 || !/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(r.min) || !/[1-9]/.test(r.min)) return false;
+    if (r.standard !== "erc20" && !/^[1-9][0-9]*$/.test(r.min)) return false;
+    return r.standard !== "erc1155" || (typeof r.tokenId === "string" && /^(0|[1-9][0-9]*)$/.test(r.tokenId) && r.tokenId.length <= 78);
+  });
+}

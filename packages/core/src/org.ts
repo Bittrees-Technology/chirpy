@@ -55,8 +55,9 @@ export interface CreateOrgInput {
 /** Produce a fresh OrgConfig from minimal input. */
 export function createOrg(input: CreateOrgInput): OrgConfig {
   const slug = slugify(input.name);
+  const id = `org_${slug}_${rid()}`;
   return {
-    id: `org_${slug}_${rid()}`,
+    id,
     version: 1,
     branding: {
       name: input.name.trim() || "New Organization",
@@ -67,7 +68,7 @@ export function createOrg(input: CreateOrgInput): OrgConfig {
       themeCss: input.themeCss,
     },
     chain: { chainId: input.chainId ?? 1, rpcUrl: input.rpcUrl },
-    namespace: slug,
+    namespace: `${slug}:${id}`,
     entryGate: input.entryGate ?? [],
     gating: { ...openGating(), ...(input.gating || {}) },
     policy: mergePolicy(DEFAULT_POLICY, input.policy),

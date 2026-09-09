@@ -272,7 +272,7 @@ export function Settings(
           <div>
             <div className="pref-title">Read receipts (default)</div>
             <div className="muted">
-              The default for every chat — override it per conversation from the chat header. When on, people see when you've read their messages and you see when they've read theirs.
+              When on, Chirpy sends read receipts in direct chats. Turn off to stop sending receipts from this device. Previously sent receipts cannot be withdrawn.
             </div>
           </div>
           <Toggle checked={prefs.readReceiptsDefault} onChange={setReadReceiptsDefault} label="Read receipts default" />
@@ -281,6 +281,7 @@ export function Settings(
           <div>
             <div className="pref-title">Sync across devices</div>
             <div className="muted">{syncDescription}</div>
+            {syncState.error && <div role="alert">{syncState.error}</div>}
             {syncMessage && (
               <div className={`muted sync-status ${syncMessageKind === "success" ? "status-positive" : syncMessageKind === "error" ? "status-error" : ""}`}>
                 {syncMessage}

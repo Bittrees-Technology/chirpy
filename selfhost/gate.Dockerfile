@@ -24,6 +24,7 @@ RUN npm install --omit=dev --no-audit --no-fund
 COPY packages/core ./packages/core
 COPY api/room-join.js ./api/room-join.js
 COPY api/server-utils.js ./api/server-utils.js
+COPY api/ops-utils.js ./api/ops-utils.js
 COPY selfhost/gate-server.mjs ./selfhost/gate-server.mjs
 
 ENV GATE_PORT=8788
