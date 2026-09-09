@@ -284,3 +284,7 @@ Healthy message streams and local send, reaction, read, consent and room-policy 
 Initial load, the existing ten-second visible polling interval, focus/online/visibility recovery, room admission, stream errors/retries and failed mapping still require full reconciliation. Unsubscribing disables the incremental path. This preserves the recovery interval while reducing work from streamed bursts; initial and periodic full synchronization, local full-list enumeration/sorting and real-device large-inbox benchmarks remain unfinished.
 
 A 10,000-conversation regression remaps one entry for one streamed update; the previous implementation remaps all 10,000. Further tests cover cache pruning, concurrent invalidations, failures/reconnect, focus/online recovery, consent, local reads, sends and reactions. These are operation-count assertions, not a measured real-device latency claim. Existing paused-room refresh regressions remain in the suite.
+
+## Native validation covers shared packages
+
+Apple validation now runs when shared core/transport packages or root TypeScript/test configuration change, in addition to the web/native directory and dependency manifests. Those shared packages are bundled into the native frontend; excluding them could leave a native build untested after a messaging change. The workflow change itself exercises macOS compilation and the generated iOS simulator archive/launch path against the current shared code.
