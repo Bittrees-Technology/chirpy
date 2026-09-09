@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { evalGate, validateProductionGate } from "../packages/core/src/gating.ts";
 import { makeViemChainReader } from "../packages/core/src/viemChainReader.ts";
 import { getAddress, recoverMessageAddress } from "viem";
+import { createGateWorkQueue, gateWorkQueue, GateQueueBusyError } from "./gate-queue.js";
 import { getGatekeeperClient } from "./gate-client.js";
 import { checkRateLimit, logEvent } from "./server-utils.js";
 
@@ -32,14 +33,8 @@ export function joinMessage(challenge) {
 // ephemeral: a restart invalidates them. Never share that database across processes.
 export function createJoinHandler({ getClient = getGatekeeperClient, getRooms = loadRooms,
   reader = () => makeViemChainReader(process.env.MAINNET_RPC_URL),
-  service = () => process.env.GATE_PUBLIC_URL, now = Date.now } = {}) {
+  service = () => process.env.GATE_PUBLIC_URL, now = Date.now, workQueue = createGateWorkQueue() } = {}) {
   const challenges = new Map();
-  let queue = Promise.resolve();
-  const serialized = (work) => {
-    const next = queue.then(work);
-    queue = next.catch(() => {});
-    return next;
-  };
   return async function handler(req, res) {
     const route = "/api/room-join";
     if (!req.lifecycleLogged) logEvent("request.started", { route, method: req.method });
@@ -82,8 +77,12 @@ export function createJoinHandler({ getClient = getGatekeeperClient, getRooms = 
       // Reloaded registry above is authoritative even if an operator changed it after challenge issuance.
       const room = rooms.find((r) => r.id === challenge.convId && r.namespace === challenge.namespace);
       if (!room || !validateProductionGate(room.gate)) return respond(403, { error: "room unavailable" });
-      return await serialized(async () => {
+      return await workQueue.run(async () => {
         if (challenge.expiresAt <= now()) return respond(401, { error: "challenge expired" });
+        const currentRooms = await getRooms();
+        const room = currentRooms.find((r) => r.id === challenge.convId && r.namespace === challenge.namespace);
+        if (!room || !validateProductionGate(room.gate)) return respond(403, { error: "room unavailable" });
+        const roomPolicy = JSON.stringify(room);
         const bot = await getClient();
         const { IdentifierKind } = await import("@xmtp/node-sdk");
         const actualInbox = await bot.fetchInboxIdByIdentifier({ identifier: challenge.address.toLowerCase(), identifierKind: IdentifierKind.Ethereum });
@@ -94,12 +93,20 @@ export function createJoinHandler({ getClient = getGatekeeperClient, getRooms = 
         if (!conversation || typeof conversation.addMembers !== "function") return respond(404, { error: "room not found" });
         await conversation.sync();
         if (typeof conversation.isSuperAdmin !== "function" || !await conversation.isSuperAdmin(bot.inboxId)) return respond(403, { error: "gatekeeper is not a room super-admin" });
+        const latestRooms = await getRooms();
+        const latestRoom = latestRooms.find((r) => r.id === room.id && r.namespace === room.namespace);
+        if (!latestRoom || JSON.stringify(latestRoom) !== roomPolicy) return respond(403, { error: "room policy changed; request a new challenge" });
+        if (challenge.expiresAt <= now()) return respond(401, { error: "challenge expired" });
         await conversation.addMembers([challenge.inboxId]);
         return respond(200, { ok: true });
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof GateQueueBusyError) {
+        res.setHeader("Retry-After", "5");
+        return respond(503, { error: "Gate is busy. Wait briefly and request a new join challenge." });
+      }
       return respond(503, { error: "Room access is temporarily unavailable. Ask an administrator to check the gate service." });
     }
   };
 }
-export default createJoinHandler();
+export default createJoinHandler({ workQueue: gateWorkQueue });

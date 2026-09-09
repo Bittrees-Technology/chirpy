@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
+import { createGateWorkQueue, GateQueueBusyError } from "../../server/gate-queue.js";
 import { createJoinHandler } from "../../server/room-join.js";
 import { resetRateLimits } from "../../server/server-utils.js";
 vi.mock("@xmtp/node-sdk", () => ({ IdentifierKind: { Ethereum: 0 } }));
 const alice = privateKeyToAccount(`0x${"1".repeat(64)}`);
 const mallory = privateKeyToAccount(`0x${"2".repeat(64)}`);
 const gate = { combine: "all", rules: [{ kind: "token", standard: "erc721", token: alice.address, min: "1" }] };
-function setup() {
+function setup(workQueue = createGateWorkQueue()) {
   let clock = 1000;
   const addMembers = vi.fn();
   const balance = vi.fn().mockResolvedValue(1n);
@@ -14,7 +15,7 @@ function setup() {
   const rooms = [room];
   const bot = { inboxId: "bot", fetchInboxIdByIdentifier: vi.fn().mockResolvedValue("alice-inbox"),
     conversations: { sync: vi.fn(), getConversationById: vi.fn().mockResolvedValue({ sync: vi.fn(), isSuperAdmin: () => true, addMembers }) } };
-  const handler = createJoinHandler({ getClient: async () => bot, getRooms: async () => rooms,
+  const handler = createJoinHandler({ workQueue, getClient: async () => bot, getRooms: async () => rooms,
     reader: () => ({ erc721Balance: balance }) as any, service: () => "https://gate.example/api/room-join", now: () => clock });
   const call = async (body) => {
     const res = { code: 0, body: null as any, setHeader() {}, status(n) { this.code = n; return this; }, json(body) { this.body = body; return this; } };
@@ -27,6 +28,33 @@ function setup() {
 }
 beforeEach(() => { resetRateLimits(); });
 describe("trusted room admission", () => {
+  it("returns retryable unavailability when the work queue is full", async () => {
+    const queue = createGateWorkQueue();
+    vi.spyOn(queue, "run").mockRejectedValue(new GateQueueBusyError());
+    const s = setup(queue);
+    const response = await s.join(await s.challenge());
+    expect(response.code).toBe(503); expect(response.body.error).toContain("busy");
+    expect(s.addMembers).not.toHaveBeenCalled();
+  });
+  it("reloads the registry after queued work begins", async () => {
+    const queue = createGateWorkQueue();
+    vi.spyOn(queue, "run").mockImplementation(async work => { s.rooms.length = 0; return work(); });
+    const s = setup(queue);
+    expect((await s.join(await s.challenge())).code).toBe(403);
+    expect(s.addMembers).not.toHaveBeenCalled();
+  });
+  it("rejects registry removal during the eligibility read", async () => {
+    const s = setup();
+    s.balance.mockImplementation(async () => { s.rooms.length = 0; return 1n; });
+    expect((await s.join(await s.challenge())).code).toBe(403);
+    expect(s.addMembers).not.toHaveBeenCalled();
+  });
+  it("rejects a challenge that expires during the eligibility read", async () => {
+    const s = setup();
+    s.balance.mockImplementation(async () => { s.tick(); return 1n; });
+    expect((await s.join(await s.challenge())).code).toBe(401);
+    expect(s.addMembers).not.toHaveBeenCalled();
+  });
   it("admits the qualifying wallet inbox once", async () => {
     const s = setup(); const c = await s.challenge();
     expect((await s.join(c)).code).toBe(200);

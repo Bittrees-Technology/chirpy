@@ -110,3 +110,7 @@ The dev-network storage drill in `scripts/test-gate-storage.mjs` validates a sto
 ## Safe gate installation
 
 The installer validates domains, HTTPS origins/RPC values and the reviewed registry before writing configuration. It creates distinct persistent keys with exclusive mode-600 writes, preserves existing files and symlinks, and mounts the public room registry read-only. Repeated/invalid setup and dotenv-injection tests protect identity material. Operators still provide the reviewed rooms, TLS routing, key custody and room super-admin permissions.
+
+## Gate work backpressure
+
+Admission uses one shared serial queue with at most 32 waiting operations. Waiting work expires after 10 seconds and overload returns 503 with Retry-After; the caller must obtain a fresh one-use challenge. An active native operation retains its slot until it finishes, so a timeout cannot accidentally create overlapping database writers. Registry policy is reloaded after queue admission and checked again immediately before membership addition; challenge expiry is also checked again. Tests cover saturation, expired waiting work, active-operation exclusion, recovery after failure, and policy removal/expiry during an in-flight eligibility read. Fleet-wide throttling and runtime dependency monitoring remain pending.
