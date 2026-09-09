@@ -113,3 +113,19 @@ XMTP_STORAGE_DRILL=1 node scripts/test-gate-storage.mjs chirpy-gate:local
 This explicitly uses XMTP **dev**, a newly generated identity, and disposable Docker volumes. It checks encrypted bytes, offline copy integrity, restoration to fresh storage, preservation of the installation and local messages, and wrong-key rejection. It removes its volumes afterward. It does not exercise your production backup service, key custody, routing or operator recovery process.
 
 The SDK intentionally preserves a 32-byte SQLite header. Encryption validation checks that ordinary SQLite cannot query the schema, that the synthetic message is absent from snapshot bytes, and that a wrong key is rejected. A readable file header alone is not evidence of an unencrypted database. See the [upstream SQLCipher connection implementation](https://github.com/xmtp/libxmtp/blob/main/crates/xmtp_db/src/encrypted_store/database/native/sqlcipher_connection.rs).
+
+## Membership lifecycle
+
+Membership maintenance is opt-in: set `GATE_MEMBERSHIP_MODE=audit` first. After reviewing outcomes and accepting the removal policy, set `enforce` to permit removal. The default `off` leaves ongoing membership review to operators. The worker is internal to the existing gate process; there is no public administrative endpoint and it shares the admission queue and native client.
+
+Each pass considers up to 25 members of one registered room, rotates through rooms and member batches, and waits 60 seconds after finishing before the next pass. Large registries take longer to revisit; measure the actual review interval for your deployment. Rooms over 10,000 members require an operator review path. A restart clears pending ineligibility observations, requiring fresh evidence before removal. The worker does not promise immediate revocation after a transfer.
+
+Enforcement requires two confirmed ineligible observations at least five minutes apart under unchanged policy and wallet bindings. Any qualifying bound Ethereum wallet keeps the member eligible. RPC errors, missing/unsupported identities, changed bindings, missing bot authority, and policy changes preserve membership. Room admins, super-admins and the gatekeeper are exempt; operators must manage their roles deliberately. A Safe RPC failure is unknown, not proof of non-ownership. Review aggregate `membership.revalidation` logs (`checked`, `unknown`, `wouldRemove`, `removed`); configure actionable alerts before production enforcement.
+
+Removal affects future group access; it cannot erase already decrypted messages or prevent another administrator from re-adding someone. Enable enforcement only after a reviewed registry, bot permissions and production multi-wallet acceptance are established.
+
+```sh
+XMTP_MEMBERSHIP_DRILL=1 node scripts/test-gate-membership.mjs chirpy-gate:local
+```
+
+The isolated dev drill verifies actual SDK identity binding and membership changes with fresh wallets, and uses deterministic test balances and a simulated observation clock. It does not prove your production chain RPC, token holdings, room policies or elapsed-time service operation. It removes its test database volume afterward.

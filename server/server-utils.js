@@ -102,6 +102,11 @@ export function logEvent(event, fields = {}) {
     "environment",
     "deployment",
     "check",
+    "mode",
+    "checked",
+    "removed",
+    "wouldRemove",
+    "unknown",
   ];
   const safeFields = {};
   for (const field of allowedFields) {

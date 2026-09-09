@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
+import { startMembershipWorker } from "../server/gate-membership-worker.js";
 import { buildGateHealthReport } from "../server/ops-utils.js";
 import roomJoinHandler, { loadRooms } from "../server/room-join.js";
 import { checkRateLimit, logEvent } from "../server/server-utils.js";
@@ -90,5 +91,8 @@ export function createGateServer({ handler = roomJoinHandler, registry = loadRoo
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.GATE_PORT || 8788);
-  createGateServer().listen(port, () => logEvent("server.started", { route: "selfhost/gate-server", port }));
+  const server = createGateServer();
+  const stopMembership = startMembershipWorker();
+  server.once("close", stopMembership);
+  server.listen(port, () => logEvent("server.started", { route: "selfhost/gate-server", port }));
 }
