@@ -20,3 +20,6 @@ uploads/
 # Playwright
 test-results/
 playwright-report/
+
+# Operator-reviewed local gate registry
+selfhost/rooms.json

@@ -9,8 +9,7 @@ import { checkRateLimit, logEvent } from "./server-utils.js";
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const TTL = 5 * 60_000;
-export async function loadRooms() {
-  const file = process.env.CHIRPY_GATE_ROOMS_FILE;
+export async function loadRooms(file = process.env.CHIRPY_GATE_ROOMS_FILE) {
   if (!file) throw new Error("Room registry is not configured");
   const rooms = JSON.parse(await readFile(file, "utf8"));
   if (!Array.isArray(rooms) || rooms.length > 1000) throw new Error("Invalid room registry");

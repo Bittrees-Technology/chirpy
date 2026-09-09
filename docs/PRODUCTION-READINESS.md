@@ -106,3 +106,7 @@ The full image scan prompted removal of the general-purpose base and bundled pac
 The gate now fails closed without a valid wallet key, a distinct persistent 32-byte database key, an absolute data directory, and a supported XMTP network. The singleton passes the encryption key into the native SDK and rejects unsafe database identifiers. Configuration and concurrency regression tests cover invalid keys, key reuse, retry after initialization failure, and secret-free health output. Existing plaintext databases require a reviewed offline migration; no automatic deletion or identity replacement is provided.
 
 The dev-network storage drill in `scripts/test-gate-storage.mjs` validates a stopped encrypted database copied into fresh storage, retained installation identity and local messages, and rejection of an incorrect key. Production backup scheduling, secret custody, recovery time acceptance and an operator-run restore remain release requirements.
+
+## Safe gate installation
+
+The installer validates domains, HTTPS origins/RPC values and the reviewed registry before writing configuration. It creates distinct persistent keys with exclusive mode-600 writes, preserves existing files and symlinks, and mounts the public room registry read-only. Repeated/invalid setup and dotenv-injection tests protect identity material. Operators still provide the reviewed rooms, TLS routing, key custody and room super-admin permissions.
