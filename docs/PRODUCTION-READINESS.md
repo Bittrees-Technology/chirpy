@@ -302,3 +302,11 @@ Regressions cover nested malformed values, corrupt encoding, unknown versions, u
 The desktop draft-release workflow requires both the regular validation workflow and live XMTP dev acceptance to succeed on the release's own revision before any platform artifact/signing job starts. Local reusable workflow references bind the checks to the caller commit/tag. Failures or cancellation prevent the dependent release job from running. The acceptance path includes browser messaging under native CSP, encrypted-storage recovery and membership lifecycle drills.
 
 Both prerequisite jobs receive read-only repository access and do not inherit signing secrets. Existing production configuration, live readiness and signing preflight checks still apply afterward. Passing these dev-network checks does not replace production on-chain acceptance, signed installation/updater tests or operator approval of draft artifacts.
+
+## Deterministic offline sync conflicts
+
+Equal-timestamp preference conflicts now converge in either merge direction: conflicting receipt defaults, per-conversation overrides and sync opt-ins resolve conservatively to off. A missing override versus an explicit override at the same timestamp resolves to explicit off. Newer snapshots still win preference conflicts normally. Legacy blocked-address lists remain a sorted union; this does not change XMTP conversation consent.
+
+Saved-message duplicates use their own update time and a deterministic content tie-breaker independent of JSON object key order. Legacy messages receive a persisted fallback time from their original snapshot, so later unrelated settings updates cannot make old content appear newer. Stable output ordering prevents device-dependent array order. Regression tests reproduce four failures in the previous merge and check opposite merge directions, three-device exchange orders, JSON round trips, duplicate IDs, non-mutation and conservative receipt removal conflicts. A further 576 mixed-age snapshot pairs check exchange direction, repeated merge stability and three-device grouping; empty override maps normalize consistently.
+
+This establishes deterministic synthetic merge behavior. Explicit legacy deletion/unblock semantics and prolonged real-device offline/reconnect/revocation acceptance remain unfinished.
