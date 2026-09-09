@@ -7,11 +7,14 @@ import es from "./langs/es.json";
 // fall back to English, then the key.
 
 type Dict = Record<string, string>;
-export const LANGS: Record<string, { label: string; dict: Dict }> = {
+export const LANGS = {
   en: { label: "English", dict: en as Dict },
   es: { label: "Español", dict: es as Dict },
 };
 export type LangCode = keyof typeof LANGS;
+function isLanguage(value: unknown): value is LangCode {
+  return typeof value === "string" && Object.hasOwn(LANGS, value);
+}
 
 const KEY = "chat:lang:v1";
 
@@ -20,16 +23,22 @@ const I18nContext = createContext<I18nCtx | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<LangCode>(() => {
-    try { const v = localStorage.getItem(KEY); if (v && v in LANGS) return v as LangCode; } catch { /* */ }
+    try { const v = localStorage.getItem(KEY); if (isLanguage(v)) return v; } catch { /* */ }
     return "en";
   });
-  useEffect(() => { try { localStorage.setItem(KEY, lang); } catch { /* */ } }, [lang]);
+  const setLang = useCallback((value: LangCode) => {
+    if (isLanguage(value)) setLangState(value);
+  }, []);
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    try { localStorage.setItem(KEY, lang); } catch { /* */ }
+  }, [lang]);
 
   const t = useCallback((key: string, fallback?: string) => {
     return LANGS[lang]?.dict[key] ?? LANGS.en.dict[key] ?? fallback ?? key;
   }, [lang]);
 
-  const value = useMemo<I18nCtx>(() => ({ lang, setLang: setLangState, t }), [lang, t]);
+  const value = useMemo<I18nCtx>(() => ({ lang, setLang, t }), [lang, setLang, t]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
