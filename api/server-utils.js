@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 const DEFAULT_RATE_LIMIT_MAX = 60;
 const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_RATE_LIMIT_KEYS = 10_000;
@@ -20,15 +21,16 @@ function getRateLimitConfig() {
 }
 
 function getClientKey(req) {
-  if (req?.ip) return String(req.ip);
-
-  const forwarded = req?.headers?.["x-forwarded-for"];
-  if (forwarded) return String(forwarded).split(",", 1)[0].trim();
-
-  const realIp = req?.headers?.["x-real-ip"];
-  if (realIp) return String(realIp);
-
-  return String(req?.socket?.remoteAddress || req?.connection?.remoteAddress || "unknown");
+  const peer = String(req?.socket?.remoteAddress || req?.connection?.remoteAddress || req?.ip || "unknown");
+  // Only an explicitly trusted, directly connected proxy may provide client IPs.
+  // Use its last appended hop, never an attacker-controlled leftmost prefix.
+  const trusted = String(process.env.CHIRPY_TRUSTED_PROXIES || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (trusted.includes(peer)) {
+    const hops = String(req?.headers?.["x-forwarded-for"] || "").split(",");
+    const client = hops.at(-1)?.trim();
+    if (client && isIP(client)) return client;
+  }
+  return peer;
 }
 
 function pruneExpired(now, windowMs) {

@@ -74,7 +74,7 @@ export function buildGateHealthReport(env = process.env) {
   if (allowOrigin === "*") {
     const summary = "GATE_ALLOW_ORIGIN is wildcard; lock it to the exact Chirpy origin in production.";
     checks.push(healthCheck("cors-origin", "info", summary));
-    warnings.push(summary);
+    blockingIssues.push(summary);
   } else {
     checks.push(healthCheck("cors-origin", "ok", "Gate CORS origin is pinned to an explicit Chirpy origin."));
   }
