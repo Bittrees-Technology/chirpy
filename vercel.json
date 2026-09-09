@@ -4,6 +4,22 @@
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
+      "source": "/es/support",
+      "destination": "/es/support/index.html"
+    },
+    {
+      "source": "/es/support/",
+      "destination": "/es/support/index.html"
+    },
+    {
+      "source": "/es/security",
+      "destination": "/es/security/index.html"
+    },
+    {
+      "source": "/es/security/",
+      "destination": "/es/security/index.html"
+    },
+    {
       "source": "/support",
       "destination": "/support.html"
     },
@@ -20,7 +36,7 @@
       "destination": "/security.html"
     },
     {
-      "source": "/((?!api/|support/?$|security/?$|privacy/?$|terms/?$).*)",
+      "source": "/((?!api/|(?:es/)?support/?$|(?:es/)?security/?$|privacy/?$|terms/?$).*)",
       "destination": "/index.html"
     }
   ],

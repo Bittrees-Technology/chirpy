@@ -264,3 +264,9 @@ Extended acceptance was rerun on main `75ecae90da4fd2b6ddef7a9571e0bbfbdd4011ea`
 ## Native warning platform review
 
 [Target-specific dependency evidence](security/NATIVE-DEPENDENCIES.md) identifies `glib` and `proc-macro-error` in the checked Linux graph and absent from the checked macOS ARM64, iOS ARM64 simulator and Windows x64 graphs. All five unmaintained Unicode crates remain present on every checked target through URL-pattern/Tauri utilities. The review records the lockfile digest, scope, reproduction method and upstream follow-ups. It establishes dependency presence, not exploitability or release approval; all seven audit warnings remain unsuppressed.
+
+## Spanish support and security instructions
+
+The public support and security pages now have Spanish versions with reciprocal language links, document-language metadata and dedicated deployment routes. Public bug reports still go to the existing GitHub issue template; security findings still go to the private advisory flow. Preview limitations, account requirements, sensitive-data guidance and the absence of guaranteed response times are preserved. This translation does not establish approved privacy/terms or new operator commitments.
+
+Four browser scenarios verify the existing English pages and Spanish mobile pages, language navigation, keyboard focus, reporting URLs and no horizontal overflow. Both Spanish pages were visually inspected. Production routing is verified separately after deployment.
