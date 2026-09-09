@@ -3,33 +3,12 @@ import { readFile } from "node:fs/promises";
 import { evalGate, validateProductionGate } from "../packages/core/src/gating.ts";
 import { makeViemChainReader } from "../packages/core/src/viemChainReader.ts";
 import { getAddress, recoverMessageAddress } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { getGatekeeperClient } from "./gate-client.js";
 import { checkRateLimit, logEvent } from "./server-utils.js";
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const TTL = 5 * 60_000;
-let clientPromise;
-
-async function getGatekeeperClient() {
-  if (!process.env.XMTP_GATEKEEPER_PRIVATE_KEY) throw new Error("Gatekeeper is not configured");
-  if (!clientPromise) clientPromise = (async () => {
-    const { Client, IdentifierKind, LogLevel } = await import("@xmtp/node-sdk");
-    const account = privateKeyToAccount(process.env.XMTP_GATEKEEPER_PRIVATE_KEY);
-    const client = await Client.create({
-      type: "EOA",
-      getIdentifier: () => ({ identifier: account.address.toLowerCase(), identifierKind: IdentifierKind.Ethereum }),
-      signMessage: async (message) => new Uint8Array(Buffer.from((await account.signMessage({ message })).slice(2), "hex")),
-    }, {
-      env: "production", loggingLevel: LogLevel.Off,
-      dbPath: (inboxId) => `${process.env.GATE_DATA_DIR || "/tmp"}/chirpy-xmtp-gatekeeper-${inboxId}.db3`,
-    });
-    if (!client.isRegistered) await client.register();
-    return client;
-  })().catch((error) => { clientPromise = undefined; throw error; });
-  return clientPromise;
-}
-
 export async function loadRooms() {
   const file = process.env.CHIRPY_GATE_ROOMS_FILE;
   if (!file) throw new Error("Room registry is not configured");
