@@ -17,8 +17,8 @@ Forward-looking items, separate from the shipped v0.
 ## Near-term
 - ◐ **Provision prod secrets** (`XMTP_GATEKEEPER_PRIVATE_KEY`, `MAINNET_RPC_URL`, KV) so the
   live deploy runs the gate/sync instead of the mock transport.
-- ◐ **Self-host bundle + installer** — `selfhost/` has `install.sh` + compose; still needs
-  `gate.Dockerfile` + an HTTP entrypoint wrapping `evalGate`.
+- ◐ **Self-host bundle + installer** — `selfhost/` has `install.sh` + compose; includes
+  `gate.Dockerfile` and an HTTP entrypoint. Deployment and real-wallet acceptance remain.
 - ☐ **Mirror the action policy server-side** (the gate currently trusts client-side enforcement).
 - ☐ **SSE realtime fallback** — for non-XMTP surfaces (rooms registry, presence); server-side.
 

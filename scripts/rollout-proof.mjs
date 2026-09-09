@@ -64,6 +64,8 @@ async function main() {
 
   try {
     Object.assign(process.env, {
+      GATE_PUBLIC_URL: "https://gate.example.org/api/room-join",
+      CHIRPY_GATE_ROOMS_FILE: fileURLToPath(new URL("../selfhost/rooms.example.json", import.meta.url)),
       CHIRPY_BASE_URL: "https://chirpy.example.org",
       CHIRPY_EXTERNAL_GATE_URL: "https://gate.example.org/api/room-join",
       CHIRPY_RELEASE_CHANNEL: "staging",

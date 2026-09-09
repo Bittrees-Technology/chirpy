@@ -110,3 +110,7 @@ would mean the key is missing). Run the gatekeeper in an **always-on container/V
 `https://<gate-host>/api/room-join`. The browser/ENS, the gate evaluator (`@app/core`), and
 encrypted sync (`api/usersync.js`, which has no native deps) are unaffected and run fine on
 Vercel. Confirm the exact failure in Vercel → Functions → `room-join` logs.
+
+## September 2026 priority fixes
+
+Follow [PRIORITY-FIXES.md](PRIORITY-FIXES.md) before activating room joins. The gate requires a trusted room registry and its canonical public URL. v1 reusable room signatures are rejected; sync clients must refresh to send expected revisions.

@@ -20,7 +20,7 @@ function normalizeGateState(env) {
   const serverRpcConfigured = nonEmpty(env.MAINNET_RPC_URL);
   const externalUrl = firstNonEmpty(env.CHIRPY_EXTERNAL_GATE_URL);
   return {
-    configured: privateKeyConfigured && serverRpcConfigured,
+    configured: privateKeyConfigured && serverRpcConfigured && nonEmpty(env.CHIRPY_GATE_ROOMS_FILE) && nonEmpty(env.GATE_PUBLIC_URL),
     externalConfigured: nonEmpty(externalUrl),
     externalUrl,
     mode: nonEmpty(externalUrl) ? "external" : "same-origin",
@@ -62,6 +62,13 @@ export function buildGateHealthReport(env = process.env) {
     const summary = "MAINNET_RPC_URL is not configured for the gate service.";
     checks.push(healthCheck("server-rpc", "degraded", summary));
     blockingIssues.push(summary);
+  }
+
+  for (const [name, value] of [["room-registry", env.CHIRPY_GATE_ROOMS_FILE], ["public-gate-url", env.GATE_PUBLIC_URL]]) {
+    const ready = nonEmpty(value);
+    const summary = ready ? `${name} is configured.` : `${name} is not configured.`;
+    checks.push(healthCheck(name, ready ? "ok" : "degraded", summary));
+    if (!ready) blockingIssues.push(summary);
   }
 
   if (allowOrigin === "*") {
@@ -109,7 +116,7 @@ export function buildHealthReport(env = process.env) {
   const blockingIssues = [];
   const checks = [];
   const externalGateHost = pickDeploymentHost(profile.gate.externalUrl);
-  const gateRouteReady = profile.gate.externalConfigured || profile.gate.configured;
+  const gateRouteReady = profile.gate.externalConfigured || (profile.gate.configured && !env.VERCEL_ENV);
 
   checks.push(
     healthCheck(

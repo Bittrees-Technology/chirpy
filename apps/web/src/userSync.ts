@@ -35,40 +35,40 @@ export type PushBlobResult =
   | { ok: true }
   | { ok: false; stale?: boolean; updatedAt?: number };
 
+const revisions = new Map<string, number>();
+
 export async function pullRemoteBlob(address: string): Promise<EncryptedSyncBlobSnapshot | null> {
-  try {
-    const r = await fetch(`${URL_}?address=${encodeURIComponent(address)}`);
-    if (!r.ok) return null;
-    const j = await r.json();
-    return j?.blob ? JSON.parse(j.blob) as EncryptedSyncBlobSnapshot : null;
-  } catch {
-    return null;
-  }
+  const key = address.toLowerCase();
+  const r = await fetch(`${URL_}?address=${encodeURIComponent(address)}`, { cache: "no-store" });
+  if (!r.ok) throw new Error("Unable to read encrypted sync. Try again when storage is available.");
+  const j = await r.json();
+  // Parse before recording a revision, so corrupt data cannot be overwritten as an empty record.
+  const blob = j?.blob ? JSON.parse(j.blob) as EncryptedSyncBlobSnapshot : null;
+  const revision = Number(j?.revision) || 0;
+  if (!Number.isSafeInteger(revision) || revision < 0) throw new Error("Invalid sync revision.");
+  revisions.set(key, revision);
+  return blob;
 }
 
-export async function pushBlob(
-  address: string,
-  authSig: string,
-  enc: EncryptedSyncBlobSnapshot,
-): Promise<PushBlobResult> {
+export async function pushBlob(address: string, authSig: string, enc: EncryptedSyncBlobSnapshot): Promise<PushBlobResult> {
+  const key = address.toLowerCase();
+  const expectedRevision = revisions.get(key);
+  if (expectedRevision === undefined) return { ok: false, stale: true };
   try {
     const r = await fetch(URL_, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        address,
-        signature: authSig,
-        blob: JSON.stringify(enc),
-        updatedAt: enc.updatedAt,
-      }),
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ address, signature: authSig, blob: JSON.stringify(enc), expectedRevision }),
     });
-    if (r.ok) return { ok: true };
-    if (r.status !== 409) return { ok: false };
-    const j = await r.json().catch(() => null);
-    return { ok: false, stale: true, updatedAt: Number(j?.updatedAt) || undefined };
-  } catch {
-    return { ok: false };
-  }
+    if (r.ok) {
+      const result = await r.json();
+      if (!Number.isSafeInteger(result.revision) || result.revision <= expectedRevision) return { ok: false };
+      // Never move a newer concurrently observed revision backwards.
+      revisions.set(key, Math.max(revisions.get(key) ?? 0, result.revision));
+      return { ok: true };
+    }
+    // A conflict never advances our revision: the remote data must be pulled and merged first.
+    return { ok: false, stale: r.status === 409 };
+  } catch { return { ok: false }; }
 }
 
 export function mergePayload(

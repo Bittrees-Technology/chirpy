@@ -23,18 +23,29 @@ async function kv(cmd) {
     body: JSON.stringify(cmd),
   });
   if (!r.ok) throw new Error(`KV ${r.status}`);
-  return r.json();
+  const result = await r.json();
+  if (result.error) throw new Error("Storage command failed");
+  return result;
 }
 
 async function readRec(addrLower) {
-  if (!KV_URL || !KV_TOKEN) return null;
-  try {
-    const j = await kv(["GET", PREFIX + addrLower]);
-    return j?.result ? JSON.parse(j.result) : null;
-  } catch {
-    return null;
-  }
+  if (!KV_URL || !KV_TOKEN) throw new Error("Sync storage is unavailable");
+  const j = await kv(["GET", PREFIX + addrLower]);
+  return j?.result ? JSON.parse(j.result) : null;
 }
+
+// Redis executes the revision check and replacement atomically. Legacy records
+// have revision 0; legacy clients without an expected revision must refresh.
+export const SYNC_CAS = `
+local raw = redis.call('GET', KEYS[1])
+local current = raw and cjson.decode(raw) or {}
+local revision = tonumber(current.revision) or 0
+if revision ~= tonumber(ARGV[1]) then return {0, revision} end
+local next = cjson.decode(ARGV[2])
+next.revision = revision + 1
+redis.call('SET', KEYS[1], cjson.encode(next))
+return {1, next.revision}
+`;
 
 export default async function handler(req, res) {
   const route = "/api/usersync";
@@ -63,7 +74,7 @@ export default async function handler(req, res) {
       const address = String(req.query.address || "");
       if (!isAddr(address)) return respond(400, { error: "bad address" });
       const rec = await readRec(address.toLowerCase());
-      return respond(200, rec || { blob: null, updatedAt: 0 });
+      return respond(200, rec ? { ...rec, revision: Number(rec.revision) || 0 } : { blob: null, updatedAt: 0, revision: 0 });
     }
 
     if (req.method === "POST") {
@@ -71,7 +82,7 @@ export default async function handler(req, res) {
         return respond(503, { error: "sync storage not configured" });
       }
 
-      const { address, signature, blob, updatedAt } = req.body || {};
+      const { address, signature, blob, expectedRevision } = req.body || {};
       if (!isAddr(address) || typeof signature !== "string" || typeof blob !== "string") {
         return respond(400, { error: "bad request" });
       }
@@ -87,19 +98,20 @@ export default async function handler(req, res) {
         return respond(403, { error: "signature does not match address" });
       }
 
-      const incoming = Number(updatedAt) || Date.now();
-      const cur = await readRec(address.toLowerCase());
-      if (cur && Number(cur.updatedAt) > incoming) {
-        return respond(409, { stale: true, updatedAt: cur.updatedAt });
+      if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+        return respond(409, { stale: true, error: "Refresh sync state before saving." });
       }
-
-      await kv(["SET", PREFIX + address.toLowerCase(), JSON.stringify({ blob, updatedAt: incoming })]);
-      return respond(200, { ok: true });
+      const result = await kv(["EVAL", SYNC_CAS, "1", PREFIX + address.toLowerCase(),
+        String(expectedRevision), JSON.stringify({ blob, updatedAt: Date.now() })]);
+      const [accepted, revision] = result.result || [];
+      if (accepted === 0) return respond(409, { stale: true, revision });
+      if (accepted !== 1) throw new Error("Invalid storage result");
+      return respond(200, { ok: true, revision });
     }
 
     res.setHeader("Allow", "GET, POST");
     return respond(405, { error: "method not allowed" });
   } catch (e) {
-    return respond(500, { error: String(e?.message || e) });
+    return respond(503, { error: "Sync storage is temporarily unavailable. Your local data is unchanged." });
   }
 }
