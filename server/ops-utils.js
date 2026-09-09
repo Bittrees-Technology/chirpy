@@ -44,6 +44,15 @@ function healthCheck(name, status, summary, extra = {}) {
   return { name, status, summary, ...extra };
 }
 
+function validGatePublicUrl(value) {
+  try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && url.pathname === "/api/room-join" && !url.search && !url.hash; }
+  catch { return false; }
+}
+function validWebOrigin(value) {
+  try { const url = new URL(value); return url.protocol === "https:" && url.origin === value; }
+  catch { return false; }
+}
+
 export function buildGateHealthReport(env = process.env) {
   const privateKeyConfigured = validGatekeeperKey(env.XMTP_GATEKEEPER_PRIVATE_KEY);
   const serverRpcConfigured = nonEmpty(env.MAINNET_RPC_URL);
@@ -81,14 +90,14 @@ export function buildGateHealthReport(env = process.env) {
   }
 
   for (const [name, value] of [["room-registry", env.CHIRPY_GATE_ROOMS_FILE], ["public-gate-url", env.GATE_PUBLIC_URL]]) {
-    const ready = nonEmpty(value);
+    const ready = nonEmpty(value) && (name !== "public-gate-url" || validGatePublicUrl(value));
     const summary = ready ? `${name} is configured.` : `${name} is not configured.`;
     checks.push(healthCheck(name, ready ? "ok" : "degraded", summary));
     if (!ready) blockingIssues.push(summary);
   }
 
-  if (allowOrigin === "*") {
-    const summary = "GATE_ALLOW_ORIGIN is wildcard; lock it to the exact Chirpy origin in production.";
+  if (!validWebOrigin(allowOrigin)) {
+    const summary = "GATE_ALLOW_ORIGIN must be an exact HTTPS Chirpy origin.";
     checks.push(healthCheck("cors-origin", "info", summary));
     blockingIssues.push(summary);
   } else {
@@ -99,6 +108,7 @@ export function buildGateHealthReport(env = process.env) {
     ok: blockingIssues.length === 0,
     status: blockingIssues.length > 0 ? "degraded" : "ok",
     gatekeeper: privateKeyConfigured,
+    network: env.GATE_XMTP_ENV || "production",
     serverRpcConfigured,
     allowOriginMode: allowOrigin === "*" ? "wildcard" : "exact",
     checks,

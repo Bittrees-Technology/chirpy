@@ -133,3 +133,9 @@ The isolated dev drill verifies actual SDK identity binding and membership chang
 ## Native gate clients
 
 To support native Chirpy clients, explicitly set `GATE_NATIVE_ORIGINS=tauri://localhost,http://tauri.localhost,https://tauri.localhost`. Keep `GATE_ALLOW_ORIGIN` set to the exact web app origin. The additional list accepts only these platform origins and does not alter signature, inbox, gate or room-policy checks. Native clients are denied by default until configured. Do not use a wildcard or `null` origin.
+
+## Operational health
+
+`GET /health` returns 200 only after valid configuration, a nonempty reviewed registry, a fresh mainnet RPC response and live XMTP/super-admin checks pass. Its `dependencies` object reports RPC/XMTP status, check time, in-flight state and registry fingerprint. Results expire after two minutes, and registry changes invalidate previous evidence. A dev gate reports `network: dev` and cannot satisfy production release validation.
+
+Probes start automatically, run again 60 seconds after completion, and share the native work queue while yielding between rooms. Monitor repeated 503 responses and `gate.dependencies` log transitions with your hosting provider's alert delivery. Measure probe duration and admission latency for your real room count before release. A missing host, missing configuration or failed dependency must not be bypassed by disabling the health check.

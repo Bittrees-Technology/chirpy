@@ -27,7 +27,12 @@ export async function verifyReleaseServices(env, fetcher = fetch) {
   const [webResponse, gateResponse] = await Promise.all([webUrl, gateUrl].map(url => fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(10_000) })));
   if (!webResponse.ok || !gateResponse.ok) throw new Error('Production services are not ready for a native release.');
   const [web, gate] = await Promise.all([webResponse.json(), gateResponse.json()]);
-  if (web.runtime?.transport !== 'xmtp' || web.readiness?.releaseReady !== true || gate.ok !== true || gate.dependencies?.ready !== true) throw new Error('Production service readiness is incomplete; configuration-only gate health is insufficient.');
+  if (web.runtime?.transport !== 'xmtp' || web.readiness?.releaseReady !== true || gate.ok !== true || gate.network !== 'production' || gate.dependencies?.ready !== true) throw new Error('Production service readiness is incomplete; configuration-only gate health is insufficient.');
+  const syncUrl = new URL('/api/usersync', webUrl);
+  const response = await fetcher(new URL(syncUrl.href + '?address=0x0000000000000000000000000000000000000001'), { redirect: 'error', signal: AbortSignal.timeout(10_000) });
+  if (!response.ok) throw new Error('Live sync storage is unavailable.');
+  const sync = await response.json();
+  if (sync.authVersion !== 2 || sync.service !== syncUrl.href || !Number.isSafeInteger(sync.epoch) || sync.epoch < 0 || !Number.isSafeInteger(sync.revision) || sync.revision < 0) throw new Error('Live sync authorization is unavailable.');
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {

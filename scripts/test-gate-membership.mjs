@@ -8,10 +8,15 @@ const docker = args => execFileSync('docker', args, { encoding: 'utf8', stdio: [
 const script = `import assert from 'node:assert/strict'; import { randomBytes } from 'node:crypto';
 import { createGateClientGetter } from './server/gate-client.js';
 import { createMembershipRevalidator } from './server/gate-membership.js';
+import { createGateProbe } from './server/gate-health.js';
 const make = name => createGateClientGetter({ env: { XMTP_GATEKEEPER_PRIVATE_KEY: '0x' + randomBytes(32).toString('hex'), GATE_DB_ENCRYPTION_KEY: randomBytes(32).toString('hex'), GATE_DATA_DIR: '/data/' + name, GATE_XMTP_ENV: 'dev' } })();
 const bot = await make('bot'); const alice = await make('alice');
 const group = await bot.conversations.createGroup([alice.inboxId]);
 const rooms = [{ id: group.id, namespace: 'synthetic', title: 'Recovery drill', chainId: 1, gate: { combine: 'all', rules: [{ kind: 'token', standard: 'erc721', token: '0x' + '1'.repeat(40), min: '1' }] } }];
+const probe = createGateProbe({ getClient: async () => bot, getRooms: async () => rooms,
+  env: { XMTP_GATEKEEPER_PRIVATE_KEY: '0x' + '1'.repeat(64), GATE_DB_ENCRYPTION_KEY: '2'.repeat(64), GATE_DATA_DIR: '/data/bot', GATE_XMTP_ENV: 'dev', MAINNET_RPC_URL: 'https://rpc.example', GATE_PUBLIC_URL: 'https://gate.example/api/room-join', GATE_ALLOW_ORIGIN: 'https://chirpy.example', CHIRPY_GATE_ROOMS_FILE: '/rooms.json' },
+  fetcher: async (_url, options) => ({ ok: true, json: async () => ({ result: JSON.parse(options.body).method === 'eth_chainId' ? '0x1' : { timestamp: '0x' + Math.floor(Date.now()/1000).toString(16) } }) }) });
+const readiness = await probe(); assert.equal(readiness.rpc, true); assert.equal(readiness.xmtp, true); assert.match(readiness.registryHash, /^[a-f0-9]{64}$/);
 let clock = 1000; let balance = 1n;
 const options = { getClient: async () => bot, getRooms: async () => rooms, reader: () => ({ erc721Balance: async () => balance }), now: () => clock };
 const audit = createMembershipRevalidator({ ...options, mode: 'audit' });
@@ -25,7 +30,7 @@ assert.equal((await enforce.checkMember(group.id, alice.inboxId)).status, 'obser
 clock += 300001; assert.equal((await enforce.checkMember(group.id, alice.inboxId)).status, 'removed');
 await group.sync(); assert.ok(!(await group.members()).some(member => member.inboxId === alice.inboxId));
 assert.ok((await group.members()).some(member => member.inboxId === bot.inboxId));
-console.log('XMTP dev membership drill passed: bound eligible identity, audit preserves membership, delayed enforcement removes member, bot remains protected. Eligibility uses deterministic test balances.'); process.exit(0);`;
+console.log('XMTP dev membership drill passed: bound eligible identity, audit preserves membership, delayed enforcement removes member, bot remains protected. Runtime room authority also verified. RPC and balances use deterministic test responses.'); process.exit(0);`;
 try {
   docker(['volume', 'create', volume]);
   const output = docker(['run', '--rm', '--name', name, '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=128', '--tmpfs', '/tmp:rw,nosuid,noexec,size=64m', '-v', `${volume}:/data`, image, '--input-type=module', '-e', script]);

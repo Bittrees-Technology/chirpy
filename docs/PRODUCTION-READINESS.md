@@ -152,3 +152,11 @@ Native release preparation now requires a matching `app-v` tag and consistent UI
 Configure repository variables `VITE_API_ORIGIN`, `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`, and `CHIRPY_GATE_HEALTH_URL`, plus the signing secrets described in the release workflow. No repository signing secrets or releases were present during this review. Backend configuration and runtime readiness are still incomplete, so a production native release must currently remain blocked.
 
 The nightly XMTP workflow no longer masks failures with continue-on-error. It runs the CSP-constrained browser flow plus real dev-network encrypted storage restoration and membership lifecycle drills, retains browser evidence and has a bounded timeout. These synthetic checks complement, rather than replace, operator backup restoration and production multi-wallet/device acceptance.
+
+## Live gate readiness
+
+The gate now warms and monitors its durable XMTP client, verifies super-admin authority over every registered room, and checks Ethereum chain ID plus recent block timestamps. Probes run serially without overlap, yield the shared queue between rooms, and expire healthy results after two minutes. A changed registry invalidates the previous result immediately. Startup, missing/empty registry, dependency failure, stale results and lost room authority return HTTP 503 with secret-free dependency status.
+
+The local rollout proof now explicitly expects the synthetic gate to remain unready; fake configuration is no longer treated as live acceptance. Native release validation also rejects dev-network gates and confirms a live sync storage/authorization read. Container startup grace is extended to allow first initialization. Large registries must be load-tested against the freshness window; a slow probe cannot silently leave a healthy result indefinitely.
+
+Validation includes wrong/stale chain data, failed or hung probes, recovery, registry changes, lost permissions, HTTP readiness transitions and the real XMTP dev room-authority drill with deterministic RPC responses. Production RPC, routing and operator alert delivery still require the configured gate host.

@@ -12,15 +12,23 @@ describe('native release gates', () => {
     expect(() => validateNativeRelease(env, ['1.2.3', '1.2.4', '1.2.3'])).toThrow('versions');
   });
   it.each([
-    [{ runtime: { transport: 'mock' }, readiness: { releaseReady: true } }, { ok: true, dependencies: { ready: true } }],
-    [{ runtime: { transport: 'xmtp' }, readiness: { releaseReady: false } }, { ok: true, dependencies: { ready: true } }],
+    [{ runtime: { transport: 'mock' }, readiness: { releaseReady: true } }, { ok: true, network: 'production', dependencies: { ready: true } }],
+    [{ runtime: { transport: 'xmtp' }, readiness: { releaseReady: false } }, { ok: true, network: 'production', dependencies: { ready: true } }],
     [{ runtime: { transport: 'xmtp' }, readiness: { releaseReady: true } }, { ok: true }],
   ])('refuses mock, degraded or configuration-only service readiness', async (web, gate) => {
     const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => web }).mockResolvedValueOnce({ ok: true, json: async () => gate });
     await expect(verifyReleaseServices(env, fetcher)).rejects.toThrow('readiness');
   });
+  it('rejects a dev-network gate and unavailable live sync storage', async () => {
+    const web = { runtime: { transport: 'xmtp' }, readiness: { releaseReady: true } };
+    const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => web }).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, network: 'dev', dependencies: { ready: true } }) });
+    await expect(verifyReleaseServices(env, fetcher)).rejects.toThrow('readiness');
+    const unavailable = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => web }).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, network: 'production', dependencies: { ready: true } }) }).mockResolvedValueOnce({ ok: false });
+    await expect(verifyReleaseServices(env, unavailable)).rejects.toThrow('sync storage');
+  });
   it('requires both live services and refuses redirects', async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ runtime: { transport: 'xmtp' }, readiness: { releaseReady: true } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, dependencies: { ready: true } }) });
+    const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ runtime: { transport: 'xmtp' }, readiness: { releaseReady: true } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, network: 'production', dependencies: { ready: true } }) });
+    fetcher.mockResolvedValueOnce({ ok: true, json: async () => ({ authVersion: 2, service: 'https://chirpy.example/api/usersync', epoch: 0, revision: 0 }) });
     await expect(verifyReleaseServices(env, fetcher)).resolves.toBeUndefined();
     expect(fetcher).toHaveBeenCalledWith(new URL('https://gate.example/health'), expect.objectContaining({ redirect: 'error' }));
   });
