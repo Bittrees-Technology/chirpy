@@ -7,7 +7,8 @@ afterEach(() => vi.unstubAllGlobals());
 describe("receipt privacy", () => {
   it("sends no receipt unless explicitly enabled and never sends room receipts", async () => {
     const t = transport(); const sendReadReceipt = vi.fn();
-    t.conversations.set("dm", { sendReadReceipt });
+    t.sdk = { ConsentState: { Allowed: 1 } };
+    t.conversations.set("dm", { sendReadReceipt, consentState: async () => 1 });
     await t.markRead("dm"); await t.markRead("dm", { sendReceipt: false });
     expect(sendReadReceipt).not.toHaveBeenCalled();
     await t.markRead("dm", { sendReceipt: true }); expect(sendReadReceipt).toHaveBeenCalledTimes(1);

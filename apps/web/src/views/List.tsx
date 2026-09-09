@@ -20,6 +20,7 @@ export function ConversationColumn(
   const { conversations, activeId, select, startDm } = useChat();
   const { identity } = useIdentity();
   const { t } = useI18n();
+  const [inboxView, setInboxView] = useState<"inbox" | "requests" | "blocked">("inbox");
   const [query, setQuery] = useState("");
   const selfAddress = identity.address.toLowerCase();
   const isRooms = mode === "rooms";
@@ -32,7 +33,8 @@ export function ConversationColumn(
   };
   const savedConversation = conversations.find(isSelfConversation);
   const items = conversations.filter((conversation) =>
-    conversation.kind === (isRooms ? "room" : "dm") && !isSelfConversation(conversation));
+    conversation.kind === (isRooms ? "room" : "dm") && !isSelfConversation(conversation) &&
+    (isRooms || (inboxView === "blocked" ? conversation.blocked : inboxView === "requests" ? conversation.pending && !conversation.blocked : !conversation.blocked && !conversation.pending)));
   const dmProfiles = useEnsProfiles(items.filter((c) => c.kind === "dm").map(peerOf));
   const normalizedQuery = query.trim().toLowerCase();
   const filteredItems = useMemo(() => {
@@ -96,6 +98,9 @@ export function ConversationColumn(
             </div>
           </button>
         )}
+        {!isRooms && <div className="list-actions" role="group" aria-label={t("list.inboxView", "Conversation filter")}>
+          {(["inbox", "requests", "blocked"] as const).map((view) => <button key={view} className="btn btn-ghost btn-sm" aria-pressed={inboxView === view} onClick={() => setInboxView(view)}>{t(`list.${view}`, view === "inbox" ? "Inbox" : view === "requests" ? "Requests" : "Blocked")}</button>)}
+        </div>}
         <input
           className="input list-search"
           value={query}

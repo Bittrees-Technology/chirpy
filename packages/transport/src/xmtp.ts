@@ -601,13 +601,9 @@ export class XmtpTransport implements Transport {
       lastMessage = undefined;
     }
 
-    let pending = false;
-    try {
-      const sdk = await this.loadSdk();
-      pending = await conversation.consentState() === sdk.ConsentState.Unknown;
-    } catch {
-      pending = false;
-    }
+    const consent = await conversation.consentState();
+    const pending = consent !== sdk.ConsentState.Allowed && consent !== sdk.ConsentState.Denied;
+    const blocked = consent === sdk.ConsentState.Denied;
 
     const title = peer ?? "Direct message";
     return {
@@ -615,9 +611,10 @@ export class XmtpTransport implements Transport {
       kind: "dm",
       title,
       peers: peer ? [this.myAddress, peer] : [this.myAddress],
-      lastMessage,
+      lastMessage: blocked ? undefined : lastMessage,
       unread: 0,
       pending,
+      blocked,
     };
   }
 
@@ -657,8 +654,9 @@ export class XmtpTransport implements Transport {
     const conversation = this.conversations.get(conversationId);
     if (!conversation || this.status !== "ready") return [];
     try {
-      await conversation.sync();
       const sdk = await this.loadSdk();
+      if (!this.isRoomConversation(sdk, conversation) && await conversation.consentState() === sdk.ConsentState.Denied) return [];
+      await conversation.sync();
       const raw = await conversation.messages({ limit: 100000n });
       const messages = raw
         .map((message) => toChatMessage(
@@ -679,6 +677,7 @@ export class XmtpTransport implements Transport {
   async send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage> {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) throw new Error("Conversation not found.");
+    await this.assertConversationAccepted(conversation);
     const text = body.trim();
     if (!text) throw new Error("Message cannot be empty.");
     const sdk = await this.loadSdk();
@@ -718,6 +717,7 @@ export class XmtpTransport implements Transport {
   async react(conversationId: string, messageId: string, emoji: string): Promise<void> {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) return;
+    await this.assertConversationAccepted(conversation);
     const referenceInboxId = this.senderInboxByMessage.get(messageId);
     if (!referenceInboxId) throw new Error("Reaction target is not loaded yet.");
 
@@ -738,10 +738,29 @@ export class XmtpTransport implements Transport {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) return;
     if (this.roomMeta.has(conversationId)) return;
+    const sdk = await this.loadSdk();
+    if (await conversation.consentState() !== sdk.ConsentState.Allowed) return;
     const now = Date.now();
     if (now - (this.lastReceiptAt.get(conversationId) ?? 0) < 3000) return;
     this.lastReceiptAt.set(conversationId, now);
     try { await conversation.sendReadReceipt(); } catch { /* best effort */ }
+  }
+
+  private async assertConversationAccepted(conversation: XmtpConversation): Promise<void> {
+    const sdk = await this.loadSdk();
+    if (this.isRoomConversation(sdk, conversation)) return;
+    if (await conversation.consentState() !== sdk.ConsentState.Allowed) {
+      throw new Error("Accept or unblock this conversation before sending messages or reactions.");
+    }
+  }
+
+  async setConversationConsent(conversationId: string, state: "allowed" | "denied"): Promise<void> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) throw new Error("Conversation not found.");
+    const sdk = await this.loadSdk();
+    if (this.isRoomConversation(sdk, conversation)) throw new Error("Consent controls apply to direct messages.");
+    await conversation.updateConsentState(state === "allowed" ? sdk.ConsentState.Allowed : sdk.ConsentState.Denied);
+    this.changeCallback?.();
   }
 
   async startDm(address: string, handle?: string): Promise<Conversation> {
@@ -752,6 +771,8 @@ export class XmtpTransport implements Transport {
     const ok = reachable instanceof Map ? reachable.get(target) : Array.isArray(reachable) ? reachable[0] : reachable;
     if (!ok) throw new Error("That address hasn't activated XMTP messaging yet.");
     const conversation = await client.conversations.createDmWithIdentifier(identifier);
+    const sdk = await this.loadSdk();
+    if (await conversation.consentState() === sdk.ConsentState.Unknown) await conversation.updateConsentState(sdk.ConsentState.Allowed);
     this.peerByConversation.set(conversation.id, target);
     savePeerCache(this.peerByConversation);
     const mapped = await this.mapConversation(conversation);

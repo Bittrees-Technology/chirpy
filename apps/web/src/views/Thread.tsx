@@ -8,7 +8,7 @@ import { useI18n } from "../i18n";
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
 export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) {
-  const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin } = useChat();
+  const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent } = useChat();
   const { identity } = useIdentity();
   const { t } = useI18n();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -22,6 +22,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const [sendError, setSendError] = useState<{ id: string; message: string } | null>(null);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const [consentPending, setConsentPending] = useState(false);
   const [joinPending, setJoinPending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -82,6 +83,13 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const isRoom = activeConversation.kind === "room";
   const policy: Policy | null = isRoom ? (activeConversation.policy ?? null) : null;
   const readOnly = policy?.mode === "read-only";
+  const needsConsent = !isRoom && (activeConversation.pending || activeConversation.blocked);
+  const changeConsent = async (state: "allowed" | "denied") => {
+    setConsentPending(true);
+    try { await setConversationConsent(state); setJoinStatus(null); }
+    catch (error) { setJoinStatus({ ok: false, message: error instanceof Error ? error.message : "Consent update failed. Try again." }); }
+    finally { setConsentPending(false); }
+  };
   const isGatedRoom = isRoom && Boolean(activeConversation.gate?.rules.length);
   const isMember = activeConversation.peers.some((peer) => peer.toLowerCase() === identity.address.toLowerCase());
   const toggleFreeze = () => {
@@ -130,6 +138,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         ) : null}
       </header>
 
+      {!isRoom && peerAddress?.toLowerCase() !== selfAddress && <div className="join-banner">
+        {activeConversation.blocked ? t("thread.blockedNote", "This conversation is blocked. Messages and receipts are hidden.") : activeConversation.pending ? t("thread.requestNote", "Message request. Accept to reply; no read receipts are sent before acceptance.") : null}
+        {needsConsent && <Button disabled={consentPending} onClick={() => void changeConsent("allowed")}>{activeConversation.blocked ? t("thread.unblock", "Unblock conversation") : t("thread.accept", "Accept request")}</Button>}
+        {!activeConversation.blocked && <Button variant="ghost" disabled={consentPending} onClick={() => void changeConsent("denied")}>{activeConversation.pending ? t("thread.reject", "Reject and block") : t("thread.block", "Block conversation")}</Button>}
+      </div>}
       {joinStatus && (
         <div role="status" className={`join-banner ${joinStatus.ok ? "ok" : "error"}`}>
           {joinStatus.message}
@@ -144,7 +157,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           if (nearBottomRef.current) setHasNewMessages(false);
         }}>
         {messages.length === 0 && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
-        {messages.map((m) => {
+        {(activeConversation.blocked ? [] : messages).map((m) => {
           const mine = m.sender.toLowerCase() === selfAddress;
           const senderRecord = profiles.get(m.sender.toLowerCase());
           const parent = m.replyTo ? messages.find((x) => x.id === m.replyTo) : null;
@@ -161,11 +174,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                 </div>
                 <div className="msg-tools">
                   {EMOJIS.map((e) => (
-                    <button key={e} className="react-btn" aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
+                    <button key={e} className="react-btn" disabled={Boolean(needsConsent)} aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
                       void react(m.id, e).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
                     }}>{e}</button>
                   ))}
-                  <button className="react-btn" aria-label={t("thread.reply", "Reply")} onClick={() => setReplyTo(m.id)}>↩</button>
+                  <button className="react-btn" disabled={Boolean(needsConsent)} aria-label={t("thread.reply", "Reply")} onClick={() => setReplyTo(m.id)}>↩</button>
                 </div>
                 {m.reactions && Object.keys(m.reactions).length > 0 && (
                   <div className="msg-reactions">
@@ -182,7 +195,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       </div>
 
       {hasNewMessages && <button className="btn btn-ghost" onClick={scrollToLatest}>{t("thread.newMessages", "New messages — jump to latest")}</button>}
-      {replyTarget && (
+      {replyTarget && !needsConsent && (
         <div className="reply-banner">
           {t("thread.replyingTo", "Replying to:")} <em>{replyTarget.body.slice(0, 80)}</em>
           <button className="icon-btn" aria-label={t("thread.cancelReply", "Cancel reply")} onClick={() => setReplyTo(null)}>✕</button>
@@ -191,7 +204,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
       {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{sendError.message} {t("thread.draftKept", "Your draft has been kept.")}</div>}
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
-      {isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : readOnly ? (
+      {needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : readOnly ? (
         <div className="composer readonly-note">{t("thread.readOnly", "🔒 This room is read-only. Posting is frozen.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>

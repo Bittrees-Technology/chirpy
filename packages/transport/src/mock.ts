@@ -146,18 +146,20 @@ export class MockTransport implements Transport {
   }
 
   async listConversations(): Promise<Conversation[]> {
-    return [...this.snap.conversations].sort(
+    return this.snap.conversations.map((c) => c.blocked ? { ...c, lastMessage: undefined, unread: 0 } : { ...c }).sort(
       (a, b) => (b.lastMessage?.sentAt ?? 0) - (a.lastMessage?.sentAt ?? 0),
     );
   }
 
   async listMessages(conversationId: string): Promise<ChatMessage[]> {
+    if (this.snap.conversations.find((c) => c.id === conversationId)?.blocked) return [];
     return [...(this.snap.messages[conversationId] || [])].sort((a, b) => a.sentAt - b.sentAt);
   }
 
   async send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage> {
     // Enforce the room's action policy (read-only freeze). DMs are unaffected.
     const target = this.snap.conversations.find((c) => c.id === conversationId);
+    if (target?.blocked || target?.pending) throw new Error("Accept or unblock this conversation before sending.");
     if (target?.kind === "room" && target.policy) {
       const decision = evaluatePolicy(target.policy, { type: "send" });
       if (!decision.allowed) throw new Error(decision.reason || "Blocked by room policy.");
@@ -180,6 +182,7 @@ export class MockTransport implements Transport {
   }
 
   private autoReply(conversationId: string, peer: string) {
+    if (this.snap.conversations.find((c) => c.id === conversationId)?.blocked) return;
     const replies = ["got it 👍", "interesting — say more?", "agreed.", "ha, nice.", "let's do it."];
     const msg: ChatMessage = {
       id: uid("m"), conversationId, sender: peer,
@@ -192,6 +195,8 @@ export class MockTransport implements Transport {
   }
 
   async react(conversationId: string, messageId: string, emoji: string): Promise<void> {
+    const target = this.snap.conversations.find((c) => c.id === conversationId);
+    if (target?.blocked || target?.pending) throw new Error("Accept or unblock this conversation before reacting.");
     const msg = (this.snap.messages[conversationId] || []).find((m) => m.id === messageId);
     if (!msg) return;
     msg.reactions ||= {};
@@ -205,6 +210,15 @@ export class MockTransport implements Transport {
   async markRead(conversationId: string): Promise<void> {
     const conv = this.snap.conversations.find((c) => c.id === conversationId);
     if (conv && conv.unread !== 0) { conv.unread = 0; this.persist(); this.emit(); }
+  }
+
+  async setConversationConsent(conversationId: string, state: "allowed" | "denied"): Promise<void> {
+    const conversation = this.snap.conversations.find((c) => c.id === conversationId);
+    if (!conversation || conversation.kind !== "dm") throw new Error("Direct message not found.");
+    conversation.blocked = state === "denied";
+    conversation.pending = false;
+    if (conversation.blocked) conversation.unread = 0;
+    this.persist(); this.emit();
   }
 
   async startDm(address: string, handle?: string): Promise<Conversation> {
