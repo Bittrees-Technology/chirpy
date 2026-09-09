@@ -144,3 +144,11 @@ Desktop updater APIs are enabled only for a desktop target identified by Tauri's
 External gates can opt into the three standard Tauri origins through `GATE_NATIVE_ORIGINS`, alongside the existing web origin. Arbitrary/wildcard native origins are rejected, and native requests still require the same signed admission challenge. An operator must set this on the actual gate host.
 
 Validation: 175 unit/HTTP tests pass, the browser attack probe blocks normal-page eval and inline injection while allowing chat and WASM, and both real XMTP dev tests pass with the native policy applied to served assets. The nightly XMTP flow now uses that policy. Packaged-device wallet return and store/signing acceptance remain outstanding.
+
+## Release and nightly acceptance gates
+
+Native release preparation now requires a matching `app-v` tag and consistent UI/Cargo/Tauri versions, production XMTP, a hosted HTTPS API, browser RPC and WalletConnect configuration, an updater signing key, and macOS signing/notarization inputs on the macOS runner. It checks web release readiness and requires dependency-aware gate health before building. Completed artifacts remain GitHub drafts for signature, installation, updater and platform acceptance; Windows code signing and final promotion remain operator work.
+
+Configure repository variables `VITE_API_ORIGIN`, `VITE_MAINNET_RPC_URL`, `VITE_WALLETCONNECT_PROJECT_ID`, and `CHIRPY_GATE_HEALTH_URL`, plus the signing secrets described in the release workflow. No repository signing secrets or releases were present during this review. Backend configuration and runtime readiness are still incomplete, so a production native release must currently remain blocked.
+
+The nightly XMTP workflow no longer masks failures with continue-on-error. It runs the CSP-constrained browser flow plus real dev-network encrypted storage restoration and membership lifecycle drills, retains browser evidence and has a bounded timeout. These synthetic checks complement, rather than replace, operator backup restoration and production multi-wallet/device acceptance.

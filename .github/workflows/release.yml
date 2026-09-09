@@ -1,6 +1,6 @@
 name: release
 
-# Tag a release to build, sign, and publish the desktop apps + the updater manifest.
+# Tag a release to validate, build and sign draft desktop artifacts + updater manifest.
 #   git tag app-v0.1.1 && git push origin app-v0.1.1
 # The app's updater polls the published latest.json and self-updates.
 on:
@@ -11,6 +11,14 @@ on:
 
 jobs:
   release:
+    timeout-minutes: 60
+    env:
+      VITE_TRANSPORT: xmtp
+      VITE_XMTP_ENV: production
+      VITE_API_ORIGIN: ${{ vars.VITE_API_ORIGIN || 'https://chirpy.bittrees.org' }}
+      VITE_MAINNET_RPC_URL: ${{ vars.VITE_MAINNET_RPC_URL }}
+      VITE_WALLETCONNECT_PROJECT_ID: ${{ vars.VITE_WALLETCONNECT_PROJECT_ID }}
+      CHIRPY_GATE_HEALTH_URL: ${{ vars.CHIRPY_GATE_HEALTH_URL }}
     permissions:
       contents: write
     strategy:
@@ -48,6 +56,17 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Require release configuration and live readiness
+        run: node scripts/validate-native-release.mjs
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          APPLE_CERTIFICATE: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -58,29 +77,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build, sign & publish
+      - name: Build and sign draft artifacts
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_API_ORIGIN: ${{ vars.VITE_API_ORIGIN || 'https://chirpy.bittrees.org' }}
           # Updater signing key (set in repo Settings → Secrets and variables → Actions):
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Apple signing + notarization (macOS only; ignored elsewhere). When these secrets are
-          # set the macOS build is codesigned + notarized for a Gatekeeper-clean download;
-          # when unset, tauri-action skips notarization and ships an updater-signed-only build.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # set the macOS build is codesigned and notarized. Missing values fail preflight.
+          APPLE_CERTIFICATE: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
         with:
           projectPath: apps/web
           tagName: ${{ github.ref_name }}
           releaseName: "Chirpy ${{ github.ref_name }}"
-          releaseBody: "See the assets to download and install. The app auto-updates from here."
-          releaseDraft: false
+          releaseBody: "Draft artifacts for signature, installation, updater and platform acceptance. Do not publish until the production readiness checklist is complete."
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
