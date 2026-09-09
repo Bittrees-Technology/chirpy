@@ -176,3 +176,9 @@ Validation: 197 tests including real Redis checks, wallet/network isolation and 
 Accepted peer DMs show the latest peer receipt timestamp from the SDK lastReadTimes index. Enriched message queries omit receipt events, so the display uses the receipt-specific index and the actual peer inbox. Missing, unrelated, self, invalid or future evidence is suppressed; blocked/request/room views do not display receipts. The label explicitly avoids claiming that a particular message was read. Text/reply previews remain stable when receipts arrive.
 
 Validation: the two-wallet XMTP dev flow under native CSP confirms no receipt before opt-in, then sends and reads a new message and verifies the actual receipt and retained preview. Opt-in does not retroactively acknowledge already-read messages. Unit coverage exercises consent, identity, malformed times and UI suppression.
+
+## Room administrator controls
+
+Room policy controls are shown only after the transport confirms administrator or super-admin authority. Missing/failed role checks hide them. During an advisory pause, administrators retain the same posting/reaction exception already applied by the transport; ordinary members cannot compose or react. Actions still recheck current SDK authority, so stale UI permissions cannot authorize a change. New local demo rooms model creator administration and role loss consistently. Labels say pause/resume member posting rather than implying protocol-wide freezing.
+
+Validation: 209 tests and the browser create/pause/admin-post/role-loss flow pass, along with type checking.

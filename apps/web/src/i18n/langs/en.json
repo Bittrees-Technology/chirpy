@@ -24,8 +24,8 @@
   "thread.noMessagesHint": "Say hello",
   "thread.requestJoin": "Request to join",
   "thread.requesting": "Requesting...",
-  "thread.freeze": "Freeze",
-  "thread.unfreeze": "Unfreeze",
+  "thread.freeze": "Pause member posting",
+  "thread.unfreeze": "Resume member posting",
   "thread.readOnly": "Member posting is paused in Chirpy. Other clients may still send messages.",
   "thread.replyingTo": "Replying to:",
   "thread.messagePrefix": "Message",
@@ -67,5 +67,6 @@
   "thread.receiptsOn": "On",
   "thread.receiptsOff": "Off",
   "thread.lastReceipt": "Last read receipt",
-  "thread.receiptMeaning": "The peer sent a read receipt at this time. It does not identify an exact message."
+  "thread.receiptMeaning": "The peer sent a read receipt at this time. It does not identify an exact message.",
+  "thread.adminPosting": "Member posting is paused in Chirpy. Administrators can still post; other clients may ignore this policy."
 }

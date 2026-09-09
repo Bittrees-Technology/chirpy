@@ -37,3 +37,15 @@ it('non-admins cannot update room policy', async () => {
   await expect(t.setRoomPolicy('room', { mode: 'active' })).rejects.toThrow('Admins only');
   expect(room.updateDescription).not.toHaveBeenCalled();
 });
+
+it('derives displayed authority from the SDK and fails closed if role checks fail', async () => {
+  const { t, room } = setup();
+  t.addressesForMembers = async () => [address]; t.unreadCount = async () => 0;
+  room.isAdmin.mockResolvedValue(true);
+  expect((await t.mapRoomConversation(room)).isAdmin).toBe(true);
+  room.isAdmin.mockRejectedValue(new Error('offline'));
+  room.isSuperAdmin.mockRejectedValue(new Error('offline'));
+  expect((await t.mapRoomConversation(room)).isAdmin).toBe(false);
+  await expect(t.setRoomPolicy('room', { mode: 'active' })).rejects.toThrow('Admins only');
+  expect(room.updateDescription).not.toHaveBeenCalled();
+});
