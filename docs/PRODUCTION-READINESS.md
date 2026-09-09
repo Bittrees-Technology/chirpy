@@ -314,3 +314,9 @@ This establishes deterministic synthetic merge behavior. Explicit legacy deletio
 ## Bounded release validation runtime
 
 The regular test job has a 20-minute deadline covering dependency setup, audits, type checks, unit/hardening tests, build and browser acceptance. A stalled setup or test therefore terminates as a failed/cancelled prerequisite and cannot advance draft artifact creation. This applies to pull requests, main and the reusable release checks; existing container/native audit and XMTP acceptance deadlines remain in place. It does not convert infrastructure failures into passing checks.
+
+## Offline snapshot integrity verification
+
+The gate ships a Node utility to seal an already offline database copy and verify it against a separately recorded manifest digest. It hashes every regular data file in bounded chunks, rejects links/directories and changing files, creates a private non-overwriting manifest, and checks exact file inventory, sizes and hashes before restore. A trusted digest prevents replacing both manifest and data unnoticed. Limits are 10,000 flat data files and a 1 MiB manifest.
+
+Nineteen hardening cases cover database/WAL/salt corruption, missing/extra files, symlinks/hard links/directories/FIFOs, private non-overwriting manifests, invalid schema/path/hash/size, manifest size bounds and replacement against an original recovery digest and the operator CLI. The live XMTP dev recovery drill uses the same utility before and after transfer, then retains the existing installation/message continuity and wrong-key checks. Sealing is not a live backup mechanism or proof of database validity. Production scheduling, independently controlled records/keys, encryption, measured recovery and operator acceptance remain outstanding.
