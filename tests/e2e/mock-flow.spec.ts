@@ -36,6 +36,7 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await expect(page.locator(".msg-body", { hasText: "room before freeze" })).toBeVisible();
 
   await page.getByRole("button", { name: "Freeze", exact: true }).click();
-  await expect(page.getByText("This room is read-only. Posting is frozen.")).toBeVisible();
+  await expect(page.getByText("Member posting is paused in Chirpy. Other clients may still send messages.")).toBeVisible();
   await expect(page.getByPlaceholder("Message #e2e-room")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "React with 👍" }).first()).toBeDisabled();
 });

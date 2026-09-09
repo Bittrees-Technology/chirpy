@@ -208,6 +208,10 @@ export class MockTransport implements Transport {
   async react(conversationId: string, messageId: string, emoji: string): Promise<void> {
     const target = this.snap.conversations.find((c) => c.id === conversationId);
     if (target?.blocked || target?.pending) throw new Error("Accept or unblock this conversation before reacting.");
+    if (target?.kind === "room" && target.policy) {
+      const decision = evaluatePolicy(target.policy, { type: "send" });
+      if (!decision.allowed) throw new Error(decision.reason || "Blocked by room policy.");
+    }
     const msg = (this.snap.messages[conversationId] || []).find((m) => m.id === messageId);
     if (!msg) return;
     msg.reactions ||= {};

@@ -192,11 +192,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                 </div>
                 <div className="msg-tools">
                   {EMOJIS.map((e) => (
-                    <button key={e} className="react-btn" disabled={Boolean(needsConsent)} aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
+                    <button key={e} className="react-btn" disabled={Boolean(needsConsent || readOnly)} aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
                       void react(m.id, e).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
                     }}>{e}</button>
                   ))}
-                  <button className="react-btn" disabled={Boolean(needsConsent)} aria-label={t("thread.reply", "Reply")} onClick={() => setReplyTo(m.id)}>↩</button>
+                  <button className="react-btn" disabled={Boolean(needsConsent || readOnly)} aria-label={t("thread.reply", "Reply")} onClick={() => setReplyTo(m.id)}>↩</button>
                 </div>
                 {m.reactions && Object.keys(m.reactions).length > 0 && (
                   <div className="msg-reactions">
@@ -223,7 +223,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{sendError.message} {t("thread.draftKept", "Your draft has been kept.")}</div>}
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
       {needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : readOnly ? (
-        <div className="composer readonly-note">{t("thread.readOnly", "🔒 This room is read-only. Posting is frozen.")}</div>
+        <div className="composer readonly-note">{t("thread.readOnly", "Member posting is paused in Chirpy. Other clients may still send messages.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>
           <input

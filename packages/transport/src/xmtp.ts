@@ -516,12 +516,14 @@ export class XmtpTransport implements Transport {
 
   private async isCurrentUserAdmin(conversation: XmtpConversation) {
     const myInboxId = this.requireInboxId();
-    const group = conversation as XmtpConversation & { isAdmin?: (inboxId: string) => Promise<boolean> };
-    return await group.isAdmin?.(myInboxId).catch(() => false) ?? false;
+    const group = conversation as XmtpConversation & { isAdmin?: (inboxId: string) => Promise<boolean>; isSuperAdmin?: (inboxId: string) => Promise<boolean> };
+    return (await group.isSuperAdmin?.(myInboxId).catch(() => false) ?? false) ||
+      (await group.isAdmin?.(myInboxId).catch(() => false) ?? false);
   }
 
   private async assertGateAllows(meta: RoomMeta) {
     if ((meta.gate.rules?.length ?? 0) === 0) return;
+    if (this.org.chain.chainId !== 1 || !validateProductionGate(meta.gate)) throw new Error("This room uses an unsupported production gate.");
     const passes = await evalGate(meta.gate, this.myAddress, this.chainReader(), this.org.gating);
     if (!passes) throw new Error("This wallet does not satisfy the room gate.");
   }
@@ -767,6 +769,12 @@ export class XmtpTransport implements Transport {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) return;
     await this.assertConversationAccepted(conversation);
+    const room = this.roomMeta.get(conversationId);
+    if (room) {
+      await this.assertGateAllows(room);
+      const decision = evaluatePolicy(room.policy, { type: "send" }, { isAdmin: await this.isCurrentUserAdmin(conversation) });
+      if (!decision.allowed) throw new Error(decision.reason || "Blocked by room policy.");
+    }
     const referenceInboxId = this.senderInboxByMessage.get(messageId);
     if (!referenceInboxId) throw new Error("Reaction target is not loaded yet.");
 
@@ -939,9 +947,10 @@ export class XmtpTransport implements Transport {
       policy: mergePolicy(this.org.policy, policy),
     };
     const next: RoomMeta = { ...current, policy };
-    this.roomMeta.set(conversationId, next);
     const group = conversation as XmtpConversation & { updateDescription?: (description: string) => Promise<void> };
-    await group.updateDescription?.(roomMetaDescription(next));
+    if (!group.updateDescription) throw new Error("Room policy updates are unavailable.");
+    await group.updateDescription(roomMetaDescription(next));
+    this.roomMeta.set(conversationId, next);
     this.changeCallback?.();
   }
 

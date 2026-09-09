@@ -26,7 +26,7 @@
   "thread.requesting": "Requesting...",
   "thread.freeze": "Freeze",
   "thread.unfreeze": "Unfreeze",
-  "thread.readOnly": "🔒 This room is read-only. Posting is frozen.",
+  "thread.readOnly": "Member posting is paused in Chirpy. Other clients may still send messages.",
   "thread.replyingTo": "Replying to:",
   "thread.messagePrefix": "Message",
   "thread.send": "Send",

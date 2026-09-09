@@ -8,7 +8,7 @@ We implement and merge independent changes in increasing complexity, while prese
 | 2 | Keyboard accessibility, message scrolling, translated chat controls | Merged in PR #4; 64 tests and three browser tests pass |
 | 3 | Unread counts, request acceptance/rejection, blocking and receipts | DM consent merged in PR #6; unread cursors and visible-message receipt handling merged in PR #7 |
 | 4 | Wallet-specific preferences and revocable sync authorization | Wallet isolation merged in PR #8; expiring device authorization and atomic revocation merged in PR #9 |
-| 5 | Pagination, bounded refresh, long-history performance | Refresh coalescing merged in PR #12; bounded message pages and history navigation implemented |
+| 5 | Pagination, bounded refresh, long-history performance | Refresh coalescing merged in PR #12; bounded message pages and history navigation merged in PR #13 |
 | 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Pending |
 | 7 | Dependency remediation, live probes, backup/restore and release acceptance | JavaScript dependency patches and required audit merged in PR #10; hosted sync probe passed; backup/restore and full release acceptance pending |
 | 8 | Production gate deployment and multi-wallet acceptance | Needs hosting/bot identity and reviewed room registry |
@@ -86,3 +86,11 @@ Validation: 94 tests include 1,000-event burst/concurrency coverage, failed-refr
 Threads query and render 50 text/reply messages per page with older/newer/latest navigation. Timestamp ties are kept together, with a hard 1,000-message ceiling and an explicit error for pathological timestamp floods. Queries never exceed 1,001 records; exact nanosecond cursors prevent millisecond rounding gaps. Replies preserve a bounded parent excerpt, and reactions load their target by ID. Reply/read metadata caches are capped at 2,500 entries.
 
 Background refreshes retain the selected history page. Sending returns to the latest page; local reads/receipts do not advance while browsing older history. Switching chats invalidates delayed page results. Validation: 99 tests include a synthetic 100,000-message source, timestamp ties/floods, stale page responses and old-message reactions. Eight browser tests include a 2,000-message history, navigation, bounded rendering and desktop/mobile screenshots; two live XMTP dev-network tests pass. These are bounded pages rather than an unbounded scrolling DOM. Inbox-wide synchronization and very large conversation lists remain performance follow-ups.
+
+## Supported gates and advisory posting policy
+
+The production room editor offers mainnet token holdings, explicit ERC-1155 IDs, Safe owners and ENS. Role/power/delegate sources remain unavailable and are not presented as configured production controls. Send and reaction paths reject unsupported gates. Blank ENS inputs normalize to the documented primary-name rule.
+
+Posting pauses and attachment rules are explicitly Chirpy-client policies. The current XMTP permission API governs membership, administrators and metadata, and provides no posting-permission update. Other clients can ignore a posting pause; no history revocation is promised. Reactions now obey the same gate/policy checks as sends. Super-admins are recognized for policy updates, and local policy changes only after the SDK confirms publication. Automated membership revalidation and an operator moderation/reporting process remain outstanding.
+
+Validation: 104 tests and eight browser tests pass, including unsupported gate controls, paused-room reactions, non-admin denial and failed-policy rollback. Both type checks pass.
