@@ -276,3 +276,11 @@ Four browser scenarios verify the existing English pages and Spanish mobile page
 A published room's directory entry supplies its trusted admission gate while the joined group's current posting policy remains authoritative for Chirpy's send/reaction checks. Refreshing the directory no longer replaces a paused group's policy with the directory's organization defaults. The room card uses the same directory gate as the transport.
 
 Known room restrictions remain available during asynchronous inbox mapping and after a failed metadata refresh. Metadata for conversations no longer present in either the inbox or directory is pruned after a successful refresh. Regression tests reproduce both the directory override and an actual unintended synthetic send during the former metadata-clear window; the fixed code rejects member sends/reactions and retains restrictions on refresh failure. This strengthens Chirpy's advisory client policy, not protocol-wide enforcement against other clients.
+
+## Incremental streamed inbox refresh
+
+Healthy message streams and local send, reaction, read, consent and room-policy changes invalidate the affected conversation summaries. Incremental refresh reads the SDK's local conversation list and remaps only new or invalidated entries; it does not repeat network-wide synchronization. Removed local records are pruned from the summary cache. New invalidations arriving during an asynchronous refresh remain queued for the next pass.
+
+Initial load, the existing ten-second visible polling interval, focus/online/visibility recovery, room admission, stream errors/retries and failed mapping still require full reconciliation. Unsubscribing disables the incremental path. This preserves the recovery interval while reducing work from streamed bursts; initial and periodic full synchronization, local full-list enumeration/sorting and real-device large-inbox benchmarks remain unfinished.
+
+A 10,000-conversation regression remaps one entry for one streamed update; the previous implementation remaps all 10,000. Further tests cover cache pruning, concurrent invalidations, failures/reconnect, focus/online recovery, consent, local reads, sends and reactions. These are operation-count assertions, not a measured real-device latency claim. Existing paused-room refresh regressions remain in the suite.

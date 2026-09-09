@@ -21,11 +21,13 @@ it('polling notifies once without fetching twice and pauses while hidden', async
   vi.useFakeTimers(); const t = make(); t.status = 'ready';
   t.listConversations = vi.fn(); t.runStream = vi.fn();
   const cb = vi.fn(); const doc = { visibilityState: 'visible' };
+  t.streamHealthy = true; t.fullRefreshRequired = false;
   vi.stubGlobal('document', doc); t.startPoll(cb);
   await vi.advanceTimersByTimeAsync(10000); expect(cb).toHaveBeenCalledTimes(1);
   expect(t.listConversations).not.toHaveBeenCalled();
+  expect(t.fullRefreshRequired).toBe(true); t.fullRefreshRequired = false;
   doc.visibilityState = 'hidden'; await vi.advanceTimersByTimeAsync(30000);
-  expect(cb).toHaveBeenCalledTimes(1); clearInterval(t.pollTimer);
+  expect(cb).toHaveBeenCalledTimes(1); expect(t.fullRefreshRequired).toBe(false); clearInterval(t.pollTimer);
 });
 
 it('preserves a joined room posting policy while applying the trusted directory gate', async () => {
