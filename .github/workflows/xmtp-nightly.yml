@@ -8,7 +8,7 @@ on:
 jobs:
   xmtp-e2e:
     runs-on: ubuntu-latest
-    continue-on-error: true
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,3 +24,18 @@ jobs:
       - run: pnpm e2e:xmtp
         env:
           CHIRPY_TEST_NATIVE_CSP: "1"
+      - name: Build the gate recovery test image
+        run: docker build -f selfhost/gate.Dockerfile -t chirpy-gate:acceptance .
+      - name: Verify encrypted storage recovery on XMTP dev
+        run: node scripts/test-gate-storage.mjs chirpy-gate:acceptance
+        env:
+          XMTP_STORAGE_DRILL: "1"
+      - name: Verify membership lifecycle on XMTP dev
+        run: node scripts/test-gate-membership.mjs chirpy-gate:acceptance
+        env:
+          XMTP_MEMBERSHIP_DRILL: "1"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xmtp-acceptance-evidence
+          path: test-results/
