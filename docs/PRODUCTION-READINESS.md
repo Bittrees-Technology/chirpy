@@ -8,7 +8,7 @@ We implement and merge independent changes in increasing complexity, while prese
 | 2 | Keyboard accessibility, message scrolling, translated chat controls | Merged in PR #4; 64 tests and three browser tests pass |
 | 3 | Unread counts, request acceptance/rejection, blocking and receipts | DM consent merged in PR #6; unread cursors and visible-message receipt handling merged in PR #7 |
 | 4 | Wallet-specific preferences and revocable sync authorization | Wallet isolation merged in PR #8; expiring device authorization and atomic revocation merged in PR #9 |
-| 5 | Pagination, bounded refresh, long-history performance | Refresh coalescing implemented; pagination and bounded thread rendering pending |
+| 5 | Pagination, bounded refresh, long-history performance | Refresh coalescing merged in PR #12; bounded message pages and history navigation implemented |
 | 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Pending |
 | 7 | Dependency remediation, live probes, backup/restore and release acceptance | JavaScript dependency patches and required audit merged in PR #10; hosted sync probe passed; backup/restore and full release acceptance pending |
 | 8 | Production gate deployment and multi-wallet acceptance | Needs hosting/bot identity and reviewed room registry |
@@ -80,3 +80,9 @@ Only intended request handlers live in `api/`. Shared server code and API tests 
 Message notification bursts are debounced into one serial refresh, with one trailing refresh retained when events arrive during active work. Concurrent transport inbox reads share one synchronization. Polling and reconnect signals notify the subscriber instead of synchronizing twice, and background polling pauses while the document is hidden. Returning to the tab triggers refresh. Organization and wallet changes cancel queued refresh work.
 
 Validation: 94 tests include 1,000-event burst/concurrency coverage, failed-refresh retry, session cancellation and hidden-tab polling. Both type checks pass.
+
+## Bounded message history
+
+Threads query and render 50 text/reply messages per page with older/newer/latest navigation. Timestamp ties are kept together, with a hard 1,000-message ceiling and an explicit error for pathological timestamp floods. Queries never exceed 1,001 records; exact nanosecond cursors prevent millisecond rounding gaps. Replies preserve a bounded parent excerpt, and reactions load their target by ID. Reply/read metadata caches are capped at 2,500 entries.
+
+Background refreshes retain the selected history page. Sending returns to the latest page; local reads/receipts do not advance while browsing older history. Switching chats invalidates delayed page results. Validation: 99 tests include a synthetic 100,000-message source, timestamp ties/floods, stale page responses and old-message reactions. Eight browser tests include a 2,000-message history, navigation, bounded rendering and desktop/mobile screenshots; two live XMTP dev-network tests pass. These are bounded pages rather than an unbounded scrolling DOM. Inbox-wide synchronization and very large conversation lists remain performance follow-ups.

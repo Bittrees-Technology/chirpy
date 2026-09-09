@@ -8,7 +8,7 @@ import { useI18n } from "../i18n";
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
 export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) {
-  const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent, markRead } = useChat();
+  const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent, markRead, historyLoading, isHistory, hasOlderMessages, navigateHistory } = useChat();
   const { identity } = useIdentity();
   const { t } = useI18n();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -33,7 +33,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const selfAddress = identity.address.toLowerCase();
   const latestMessageId = messages.at(-1)?.id;
   const markVisibleRead = () => {
-    if (latestMessageId && messagesRef.current?.getClientRects().length && nearBottomRef.current && !activeConversation?.pending && !activeConversation?.blocked && document.visibilityState === "visible" && document.hasFocus()) {
+    if (!isHistory && !historyLoading && latestMessageId && messagesRef.current?.getClientRects().length && nearBottomRef.current && !activeConversation?.pending && !activeConversation?.blocked && document.visibilityState === "visible" && document.hasFocus()) {
       void markRead?.(latestMessageId).catch(() => {});
     }
   };
@@ -42,7 +42,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     window.addEventListener("focus", markVisibleRead);
     document.addEventListener("visibilitychange", markVisibleRead);
     return () => { window.removeEventListener("focus", markVisibleRead); document.removeEventListener("visibilitychange", markVisibleRead); };
-  }, [conversationKey, latestMessageId, markRead, activeConversation?.pending, activeConversation?.blocked]);
+  }, [conversationKey, latestMessageId, markRead, activeConversation?.pending, activeConversation?.blocked, isHistory, historyLoading]);
 
   const isRoomConv = activeConversation?.kind === "room";
   const peerAddress = activeConversation && !isRoomConv
@@ -57,7 +57,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     previousConversationRef.current = conversationKey;
     if (switched || nearBottomRef.current) scrollToLatest();
     else setHasNewMessages(true);
-  }, [messages.length, conversationKey]);
+  }, [latestMessageId, conversationKey]);
   useEffect(() => { setReplyTo(null); setJoinStatus(null); }, [activeConversation?.id]);
 
   if (!activeConversation) {
@@ -161,6 +161,12 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         </div>
       )}
 
+      <nav className="history-controls" aria-label={t("thread.historyNavigation", "Message history navigation")}>
+        <Button disabled={historyLoading || !hasOlderMessages} onClick={() => navigateHistory("older")}>{t("thread.older", "Older messages")}</Button>
+        {isHistory && <Button disabled={historyLoading} onClick={() => navigateHistory("newer")}>{t("thread.newer", "Newer messages")}</Button>}
+        <Button disabled={historyLoading} onClick={() => navigateHistory(isHistory ? "latest" : "refresh")}>{isHistory ? t("thread.latest", "Latest messages") : t("thread.refresh", "Refresh messages")}</Button>
+        {historyLoading && <span role="status">{t("thread.loadingHistory", "Loading messages…")}</span>}
+      </nav>
       <div ref={messagesRef} role="region" aria-label={t("thread.history", "Message history")} tabIndex={0}
         className={`messages ${messages.length ? "has-msgs" : ""}`} onScroll={() => {
           const element = messagesRef.current;
@@ -168,7 +174,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
           if (nearBottomRef.current) { setHasNewMessages(false); markVisibleRead(); }
         }}>
-        {messages.length === 0 && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
+        {messages.length === 0 && !historyLoading && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
         {(activeConversation.blocked ? [] : messages).map((m) => {
           const mine = m.sender.toLowerCase() === selfAddress;
           const senderRecord = profiles.get(m.sender.toLowerCase());
@@ -177,8 +183,8 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
             <div key={m.id} className={`msg-row ${mine ? "mine" : ""}`}>
               {!mine && <Avatar id={m.sender} size={28} label={nameFor(m.sender, senderRecord)} src={senderRecord?.avatar ?? undefined} />}
               <div className="msg-bubble-wrap">
-                {parent && (
-                  <div className="msg-reply-ref">↩ {parent.body.slice(0, 60)}</div>
+                {m.replyTo && (
+                  <div className="msg-reply-ref">↩ {(parent?.body ?? m.replyPreview)?.slice(0, 60) ?? t("thread.earlierReply", "Reply to an earlier message")}</div>
                 )}
                 <div className="msg-bubble">
                   <span className="msg-body">{m.body}</span>
@@ -206,7 +212,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         <div ref={endRef} />
       </div>
 
-      {hasNewMessages && <button className="btn btn-ghost" onClick={scrollToLatest}>{t("thread.newMessages", "New messages — jump to latest")}</button>}
+      {hasNewMessages && !isHistory && <button className="btn btn-ghost" onClick={scrollToLatest}>{t("thread.newMessages", "New messages — jump to latest")}</button>}
       {replyTarget && !needsConsent && (
         <div className="reply-banner">
           {t("thread.replyingTo", "Replying to:")} <em>{replyTarget.body.slice(0, 80)}</em>

@@ -275,3 +275,6 @@ input, textarea, select { font-family: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (hover: none) { .msg-tools { position: static; opacity: 1; width: fit-content; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; } }
+
+.history-controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .5rem 1rem; border-bottom: 1px solid var(--line); }
+.history-controls .btn { min-height: 36px; }

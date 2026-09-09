@@ -8,6 +8,12 @@ export interface ChatMessage {
   sentAt: number;          // epoch ms
   reactions?: Record<string, string[]>; // emoji -> addresses
   replyTo?: string;        // message id
+  replyPreview?: string;   // bounded text excerpt, including parents outside this page
+}
+
+export interface MessagePage {
+  messages: ChatMessage[];
+  olderCursor?: string;
 }
 
 export type ConversationKind = "dm" | "room";
@@ -54,6 +60,7 @@ export interface Transport {
   enable?(opts?: { revokeStale?: boolean }): Promise<void>;
   listConversations(): Promise<Conversation[]>;
   listMessages(conversationId: string): Promise<ChatMessage[]>;
+  listMessagePage(conversationId: string, before?: string): Promise<MessagePage>;
   send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage>;
   react(conversationId: string, messageId: string, emoji: string): Promise<void>;
   markRead(conversationId: string, options?: { sendReceipt: boolean; throughMessageId?: string }): Promise<void>;

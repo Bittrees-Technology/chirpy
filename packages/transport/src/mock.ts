@@ -1,3 +1,4 @@
+import { readMessagePage } from "./messagePage.js";
 import { mergePolicy, evaluatePolicy, type Identity, type OrgConfig, type Policy } from "@app/core";
 import type { ChatMessage, Conversation, StartRoomInput, Transport } from "./types.js";
 
@@ -154,6 +155,16 @@ export class MockTransport implements Transport {
   async listMessages(conversationId: string): Promise<ChatMessage[]> {
     if (this.snap.conversations.find((c) => c.id === conversationId)?.blocked) return [];
     return [...(this.snap.messages[conversationId] || [])].sort((a, b) => a.sentAt - b.sentAt);
+  }
+
+  async listMessagePage(conversationId: string, before?: string) {
+    const messages = await this.listMessages(conversationId);
+    const byId = new Map(messages.map(message => [message.id, message]));
+    return readMessagePage(async ({ limit, sentBeforeNs }) => messages
+      .map(message => ({ ...message, replyPreview: message.replyTo ? byId.get(message.replyTo)?.body.slice(0, 200) : undefined, sentAtNs: BigInt(message.sentAt) * 1_000_000n }))
+      .filter(message => sentBeforeNs === undefined || message.sentAtNs < sentBeforeNs)
+      .sort((a, b) => a.sentAtNs === b.sentAtNs ? b.id.localeCompare(a.id) : a.sentAtNs > b.sentAtNs ? -1 : 1)
+      .slice(0, Number(limit)), before);
   }
 
   async send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage> {

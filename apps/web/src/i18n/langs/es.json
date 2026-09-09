@@ -54,5 +54,12 @@
   "thread.reject": "Rechazar y bloquear",
   "thread.block": "Bloquear conversación",
   "thread.acceptToSend": "Acepta o desbloquea esta conversación para enviar mensajes.",
-  "settings.blockedHelp": "Gestiona las conversaciones bloqueadas en Chats → Bloqueadas. El bloqueo oculta esta conversación directa y detiene tus mensajes y confirmaciones salientes. No elimina mensajes de salas compartidas."
+  "settings.blockedHelp": "Gestiona las conversaciones bloqueadas en Chats → Bloqueadas. El bloqueo oculta esta conversación directa y detiene tus mensajes y confirmaciones salientes. No elimina mensajes de salas compartidas.",
+  "thread.historyNavigation": "Navegación del historial de mensajes",
+  "thread.older": "Mensajes anteriores",
+  "thread.newer": "Mensajes siguientes",
+  "thread.latest": "Últimos mensajes",
+  "thread.refresh": "Actualizar mensajes",
+  "thread.loadingHistory": "Cargando mensajes…",
+  "thread.earlierReply": "Respuesta a un mensaje anterior"
 }
