@@ -31,6 +31,8 @@ export interface Conversation {
   /** Effective action policy (rooms only) — org default merged with room override. */
   policy?: Policy;
   lastMessage?: ChatMessage;
+  /** Latest peer receipt time; XMTP receipts do not identify an exact message. */
+  lastReadReceiptAt?: number;
   unread: number;
   /** A DM that the peer has not yet accepted (request state). */
   pending?: boolean;

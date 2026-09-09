@@ -152,7 +152,10 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         ) : null}
       </header>
 
-      {!isRoom && peerAddress?.toLowerCase() !== selfAddress && <div className="join-banner">
+      {!isRoom && peerAddress?.toLowerCase() !== selfAddress && <div className="join-banner dm-controls">
+        {!needsConsent && activeConversation.lastReadReceiptAt && <span data-testid="peer-receipt" title={t("thread.receiptMeaning", "The peer sent a read receipt at this time. It does not identify an exact message.")}>
+          {t("thread.lastReceipt", "Last read receipt")}: <time dateTime={new Date(activeConversation.lastReadReceiptAt).toISOString()}>{new Date(activeConversation.lastReadReceiptAt).toLocaleString()}</time>
+        </span>}
         {activeConversation.blocked ? t("thread.blockedNote", "This conversation is blocked. Messages and receipts are hidden.") : activeConversation.pending ? t("thread.requestNote", "Message request. Accept to reply; no read receipts are sent before acceptance.") : null}
         {needsConsent && <Button disabled={consentPending} onClick={() => void changeConsent("allowed")}>{activeConversation.blocked ? t("thread.unblock", "Unblock conversation") : t("thread.accept", "Accept request")}</Button>}
         {!needsConsent && <label>

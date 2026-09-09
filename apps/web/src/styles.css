@@ -119,6 +119,9 @@ input, textarea, select { font-family: inherit; }
 .join-banner { border-bottom: 1px solid var(--line); padding: 9px 18px; font-size: 13px; }
 .join-banner.ok { color: var(--positive); background: rgba(58,146,58,.10); }
 .join-banner.error { color: var(--danger); background: rgba(192,57,43,.10); }
+.dm-controls, .dm-controls label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dm-controls [data-testid="peer-receipt"] { flex-basis: 100%; color: var(--muted); }
+.dm-controls select { max-width: 100%; }
 .messages { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
 /* Anchor messages to the bottom (most recent last); the spacer fills the gap above when
    there are few messages, and collapses so scrolling still reaches the top when many. */

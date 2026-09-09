@@ -597,6 +597,23 @@ export class XmtpTransport implements Transport {
     return rooms;
   }
 
+  private async peerReceiptTime(conversation: XmtpConversation): Promise<number | undefined> {
+    try {
+      const sdk = await this.loadSdk();
+      if (this.isRoomConversation(sdk, conversation) || await conversation.consentState() !== sdk.ConsentState.Allowed) return;
+      const client = this.requireClient();
+      const peerInbox = await (conversation as XmtpConversation & { peerInboxId: () => Promise<string> }).peerInboxId();
+      if (!client.inboxId || !peerInbox || peerInbox === client.inboxId) return;
+      // Enriched message queries omit receipts. The SDK indexes them by inbox.
+      const times = await conversation.lastReadTimes();
+      const timestamp = times.get(peerInbox);
+      if (typeof timestamp !== "bigint") return;
+      const at = nsToMs(timestamp);
+      if (!Number.isSafeInteger(at) || at <= 0 || at > Date.now() + 60_000) return;
+      return at;
+    } catch { return undefined; } // Missing receipt evidence must never imply a read.
+  }
+
   private async mapConversation(conversation: XmtpConversation): Promise<Conversation> {
     const sdk = await this.loadSdk();
     if (this.isRoomConversation(sdk, conversation)) return this.mapRoomConversation(conversation);
@@ -607,7 +624,7 @@ export class XmtpTransport implements Transport {
 
     try {
       const sdk = await this.loadSdk();
-      const last = await conversation.lastMessage();
+      const [last] = await conversation.messages({ contentTypes: [sdk.ContentType.Text, sdk.ContentType.Reply], direction: sdk.SortDirection.Descending, limit: 1n });
       if (last) {
         lastMessage = toChatMessage(
           sdk,
@@ -632,6 +649,7 @@ export class XmtpTransport implements Transport {
       title,
       peers: peer ? [this.myAddress, peer] : [this.myAddress],
       lastMessage: blocked ? undefined : lastMessage,
+      lastReadReceiptAt: pending || blocked ? undefined : await this.peerReceiptTime(conversation),
       unread: blocked ? 0 : await this.unreadCount(conversation),
       pending,
       blocked,

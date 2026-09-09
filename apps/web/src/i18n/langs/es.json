@@ -65,5 +65,7 @@
   "thread.receipts": "Enviar confirmaciones de lectura",
   "thread.receiptsDefault": "Usar ajuste general",
   "thread.receiptsOn": "Activadas",
-  "thread.receiptsOff": "Desactivadas"
+  "thread.receiptsOff": "Desactivadas",
+  "thread.lastReceipt": "Última confirmación de lectura",
+  "thread.receiptMeaning": "La otra persona envió una confirmación de lectura a esta hora. No identifica un mensaje concreto."
 }
