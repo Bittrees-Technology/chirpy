@@ -7,7 +7,7 @@ We implement and merge independent changes in increasing complexity, while prese
 | 1 | HTTP hardening: size/time limits, proxy trust, CORS, sanitized errors, security headers, real HTTP regression tests | Merged in PR #3; 63 tests, type checks, build and rollout proof pass |
 | 2 | Keyboard accessibility, message scrolling, translated chat controls | Merged in PR #4; 64 tests and three browser tests pass |
 | 3 | Unread counts, request acceptance/rejection, blocking and receipts | DM consent merged in PR #6; unread cursors and visible-message receipt handling merged in PR #7 |
-| 4 | Wallet-specific preferences and revocable sync authorization | Wallet isolation merged in PR #8; expiring device authorization and atomic revocation implemented |
+| 4 | Wallet-specific preferences and revocable sync authorization | Wallet isolation merged in PR #8; expiring device authorization and atomic revocation merged in PR #9 |
 | 5 | Pagination, bounded refresh, long-history performance | Pending |
 | 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Pending |
 | 7 | Dependency remediation, live probes, backup/restore and release acceptance | Pending |
@@ -48,7 +48,7 @@ Validation: 75 unit tests, both type checks, six mock/browser tests and two XMTP
 
 Preferences, local encrypted snapshots and update timestamps are scoped by wallet (or local demo identity). Switching wallets remounts session state and discards in-memory sync keys and pending timers. The active account changes immediately; delayed ENS results cannot restore an old account after switching or disconnecting. Sync key requests reject account mismatches.
 
-The old shared preference/blob keys remain untouched because their owner cannot be determined safely. Each wallet starts with read receipts and sync off and can opt in explicitly. Disabling sync clears the browser's cached signature but is not yet a server-side revocation; the v1 reusable write-signature protocol remains the next security increment.
+The old shared preference/blob keys remain untouched because their owner cannot be determined safely. Each wallet starts with read receipts and sync off and can opt in explicitly. PR #9 subsequently replaced reusable v1 signatures with expiring device authorization and server-side revocation, described below.
 
 Validation: 76 unit tests, both type checks, six mock/browser tests and the two-wallet XMTP dev-network round trip pass. Navigation remains stable during connection while wallet-owned state is remounted. Tests cover account mismatch, malformed stored preferences, late profile responses and returning to a previously used wallet.
 
@@ -62,3 +62,11 @@ Production must set `CHIRPY_SYNC_SERVICE_URL` to the canonical HTTPS `/api/users
 
 
 Validation: 88 tests including three real Redis transaction/expiry tests, both type checks, and seven browser tests pass. CI supplies a pinned Redis service and requires the integration tests. The browser sync test verifies wallet/device signatures, encryption envelope handling and both revocation controls. Local Redis integration uses an isolated ephemeral container and removes only synthetic keys it created.
+
+Hosted preview validation exercised signed writes, rejected replay and tampering, per-device revocation, revoke-all, and a fresh grant after revocation against the actual storage service. The synthetic encrypted record and its epoch were removed by a bounded temporary build job. No production user records were changed.
+
+## Dependency security baseline
+
+Patch updates remove all 25 advisories reported by the previous JavaScript dependency audit (eight high and 17 moderate). The resolved graph now reports no known vulnerabilities. The required CI audit fails on moderate or higher findings. Range-scoped overrides cover vulnerable transitive versions while preserving their major versions; Vitest is pinned to 4.1.11. This is a point-in-time dependency check, not a security certification. Native dependency and release checks remain separate.
+
+Validation: both type checks, 88 tests including real Redis race/expiry checks, rollout proof and the production web build pass. Seven browser tests and the two-wallet XMTP dev-network round trip also pass.
