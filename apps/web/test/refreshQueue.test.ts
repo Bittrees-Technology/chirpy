@@ -1,0 +1,32 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { createRefreshQueue } from '../src/refreshQueue';
+afterEach(() => vi.useRealTimers());
+it('collapses bursts, serializes in-flight invalidations and retains the trailing change', async () => {
+  vi.useFakeTimers();
+  let finish!: () => void;
+  const refresh = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const error = vi.fn(); const queue = createRefreshQueue(refresh, error);
+  for (let i = 0; i < 500; i++) queue.notify();
+  await vi.advanceTimersByTimeAsync(150);
+  expect(refresh).toHaveBeenCalledTimes(1);
+  for (let i = 0; i < 500; i++) queue.notify();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(refresh).toHaveBeenCalledTimes(1);
+  finish(); await vi.advanceTimersByTimeAsync(150);
+  expect(refresh).toHaveBeenCalledTimes(2);
+  finish(); await vi.advanceTimersByTimeAsync(1000);
+  expect(refresh).toHaveBeenCalledTimes(2);
+  expect(error).not.toHaveBeenCalled(); queue.cancel();
+});
+it('recovers after failure and cancels queued work when a session is discarded', async () => {
+  vi.useFakeTimers();
+  const refresh = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
+  const error = vi.fn(); const queue = createRefreshQueue(refresh, error);
+  queue.notify(); await vi.advanceTimersByTimeAsync(150);
+  expect(error).toHaveBeenCalledTimes(1);
+  queue.notify(); await vi.advanceTimersByTimeAsync(150);
+  expect(refresh).toHaveBeenCalledTimes(2);
+  queue.notify(); queue.cancel(); queue.notify();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(refresh).toHaveBeenCalledTimes(2);
+});

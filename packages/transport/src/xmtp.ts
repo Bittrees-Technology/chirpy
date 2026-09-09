@@ -265,6 +265,7 @@ export class XmtpTransport implements Transport {
   private stream: StreamHandle | null = null;
   private streamStopped = false;
   private streamRunning = false;
+  private conversationRefresh: Promise<Conversation[]> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private lastReceiptAt = new Map<string, number>();
   private changeCallback: (() => void) | null = null;
@@ -534,7 +535,6 @@ export class XmtpTransport implements Transport {
 
   private async mapRoomConversation(conversation: XmtpConversation): Promise<Conversation> {
     this.conversations.set(conversation.id, conversation);
-    await conversation.sync().catch(() => undefined);
 
     const group = conversation as XmtpConversation & { name?: string; description?: string };
     const meta = parseRoomMeta(group.description, this.org.policy);
@@ -633,7 +633,18 @@ export class XmtpTransport implements Transport {
     };
   }
 
-  async listConversations(): Promise<Conversation[]> {
+  listConversations(): Promise<Conversation[]> {
+    if (!this.conversationRefresh) {
+      const refresh = this.refreshConversations();
+      this.conversationRefresh = refresh;
+      void refresh.finally(() => {
+        if (this.conversationRefresh === refresh) this.conversationRefresh = null;
+      }).catch(() => {});
+    }
+    return this.conversationRefresh;
+  }
+
+  private async refreshConversations(): Promise<Conversation[]> {
     const client = this.client;
     if (!client || this.status !== "ready") return [];
     try {
@@ -936,14 +947,9 @@ export class XmtpTransport implements Transport {
   private startPoll(cb: () => void) {
     if (this.pollTimer) clearInterval(this.pollTimer);
     const sync = () => {
-      if (this.status !== "ready") return;
+      if (this.status !== "ready" || (typeof document !== "undefined" && document.visibilityState === "hidden")) return;
       if (!this.streamRunning) void this.runStream(cb);
-      void this.listConversations().then(cb).catch((error) => {
-        if (isUnregisteredIdentity(error)) {
-          forgetEnabled(this.myAddress);
-          this.status = "idle";
-        }
-      });
+      cb(); // The subscriber owns refresh; polling must not duplicate it.
     };
     this.pollTimer = setInterval(sync, 10_000);
     if (typeof window !== "undefined") {
@@ -983,7 +989,7 @@ export class XmtpTransport implements Transport {
           /* reconnect below */
         }
         if (this.streamStopped) break;
-        try { await this.listConversations(); cb(); } catch { /* ignore */ }
+        cb();
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     } finally {

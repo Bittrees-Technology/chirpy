@@ -1,6 +1,6 @@
 # Self-hosted Chirpy gate. The `gate` service runs the XMTP gatekeeper room-join handler
-# (selfhost/gate-server.mjs) — the same logic the Vercel deployment uses, but in an
-# always-on container that supports @xmtp/node-sdk's native bindings.
+# (selfhost/gate-server.mjs) in an always-on container that supports
+# @xmtp/node-sdk's native bindings. The web endpoint does not host a gatekeeper.
 #
 # Point an org's OrgConfig.gateUrl at  http(s)://<your-host>/api/room-join
 services:
