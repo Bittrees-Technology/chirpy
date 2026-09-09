@@ -13,6 +13,8 @@ it('provides matching nonempty Spanish entries and interpolation fields', () => 
 it('localizes known sync results and preserves unknown provider diagnostics', () => {
   const t = (key: string, fallback?: string) => es[key] ?? fallback ?? key;
   expect(translateStatus(t, 'Encrypted sync is enabled for this browser session, for up to 24 hours.')).toContain('La sincronización cifrada');
+  expect(translateStatus(t, 'Invalid JSON')).toBe('JSON no válido');
+  expect(translateStatus(t, 'Invalid org config: chain.chainId is invalid')).toBe('Configuración de organización no válida: chain.chainId no es válido');
   expect(translateStatus(t, 'Provider error 123')).toBe('Provider error 123');
   expect(translateStatus(t, 'constructor')).toBe('constructor');
 });
