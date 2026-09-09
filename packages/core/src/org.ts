@@ -87,7 +87,7 @@ export function serializeOrg(o: OrgConfig): string {
 
 /** Parse + validate JSON text into an OrgConfig. Throws on invalid input. */
 export function parseOrg(text: string): OrgConfig {
-  if (typeof text !== "string" || new TextEncoder().encode(text).byteLength > 256_000) throw new Error("Organization config exceeds the 256 KB import limit.");
+  if (typeof text !== "string" || text.length > 256_000 || new TextEncoder().encode(text).byteLength > 256_000) throw new Error("Organization config exceeds the 256 KB import limit.");
   let parsed: any;
   try { parsed = JSON.parse(text); } catch (e) { throw new Error("Invalid JSON"); }
   const v = validateOrgConfig(parsed);
