@@ -26,9 +26,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Dependency audit (advisory)
-        run: pnpm audit --audit-level=high
-        continue-on-error: true
+      - name: Dependency security audit
+        run: pnpm audit --audit-level=moderate
       - run: pnpm typecheck
       - run: pnpm typecheck:api
       - name: Unit and hardening regression suite
