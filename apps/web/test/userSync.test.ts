@@ -77,16 +77,17 @@ describe("mergePayload", () => {
 afterEach(() => vi.unstubAllGlobals());
 it("requires a successful read and carries its revision on writes", async () => {
   const address = "new-device"; const blob = { updatedAt: 10 } as any;
-  const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ blob: null, revision: 4 }) })
+  const authorization = { grant: { version: 2, address, device: "0x0000000000000000000000000000000000000001", issuedAt: Date.now(), epoch: 0, service: new URL("/api/usersync", window.location.href).href, expiresAt: Date.now() + 10000 }, sign: async () => "signature" } as any;
+  const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ blob: null, revision: 4, authVersion: 2, epoch: 0, service: new URL("/api/usersync", window.location.href).href }) })
     .mockResolvedValueOnce({ ok: false, status: 409 });
   vi.stubGlobal("fetch", fetcher);
-  expect(await pushBlob(address, "sig", blob)).toEqual({ ok: false, stale: true });
+  expect(await pushBlob(address, authorization, blob)).toEqual({ ok: false, stale: true });
   expect(fetcher).not.toHaveBeenCalled();
-  await pullRemoteBlob(address); await pushBlob(address, "sig", blob);
+  await pullRemoteBlob(address); await pushBlob(address, authorization, blob);
   expect(JSON.parse(fetcher.mock.calls[1][1].body).expectedRevision).toBe(4);
 });
 it("does not interpret an unavailable store as empty", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
   await expect(pullRemoteBlob("offline-device")).rejects.toThrow("Unable to read");
-  expect(await pushBlob("offline-device", "sig", {} as any)).toEqual({ ok: false, stale: true });
+  expect(await pushBlob("offline-device", null as any, {} as any)).toEqual({ ok: false, stale: true });
 });

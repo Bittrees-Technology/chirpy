@@ -12,6 +12,10 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -28,6 +32,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm typecheck:api
       - name: Unit and hardening regression suite
+        env:
+          CHIRPY_TEST_REDIS_CONTAINER: ${{ job.services.redis.id }}
         run: pnpm test
       - run: pnpm rollout:proof
       - run: pnpm build

@@ -7,7 +7,7 @@ We implement and merge independent changes in increasing complexity, while prese
 | 1 | HTTP hardening: size/time limits, proxy trust, CORS, sanitized errors, security headers, real HTTP regression tests | Merged in PR #3; 63 tests, type checks, build and rollout proof pass |
 | 2 | Keyboard accessibility, message scrolling, translated chat controls | Merged in PR #4; 64 tests and three browser tests pass |
 | 3 | Unread counts, request acceptance/rejection, blocking and receipts | DM consent merged in PR #6; unread cursors and visible-message receipt handling merged in PR #7 |
-| 4 | Wallet-specific preferences and revocable sync authorization | Wallet preference/session isolation implemented; server-side revocable authorization remains pending |
+| 4 | Wallet-specific preferences and revocable sync authorization | Wallet isolation merged in PR #8; expiring device authorization and atomic revocation implemented |
 | 5 | Pagination, bounded refresh, long-history performance | Pending |
 | 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Pending |
 | 7 | Dependency remediation, live probes, backup/restore and release acceptance | Pending |
@@ -51,3 +51,14 @@ Preferences, local encrypted snapshots and update timestamps are scoped by walle
 The old shared preference/blob keys remain untouched because their owner cannot be determined safely. Each wallet starts with read receipts and sync off and can opt in explicitly. Disabling sync clears the browser's cached signature but is not yet a server-side revocation; the v1 reusable write-signature protocol remains the next security increment.
 
 Validation: 76 unit tests, both type checks, six mock/browser tests and the two-wallet XMTP dev-network round trip pass. Navigation remains stable during connection while wallet-owned state is remounted. Tests cover account mismatch, malformed stored preferences, late profile responses and returning to a previously used wallet.
+
+## Sync authorization v2
+
+The wallet authorizes a generated device key for one service, wallet, authorization epoch and at most 24 hours. Each write is signed by that device over the ciphertext hash and expected data revision. Device keys stay in memory. Restarting requires re-enabling sync. Old v1 reusable wallet write signatures are rejected; clients must refresh. Existing encrypted blobs and the key-derivation message remain compatible.
+
+Revoking this session creates a server-side denial record until its grant expires. Wallet-signed revoke-all advances a durable authorization epoch without deleting saved data. Every write checks both revocation mechanisms atomically with its data revision, so concurrent revocation cannot be bypassed by a delayed write. If a revocation request fails, the UI distinguishes locally stopped sync from confirmed server revocation.
+
+Production must set `CHIRPY_SYNC_SERVICE_URL` to the canonical HTTPS `/api/usersync` URL. Preview deployments default to their immutable `VERCEL_URL`; open that exact deployment URL when testing sync. Native webviews still need their release-stage API-origin configuration and acceptance tests.
+
+
+Validation: 88 tests including three real Redis transaction/expiry tests, both type checks, and seven browser tests pass. CI supplies a pinned Redis service and requires the integration tests. The browser sync test verifies wallet/device signatures, encryption envelope handling and both revocation controls. Local Redis integration uses an isolated ephemeral container and removes only synthetic keys it created.

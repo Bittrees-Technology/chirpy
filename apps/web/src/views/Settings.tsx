@@ -20,7 +20,7 @@ export function Settings(
     setHandle, reset, connectWallet, connectWalletConnect, disconnectWallet,
   } = useIdentity();
   const { orgs, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
-  const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices } = useSettingsPrefs();
+  const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices } = useSettingsPrefs();
   const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging } = useChat();
   const { lang, setLang, t } = useI18n();
   const [profileEns, setProfileEns] = useState<EnsRecord | null>(null);
@@ -117,20 +117,20 @@ export function Settings(
   const profileAvatar = activeProfile?.address && activeProfile.avatar ? activeProfile.avatar : undefined;
   const ensManagerTarget = ensName ?? identity.address;
   const syncDescription = prefs.syncAcrossDevices
-    ? syncState.walletAddress
-      ? `On - encrypted locally for ${shortAddr(syncState.walletAddress)}. Cross-device delivery starts when the sync relay is connected.`
-      : "On - encrypted locally. Cross-device delivery starts when the sync relay is connected."
-    : "Off - stored only on this device. Turn on to encrypt them to your wallet and sync across devices (two signatures, no gas).";
+    ? syncState.hasSessionKey
+      ? "On for this browser session, for up to 24 hours. Encrypted preferences are stored by the sync service."
+      : "Paused after restart. Re-enable with your wallet to resume encrypted sync."
+    : "Off. Preferences stay on this device. Enable with two gas-free signatures; the device key stays in memory.";
   const transportText = transportId === "mock"
     ? "Mock mode: local chats on this device."
     : "XMTP mode: encrypted DMs and rooms.";
   const handleSyncClick = async () => {
     setSyncMessage("");
     setSyncMessageKind("neutral");
-    if (prefs.syncAcrossDevices) {
-      disableSyncAcrossDevices();
-      setSyncMessage("Encrypted sync is off. Preferences are local-only on this device.");
-      setSyncMessageKind("neutral");
+    if (prefs.syncAcrossDevices && syncState.hasSessionKey) {
+      const result = await disableSyncAcrossDevices();
+      setSyncMessage(result.message);
+      setSyncMessageKind(result.ok ? "success" : "error");
       return;
     }
     const result = await enableSyncAcrossDevices();
@@ -283,7 +283,7 @@ export function Settings(
             <div className="muted">{syncDescription}</div>
             {syncState.error && <div role="alert">{syncState.error}</div>}
             {syncMessage && (
-              <div className={`muted sync-status ${syncMessageKind === "success" ? "status-positive" : syncMessageKind === "error" ? "status-error" : ""}`}>
+              <div role="status" className={`muted sync-status ${syncMessageKind === "success" ? "status-positive" : syncMessageKind === "error" ? "status-error" : ""}`}>
                 {syncMessage}
               </div>
             )}
@@ -293,7 +293,7 @@ export function Settings(
             onClick={handleSyncClick}
             disabled={syncState.isEncrypting}
           >
-            {syncState.isEncrypting ? "Signing..." : prefs.syncAcrossDevices ? "Turn off" : "Turn on"}
+            {syncState.isEncrypting ? "Signing..." : prefs.syncAcrossDevices && syncState.hasSessionKey ? "Turn off" : prefs.syncAcrossDevices ? "Re-enable" : "Turn on"}
           </Button>
         </div>
       </section>
@@ -338,6 +338,16 @@ export function Settings(
           {activeOrg.gateUrl && <div className="muted">Gate: {activeOrg.gateUrl}</div>}
           <div className="muted">Roles: {activeOrg.roles.map((r) => r.label).join(", ") || "none"}</div>
         </div>
+      </section>
+
+      <section className="card">
+        <h2>Sync device security</h2>
+        <p>Revoke all current sync device authorizations if a device is lost or compromised. Each device will need fresh wallet authorization. Saved encrypted data is retained.</p>
+        <Button variant="danger" disabled={syncState.isEncrypting || mode !== "wallet"} onClick={async () => {
+          const result = await revokeAllSyncDevices();
+          setSyncMessage(result.message);
+          setSyncMessageKind(result.ok ? "success" : "error");
+        }}>Revoke all sync devices</Button>
       </section>
 
       <section className="card">

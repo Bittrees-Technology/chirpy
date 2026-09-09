@@ -33,7 +33,9 @@ function normalizeSyncState(env) {
   const kvConfigured =
     (nonEmpty(env.KV_REST_API_URL) && nonEmpty(env.KV_REST_API_TOKEN))
     || (nonEmpty(env.UPSTASH_REDIS_REST_URL) && nonEmpty(env.UPSTASH_REDIS_REST_TOKEN));
-  return { configured: kvConfigured };
+  const service = env.CHIRPY_SYNC_SERVICE_URL || (env.VERCEL_URL ? `https://${env.VERCEL_URL}/api/usersync` : "");
+  const serviceConfigured = /^https:\/\//.test(service);
+  return { configured: kvConfigured && serviceConfigured, kvConfigured, serviceConfigured };
 }
 
 function healthCheck(name, status, summary, extra = {}) {
@@ -211,9 +213,9 @@ export function buildHealthReport(env = process.env) {
   }
 
   if (profile.sync.configured) {
-    checks.push(healthCheck("usersync", "ok", "Cross-device sync storage is configured."));
+    checks.push(healthCheck("usersync", "ok", "Cross-device sync storage and service identity are configured."));
   } else {
-    const summary = "Cross-device sync storage is not configured; /api/usersync writes will return 503.";
+    const summary = "Cross-device sync storage or its HTTPS service identity is not configured; /api/usersync writes will return 503.";
     checks.push(healthCheck("usersync", "degraded", summary));
     if (profile.transport === "xmtp") blockingIssues.push(summary);
     else warnings.push(summary);

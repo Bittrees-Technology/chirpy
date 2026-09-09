@@ -1,44 +1,90 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
-import { resetRateLimits } from "../server-utils.js";
+import { keccak256, stringToHex } from "viem";
+import { syncGrantMessage, syncWriteMessage, syncRevokeDeviceMessage, syncRevokeAllMessage } from "../../packages/core/src/syncAuth";
 const account = privateKeyToAccount(`0x${"3".repeat(64)}`);
-const auth = "Chirpy sync — authorize device writes (v1)\n\nSign to let this device save your encrypted sync blob. Gas-free; proves wallet ownership only.";
-let handler; let record; let storageDown;
+const device = privateKeyToAccount(`0x${"4".repeat(64)}`);
+const service = "https://chirpy.example/api/usersync";
+let handler; let records: Map<string,string>; let storageDown;
 beforeEach(async () => {
-  vi.resetModules(); resetRateLimits(); record = null; storageDown = false;
-  vi.stubEnv("KV_REST_API_URL", "https://kv.example"); vi.stubEnv("KV_REST_API_TOKEN", "test");
+  vi.resetModules(); records = new Map(); storageDown = false;
+  vi.stubEnv("KV_REST_API_URL", "https://kv.example"); vi.stubEnv("KV_REST_API_TOKEN", "test"); vi.stubEnv("CHIRPY_SYNC_SERVICE_URL", service);
   vi.stubGlobal("fetch", vi.fn(async (_url, options) => {
     if (storageDown) return { ok: false, status: 503 };
     const cmd = JSON.parse(options.body); let result;
-    if (cmd[0] === "GET") result = record ? JSON.stringify(record) : null;
+    if (cmd[0] === "MGET") result = cmd.slice(1).map((key) => records.get(key) ?? null);
     else if (cmd[0] === "EVAL") {
-      expect(cmd[1]).toContain("redis.call('SET'");
-      const revision = record?.revision ?? 0;
-      if (revision !== Number(cmd[4])) result = [0, revision];
-      else { record = { ...JSON.parse(cmd[5]), revision: revision + 1 }; result = [1, revision + 1]; }
-    } else throw new Error("Expected atomic EVAL, not separate GET/SET");
+      const count = Number(cmd[2]); const keys = cmd.slice(3, 3 + count); const args = cmd.slice(3 + count);
+      if (count === 3) {
+        expect(cmd[1]).toContain("redis.call('EXISTS', KEYS[3])");
+        const epoch = Number(records.get(keys[1]) ?? 0);
+        const current = JSON.parse(records.get(keys[0]) ?? '{}'); const revision = current.revision ?? 0;
+        if (epoch !== Number(args[2]) || records.has(keys[2])) result = [-1, epoch];
+        else if (revision !== Number(args[0])) result = [0, revision];
+        else { records.set(keys[0], JSON.stringify({ ...JSON.parse(args[1]), revision: revision + 1 })); result = [1, revision + 1]; }
+      } else {
+        const epoch = Number(records.get(keys[0]) ?? 0);
+        if (epoch !== Number(args[0])) result = [0, epoch];
+        else if (count === 1) { records.set(keys[0], String(epoch + 1)); result = [1, epoch + 1]; }
+        else { records.set(keys[1], '1'); result = [1, epoch]; }
+      }
+    } else throw new Error("Expected atomic EVAL or MGET");
     return { ok: true, json: async () => ({ result }) };
   }));
   handler = (await import("../usersync.js")).default;
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
-async function call(body, method = "POST") {
-  const res = { code: 0, body: null as any, setHeader() {}, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
-  await handler({ method, query: { address: account.address }, body: { address: account.address, signature: await account.signMessage({ message: auth }), ...body } }, res); return res;
+async function grant(overrides = {}) {
+  const value = { version: 2 as const, service, address: account.address, device: device.address, epoch: 0, issuedAt: Date.now(), expiresAt: Date.now() + 3_600_000, ...overrides };
+  return { ...value, signature: await account.signMessage({ message: syncGrantMessage(value) }) };
 }
-it("allows only one of two writes based on the same revision", async () => {
-  const writes = await Promise.all([call({ expectedRevision: 0, blob: "first" }), call({ expectedRevision: 0, blob: "second" })]);
-  expect(writes.map((w) => w.code).sort()).toEqual([200, 409]); expect(record.blob).toBe("first");
-  expect((await call({ expectedRevision: 1, blob: "merged" })).code).toBe(200);
-  expect(record).toMatchObject({ blob: "merged", revision: 2 });
+async function write(blob = "encrypted", expectedRevision = 0, authorization?: any) {
+  authorization ??= await grant();
+  return { action: "write", address: account.address, authorization, blob, expectedRevision, signature: await device.signMessage({ message: syncWriteMessage(authorization, expectedRevision, keccak256(stringToHex(blob))) }) };
+}
+async function call(body = {}, method = "POST") {
+  const res = { code: 0, body: null as any, setHeader() {}, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
+  await handler({ method, headers: { "content-type": "application/json" }, query: { address: account.address }, body }, res); return res;
+}
+it("allows only one of two writes at a revision and rejects captured write replay", async () => {
+  const first = await write("first"); const second = await write("second");
+  const results = await Promise.all([call(first), call(second)]);
+  expect(results.map((r) => r.code).sort()).toEqual([200,409]);
+  expect((await call(first)).code).toBe(409);
+  expect((await call(await write("merged", 1))).code).toBe(200);
 });
-it("rejects old clients and ignores user-controlled timestamps", async () => {
-  expect((await call({ blob: "legacy", updatedAt: 999999999999999 })).code).toBe(409);
-  expect((await call({ blob: "new", expectedRevision: 0, updatedAt: 999999999999999 })).code).toBe(200);
-  expect(record.updatedAt).toBeLessThan(999999999999999);
+it.each(["blob", "expectedRevision", "signature"])("rejects tampering with %s", async (field) => {
+  const request = await write();
+  request[field] = field === "blob" ? "modified" : field === "expectedRevision" ? 1 : await account.signMessage({ message: "wrong key" });
+  expect((await call(request)).code).toBe(401);
+  expect(records.size).toBe(0);
 });
-it("reports a storage outage instead of an empty record", async () => {
-  storageDown = true; expect((await call({}, "GET")).code).toBe(503);
-  expect((await call({ blob: "new", expectedRevision: 0 })).code).toBe(503);
-  expect(record).toBeNull();
+it.each([{ service: "https://other.example/api/usersync" }, { issuedAt: Date.now() - 10_000, expiresAt: Date.now() - 1 }, { expiresAt: Date.now() + 48 * 3_600_000 }, { address: device.address }])("rejects wrong-service, expired, overlong and wrong-wallet grants %#", async (overrides) => {
+  expect((await call(await write("blob", 0, await grant(overrides)))).code).toBe(401);
+  expect(records.size).toBe(0);
+});
+it("revokes one device grant and atomically rejects its later write", async () => {
+  const authorization = await grant();
+  const revoke = { action: "revoke-device", address: account.address, authorization, signature: await device.signMessage({ message: syncRevokeDeviceMessage(authorization) }) };
+  expect((await call(revoke)).code).toBe(200);
+  expect((await call(await write("denied", 0, authorization))).code).toBe(403);
+});
+it("revoke-all invalidates prior grants and cannot be replayed against a fresh epoch", async () => {
+  const authorization = await grant(); const expiresAt = Date.now() + 60_000;
+  const revoke = { action: "revoke-all", address: account.address, epoch: 0, expiresAt, signature: await account.signMessage({ message: syncRevokeAllMessage(service, account.address, 0, expiresAt) }) };
+  expect((await call(revoke)).code).toBe(200);
+  expect((await call(await write("denied", 0, authorization))).code).toBe(403);
+  expect((await call(revoke)).code).toBe(409);
+  expect((await call(await write("new", 0, await grant({ epoch: 1 })))).code).toBe(200);
+});
+it("rejects v1 signatures and uses server timestamps", async () => {
+  expect((await call({ address: account.address, blob: "old", signature: await account.signMessage({ message: "Chirpy sync — authorize device writes (v1)" }) })).code).toBe(401);
+  expect((await call({ ...await write(), updatedAt: 99999999999999 })).code).toBe(200);
+  expect((await call({}, "GET")).body.updatedAt).toBeLessThan(99999999999999);
+});
+it("reports storage outages without treating them as empty records", async () => {
+  storageDown = true;
+  expect((await call({}, "GET")).code).toBe(503);
+  expect((await call(await write())).code).toBe(503);
+  expect(records.size).toBe(0);
 });

@@ -54,6 +54,7 @@ describe("buildHealthReport", () => {
       CHIRPY_RELEASE_CHANNEL: "staging",
       KV_REST_API_TOKEN: "token",
       KV_REST_API_URL: "https://kv.example",
+      CHIRPY_SYNC_SERVICE_URL: "https://chirpy.example/api/usersync",
       VERCEL_ENV: "production",
       VITE_GATEKEEPER_ADDRESS: "0x0000000000000000000000000000000000000001",
       VITE_MAINNET_RPC_URL: "https://rpc.example",
