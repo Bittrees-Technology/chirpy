@@ -1,5 +1,5 @@
-import { buildHealthReport } from "./ops-utils.js";
-import { checkRateLimit, logEvent } from "./server-utils.js";
+import { buildHealthReport } from "../server/ops-utils.js";
+import { checkRateLimit, logEvent } from "../server/server-utils.js";
 
 export default async function handler(req, res) {
   const route = "/api/health";

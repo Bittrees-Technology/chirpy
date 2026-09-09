@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
@@ -15,11 +19,24 @@
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
-      "@app/core": ["packages/core/src/index.ts"],
-      "@app/core/*": ["packages/core/src/*"],
-      "@app/transport": ["packages/transport/src/index.ts"],
-      "@app/transport/*": ["packages/transport/src/*"]
+      "@app/core": [
+        "packages/core/src/index.ts"
+      ],
+      "@app/core/*": [
+        "packages/core/src/*"
+      ],
+      "@app/transport": [
+        "packages/transport/src/index.ts"
+      ],
+      "@app/transport/*": [
+        "packages/transport/src/*"
+      ]
     }
   },
-  "include": ["api/**/*.js", "packages/core/src/**/*.ts", "packages/transport/src/**/*.ts"]
+  "include": [
+    "api/**/*.js",
+    "packages/core/src/**/*.ts",
+    "packages/transport/src/**/*.ts",
+    "server/**/*.js"
+  ]
 }

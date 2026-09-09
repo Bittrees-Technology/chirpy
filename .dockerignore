@@ -1,0 +1,14 @@
+**/node_modules
+**/target
+**/dist
+**/build
+**/.env*
+.git
+.vercel
+**/test
+**/tests
+test-results
+playwright-report
+uploads
+selfhost/gate.env
+apps/web/src-tauri/.tauri

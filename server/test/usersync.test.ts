@@ -31,7 +31,7 @@ beforeEach(async () => {
     } else throw new Error("Expected atomic EVAL or MGET");
     return { ok: true, json: async () => ({ result }) };
   }));
-  handler = (await import("../usersync.js")).default;
+  handler = (await import("../../api/usersync.js")).default;
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 async function grant(overrides = {}) {

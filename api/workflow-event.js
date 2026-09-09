@@ -1,5 +1,5 @@
-import { normalizeWorkflowEvent } from "./ops-utils.js";
-import { checkRateLimit, logEvent } from "./server-utils.js";
+import { normalizeWorkflowEvent } from "../server/ops-utils.js";
+import { checkRateLimit, logEvent } from "../server/server-utils.js";
 
 export default async function handler(req, res) {
   const route = "/api/workflow-event";

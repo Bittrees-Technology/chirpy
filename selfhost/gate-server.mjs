@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
-import { buildGateHealthReport } from "../api/ops-utils.js";
-import roomJoinHandler, { loadRooms } from "../api/room-join.js";
-import { checkRateLimit, logEvent } from "../api/server-utils.js";
+import { buildGateHealthReport } from "../server/ops-utils.js";
+import roomJoinHandler, { loadRooms } from "../server/room-join.js";
+import { checkRateLimit, logEvent } from "../server/server-utils.js";
 
 const MAX_BODY_BYTES = 32_768;
 const REQUEST_TIMEOUT_MS = 10_000;

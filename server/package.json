@@ -1,8 +1,9 @@
 {
+  "name": "@app/server",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@app/core": "workspace:*",
+    "@xmtp/node-sdk": "^6.0.0",
     "viem": "^2.53.1"
   }
 }

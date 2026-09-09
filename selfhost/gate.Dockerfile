@@ -15,16 +15,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
  && rm -rf /var/lib/apt/lists/*
 
 # Runtime deps installed at /app so bare imports (@xmtp/node-sdk, viem) resolve for both
-# api/room-join.js and packages/core/src/*. Copied first for layer caching.
+# server/room-join.js and packages/core/src/*. Copied first for layer caching.
 COPY selfhost/gate.package.json ./package.json
 RUN npm install --omit=dev --no-audit --no-fund
 
 # Only the source the gate actually needs: the shared room-join handler, the core gate
 # evaluator (TS), and the HTTP server.
 COPY packages/core ./packages/core
-COPY api/room-join.js ./api/room-join.js
-COPY api/server-utils.js ./api/server-utils.js
-COPY api/ops-utils.js ./api/ops-utils.js
+COPY server/room-join.js ./server/room-join.js
+COPY server/server-utils.js ./server/server-utils.js
+COPY server/ops-utils.js ./server/ops-utils.js
 COPY selfhost/gate-server.mjs ./selfhost/gate-server.mjs
 
 ENV GATE_PORT=8788

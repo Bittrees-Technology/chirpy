@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildGateHealthReport, buildHealthReport, normalizeWorkflowEvent } from "../ops-utils.js";
-import roomJoinHandler from "../room-join.js";
+import { buildGateHealthReport, buildHealthReport, normalizeWorkflowEvent } from "../../server/ops-utils.js";
+import roomJoinHandler from "../../server/room-join.js";
 
 function createRes() {
   return {

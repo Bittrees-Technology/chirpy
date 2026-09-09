@@ -9,7 +9,7 @@
 #   fly deploy --config selfhost/fly.toml --dockerfile selfhost/gate.Dockerfile
 #
 # `fly deploy` uses the current directory (repo root) as the build context, so the
-# Dockerfile's `COPY packages/core` / `COPY api/room-join.js` resolve correctly.
+# Dockerfile's `COPY packages/core` / `COPY server/room-join.js` resolve correctly.
 
 app = "chirpy-gate"          # change to your unique Fly app name
 primary_region = "iad"

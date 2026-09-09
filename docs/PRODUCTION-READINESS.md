@@ -10,7 +10,7 @@ We implement and merge independent changes in increasing complexity, while prese
 | 4 | Wallet-specific preferences and revocable sync authorization | Wallet isolation merged in PR #8; expiring device authorization and atomic revocation merged in PR #9 |
 | 5 | Pagination, bounded refresh, long-history performance | Pending |
 | 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Pending |
-| 7 | Dependency remediation, live probes, backup/restore and release acceptance | Pending |
+| 7 | Dependency remediation, live probes, backup/restore and release acceptance | JavaScript dependency patches and required audit merged in PR #10; hosted sync probe passed; backup/restore and full release acceptance pending |
 | 8 | Production gate deployment and multi-wallet acceptance | Needs hosting/bot identity and reviewed room registry |
 | 9 | Public support/security/privacy/terms material | Support/security pages merged in PR #5 and GitHub private reporting enabled; privacy/terms still need actual operator/retention decisions |
 | 10 | Native release/signing, iOS real-device and TestFlight acceptance | Needs release credentials and device/store access |
@@ -70,3 +70,7 @@ Hosted preview validation exercised signed writes, rejected replay and tampering
 Patch updates remove all 25 advisories reported by the previous JavaScript dependency audit (eight high and 17 moderate). The resolved graph now reports no known vulnerabilities. The required CI audit fails on moderate or higher findings. Range-scoped overrides cover vulnerable transitive versions while preserving their major versions; Vitest is pinned to 4.1.11. This is a point-in-time dependency check, not a security certification. Native dependency and release checks remain separate.
 
 Validation: both type checks, 88 tests including real Redis race/expiry checks, rollout proof and the production web build pass. Seven browser tests and the two-wallet XMTP dev-network round trip also pass.
+
+## Deployment boundary
+
+Only intended request handlers live in `api/`. Shared server code and API tests are outside the route directory. Vercel and Docker build exclusions omit tests, native build artifacts and local environment files. The web room-join endpoint returns a deliberate 503 without importing native XMTP bindings or TypeScript gate code. Each organization must configure its external gate URL. Web health never claims embedded-gate readiness; the durable gate process has its own health report.

@@ -30,7 +30,7 @@ describe.skipIf(!container)("real Redis sync transactions", () => {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     vi.stubEnv("KV_REST_API_URL", `http://127.0.0.1:${server.address().port}`);
     vi.stubEnv("KV_REST_API_TOKEN", "synthetic-test"); vi.stubEnv("CHIRPY_SYNC_SERVICE_URL", service);
-    vi.resetModules(); handler = (await import("../usersync.js")).default;
+    vi.resetModules(); handler = (await import("../../api/usersync.js")).default;
   });
   afterAll(async () => {
     if (ownedKeys.size) await redis(["DEL", ...ownedKeys]);

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
-import { createJoinHandler } from "../room-join.js";
-import { resetRateLimits } from "../server-utils.js";
+import { createJoinHandler } from "../../server/room-join.js";
+import { resetRateLimits } from "../../server/server-utils.js";
 vi.mock("@xmtp/node-sdk", () => ({ IdentifierKind: { Ethereum: 0 } }));
 const alice = privateKeyToAccount(`0x${"1".repeat(64)}`);
 const mallory = privateKeyToAccount(`0x${"2".repeat(64)}`);
