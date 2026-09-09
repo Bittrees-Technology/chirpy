@@ -1,5 +1,7 @@
 # Architecture
 
+Current status: this document contains the original design/model. For implemented production boundaries and migration requirements, use [PRODUCTION.md](PRODUCTION.md), [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) and [INTEGRATION.md](INTEGRATION.md). Proposed shared packages, role/power resolvers and cross-protocol history migration are not shipped. Imported organization configuration does not authorize admission; the external gate registry does.
+
 ## One idea: org-specifics are data, not code
 
 Every organization difference — branding, chain, token-gating vocabulary, roles, rooms,

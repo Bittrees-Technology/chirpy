@@ -1,5 +1,7 @@
 # Plan: Generalized Standalone Chat App (`github.com/Bittrees-Technology/chat`)
 
+Current status: this document contains the original design/model. For implemented production boundaries and migration requirements, use [PRODUCTION.md](PRODUCTION.md), [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) and [INTEGRATION.md](INTEGRATION.md). Proposed shared packages, role/power resolvers and cross-protocol history migration are not shipped. Imported organization configuration does not authorize admission; the external gate registry does.
+
 **Author:** lead · **Date:** 2026-06-22 · **Task:** `plan-chat-app`
 **Repo:** `github.com/Bittrees-Technology/chat` (currently empty)
 **Sources:** `Bittrees-Inc` (gov.bittrees.org) · `Bittrees-Research` (research.bittrees.org)
