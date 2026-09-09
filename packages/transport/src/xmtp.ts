@@ -677,7 +677,7 @@ export class XmtpTransport implements Transport {
       await client.conversations.syncAll();
       const list = await client.conversations.list();
       this.conversations = new Map(list.map((conversation) => [conversation.id, conversation]));
-      this.roomMeta.clear();
+      // Keep known restrictions available while asynchronous mapping is in flight.
       const mapped = await mapConversations(list, (conversation) => this.mapConversation(conversation));
       const scoped = mapped.filter((c) => c.kind === "dm" || c.namespace === this.org.namespace ||
         (!c.namespace && this.org.namespace === "personal"));
@@ -687,7 +687,15 @@ export class XmtpTransport implements Transport {
       for (const room of directory) {
         const existing = scoped.find((c) => c.id === room.id);
         if (!existing) scoped.push(room);
-        this.roomMeta.set(room.id, { namespace: room.namespace, gate: room.gate!, policy: room.policy! });
+        else existing.gate = room.gate;
+        // The directory supplies admission rules, not the joined group's current
+        // posting policy. Preserve a pause and other group policy overrides.
+        this.roomMeta.set(room.id, { ...this.roomMeta.get(room.id), namespace: room.namespace,
+          gate: room.gate!, policy: existing?.policy ?? room.policy! });
+      }
+      const directoryIds = new Set(directory.map(room => room.id));
+      for (const id of this.roomMeta.keys()) {
+        if (!this.conversations.has(id) && !directoryIds.has(id)) this.roomMeta.delete(id);
       }
       return scoped.sort((a, b) => (b.lastMessage?.sentAt ?? 0) - (a.lastMessage?.sentAt ?? 0));
     } catch (error) {
