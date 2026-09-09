@@ -204,3 +204,9 @@ Validation: 230 tests, API type checking and rollout proof pass, including malfo
 The Tauri CLI is pinned to 2.11.4 in the workspace lockfile. Local commands and the release action use that installed binary, and Apple validation checks its availability after a frozen install. Native documentation distinguishes Rust compilation from Xcode packaging and device acceptance.
 
 The existing ignored updater private key signed a synthetic file whose Ed25519 signature verified against the configured public key. The matching private key is configured in GitHub Actions; the synthetic file was removed and no key material was committed. This verifies key compatibility, not a packaged release or updater installation.
+
+## Local edits during asynchronous sync
+
+Sync setup and remote merges now reject stale results when a newer local preference edit occurs during wallet authorization, remote reads, encryption, or write acknowledgments. Receipt opt-outs are preserved locally and setup reports that a retry is needed. Local edit timestamps advance monotonically even when the clock repeats or moves backwards.
+
+Regression tests delay authorization, a remote read and a write acknowledgment while changing both receipt preferences. All three fail against the previous implementation and pass with the guard. This addresses a same-device race; extended real-device offline/conflict acceptance and legacy deletion semantics remain outstanding.
