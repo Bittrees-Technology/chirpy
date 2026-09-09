@@ -1,16 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { serializeOrg, type RoomRule } from "@app/core";
+import { serializeOrg } from "@app/core";
 import { useChat, useIdentity, useOrgs, useSettingsPrefs } from "../state";
 import { Avatar, Button, Field, Modal, Toggle, shortAddr } from "../ui";
 import { download } from "./dialogs";
 import { UpdateCard } from "./UpdateCard";
+import { translateStatus } from "../i18n/statusMessages";
 import { useI18n, LANGS, type LangCode } from "../i18n";
 import { isAddress, isEnsName, resolveEns, type EnsRecord } from "../ens";
 
-function gateSummary(rules: RoomRule[]): string {
-  if (!rules.length) return "open";
-  return `${rules.length} rule${rules.length === 1 ? "" : "s"}`;
-}
 
 export function Settings(
   { onCreateOrg, onImportOrg }: { onCreateOrg: () => void; onImportOrg: () => void },
@@ -23,6 +20,7 @@ export function Settings(
   const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices } = useSettingsPrefs();
   const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging } = useChat();
   const { lang, setLang, t } = useI18n();
+  const gateSummary = (rules: unknown[]) => rules.length === 0 ? t("settings.open") : rules.length === 1 ? t("settings.oneRule") : t("settings.rules", undefined, { count: rules.length });
   const [profileEns, setProfileEns] = useState<EnsRecord | null>(null);
   const [resolverInput, setResolverInput] = useState("");
   const [resolverState, setResolverState] = useState<"idle" | "loading" | "success" | "neutral" | "error">("idle");
@@ -70,38 +68,38 @@ export function Settings(
     const timer = window.setTimeout(() => {
       if (!isEnsName(query) && !isAddress(query)) {
         setResolverState("neutral");
-        setResolverText("Enter a .eth name or a 0x address.");
+        setResolverText(t("settings.resolverInvalid"));
         return;
       }
 
       setResolverState("loading");
-      setResolverText("Checking ENS...");
+      setResolverText(t("settings.resolverLoading"));
       resolveEns(query)
         .then((record) => {
           if (cancelled) return;
           if (isEnsName(query)) {
             if (record.address) {
               setResolverState("success");
-              setResolverText(`${record.displayName ?? record.name ?? query} resolves to ${record.address}.`);
+              setResolverText(t("settings.resolved", undefined, { name: record.displayName ?? record.name ?? query, address: record.address }));
             } else {
               setResolverState("neutral");
-              setResolverText(`${query} is available or does not currently resolve.`);
+              setResolverText(t("settings.notResolved", undefined, { name: query }));
             }
             return;
           }
 
           if (record.name) {
             setResolverState("success");
-            setResolverText(`${shortAddr(query)} reverse-resolves to ${record.name}.`);
+            setResolverText(t("settings.reverseResolved", undefined, { address: shortAddr(query), name: record.name }));
           } else {
             setResolverState("neutral");
-            setResolverText("No primary ENS name found for this address.");
+            setResolverText(t("settings.resolverNoName"));
           }
         })
         .catch(() => {
           if (cancelled) return;
           setResolverState("error");
-          setResolverText("ENS lookup unavailable. Try again later.");
+          setResolverText(t("settings.resolverError"));
         });
     }, 450);
 
@@ -109,7 +107,7 @@ export function Settings(
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [resolverInput]);
+  }, [resolverInput, t]);
 
   const activeProfile = mode === "wallet" ? ensProfile ?? profileEns : profileEns;
   const ensName = activeProfile?.name ?? (isEnsName(identity.handle ?? "") ? identity.handle : undefined);
@@ -118,12 +116,12 @@ export function Settings(
   const ensManagerTarget = ensName ?? identity.address;
   const syncDescription = prefs.syncAcrossDevices
     ? syncState.hasSessionKey
-      ? "On for this browser session, for up to 24 hours. Encrypted preferences are stored by the sync service."
-      : "Paused after restart. Re-enable with your wallet to resume encrypted sync."
-    : "Off. Preferences stay on this device. Enable with two gas-free signatures; the device key stays in memory.";
+      ? t("settings.syncActive")
+      : t("settings.syncPaused")
+    : t("settings.syncOff");
   const transportText = transportId === "mock"
-    ? "Mock mode: local chats on this device."
-    : "XMTP mode: encrypted DMs and rooms.";
+    ? t("settings.mockMode")
+    : t("settings.xmtpMode");
   const handleSyncClick = async () => {
     setSyncMessage("");
     setSyncMessageKind("neutral");
@@ -140,14 +138,14 @@ export function Settings(
 
   return (
     <div className="settings">
-      <h1>Settings</h1>
+      <h1>{t("nav.settings")}</h1>
 
       <section className="card">
         <div className="profile-row">
           <div className="profile-main">
             <Avatar id={identity.address} label={profileName} src={profileAvatar} size={64} />
             <div>
-              <h2>Profile</h2>
+              <h2>{t("settings.profile")}</h2>
               <div className="profile-name">{profileName}</div>
               <div className="muted">{shortAddr(identity.address)}</div>
             </div>
@@ -156,74 +154,74 @@ export function Settings(
             variant="ghost"
             onClick={() => window.open(`https://app.ens.domains/${encodeURIComponent(ensManagerTarget)}`, "_blank", "noopener,noreferrer")}
           >
-            Change picture ↗
+            {t("settings.changePicture")}
           </Button>
         </div>
         {profileAvatar && ensName ? (
-          <p className="muted status-line status-positive">✓ Picture set on ENS — {ensName}. Shown across every app.</p>
+          <p className="muted status-line status-positive">{t("settings.pictureSet", undefined, { name: ensName })}</p>
         ) : (
-          <p className="muted status-line">Set your profile picture on ENS to show the same avatar across apps.</p>
+          <p className="muted status-line">{t("settings.pictureHelp")}</p>
         )}
       </section>
 
       <section className="card">
-        <h2>Account</h2>
+        <h2>{t("settings.account")}</h2>
         <p className="muted">
           {mode === "wallet"
-            ? "Connected wallet identity. ENS profile data appears when available."
+            ? t("settings.walletIdentity")
             : hasInjectedWallet
-              ? "Connect a wallet to use your address and ENS profile."
+              ? t("settings.connectIdentity")
               : walletConnectAvailable
-                ? "Connect with WalletConnect to use your address and ENS profile."
-                : "Local identity mode is active."}
+                ? t("settings.walletConnectIdentity")
+                : t("settings.localIdentity")}
         </p>
         <p className="muted">
-          Mode: <span className="pill">{transportId}</span> {transportText}
+          {t("settings.mode")} <span className="pill">{transportId}</span> {transportText}
         </p>
         <div className="grid2">
-          <Field label="Display name"><input className="input" value={identity.handle ?? ""} onChange={(e) => setHandle(e.target.value)} /></Field>
-          <Field label="Address"><input className="input" value={identity.address} readOnly /></Field>
+          <Field label={t("settings.displayName")}><input className="input" value={identity.handle ?? ""} onChange={(e) => setHandle(e.target.value)} /></Field>
+          <Field label={t("settings.address")}><input className="input" value={identity.address} readOnly /></Field>
           <Field label={t("settings.language")}>
             <select className="input" value={lang} onChange={(e) => setLang(e.target.value as LangCode)}>
               {Object.entries(LANGS).map(([code, l]) => <option key={code} value={code}>{l.label}</option>)}
             </select>
           </Field>
         </div>
-        {walletError && <div className="muted status-line status-error">{walletError}</div>}
+        {walletError && <div className="muted status-line status-error">{translateStatus(t, walletError)}</div>}
         <div className="row-end">
           {mode === "wallet" ? (
-            <Button variant="ghost" onClick={() => { void disconnectWallet(); }}>Disconnect</Button>
+            <Button variant="ghost" onClick={() => { void disconnectWallet(); }}>{t("settings.disconnect")}</Button>
           ) : (
             <>
               {walletConnectAvailable && (
                 <Button variant={hasInjectedWallet ? "ghost" : "primary"} onClick={connectWalletConnect} disabled={isConnecting}>
-                  {isConnecting ? "Connecting..." : "WalletConnect"}
+                  {isConnecting ? t("settings.connecting") : "WalletConnect"}
                 </Button>
               )}
               {hasInjectedWallet && (
                 <Button variant="primary" onClick={connectWallet} disabled={isConnecting}>
-                  {isConnecting ? "Connecting..." : "Connect wallet"}
+                  {isConnecting ? t("settings.connecting") : t("settings.connectWallet")}
                 </Button>
               )}
               {!hasInjectedWallet && !walletConnectAvailable && (
-                <Button variant="ghost" onClick={reset}>Regenerate identity</Button>
+                <Button variant="ghost" onClick={reset}>{t("settings.regenerate")}</Button>
               )}
             </>
           )}
         </div>
         <div className="pref-row account-messaging">
           <div>
-            <div className="pref-title">Messaging</div>
+            <div className="pref-title">{t("settings.messaging")}</div>
             {transportId !== "xmtp" ? (
-              <div className="muted">Messaging runs locally in mock mode.</div>
+              <div className="muted">{t("settings.mockMessaging")}</div>
             ) : mode !== "wallet" ? (
-              <div className="muted">Connect a wallet above to enable encrypted messaging.</div>
+              <div className="muted">{t("settings.connectMessaging")}</div>
             ) : transportStatus === "ready" ? (
-              <div className="muted status-positive">✓ Messaging enabled on this device.</div>
+              <div className="muted status-positive">{t("settings.messagingReady")}</div>
             ) : (
               <>
-                <div className="muted">One-time signature to create your encrypted inbox. No gas, no transaction.</div>
-                {transportError && <div className="muted sync-status status-error">{transportError}</div>}
+                <div className="muted">{t("settings.messagingSignature")}</div>
+                {transportError && <div className="muted sync-status status-error">{translateStatus(t, transportError)}</div>}
               </>
             )}
           </div>
@@ -234,7 +232,7 @@ export function Settings(
                 onClick={() => setShowRevokeConfirm(true)}
                 disabled={transportStatus === "enabling"}
               >
-                {transportStatus === "enabling" ? "Revoking…" : "Revoke old sessions & enable"}
+                {transportStatus === "enabling" ? t("settings.revoking") : t("settings.revokeEnable")}
               </Button>
             ) : (
               <Button
@@ -242,7 +240,7 @@ export function Settings(
                 onClick={() => { void enableMessaging(); }}
                 disabled={transportStatus === "enabling"}
               >
-                {transportStatus === "enabling" ? "Enabling..." : "Enable messaging"}
+                {transportStatus === "enabling" ? t("settings.enabling") : t("settings.enableMessaging")}
               </Button>
             )
           )}
@@ -250,15 +248,15 @@ export function Settings(
       </section>
 
       <section className="card">
-        <h2>ENS resolver</h2>
+        <h2>{t("settings.resolver")}</h2>
         <Field
-          label="Name or address"
-          hint="Type a name to check availability live, or an address to reverse-resolve."
+          label={t("settings.nameOrAddress")}
+          hint={t("settings.resolverHint")}
         >
           <input
             className="input"
             value={resolverInput}
-            placeholder="name.eth or 0x address"
+            placeholder={t("settings.resolverPlaceholder")}
             onChange={(e) => setResolverInput(e.target.value)}
           />
         </Field>
@@ -270,21 +268,21 @@ export function Settings(
       <section className="card">
         <div className="pref-row">
           <div>
-            <div className="pref-title">Read receipts (default)</div>
+            <div className="pref-title">{t("settings.receiptTitle")}</div>
             <div className="muted">
-              When on, Chirpy sends read receipts in direct chats. Turn off to stop sending receipts from this device. Previously sent receipts cannot be withdrawn.
+              {t("settings.receiptHelp")}
             </div>
           </div>
-          <Toggle checked={prefs.readReceiptsDefault} onChange={setReadReceiptsDefault} label="Read receipts default" />
+          <Toggle checked={prefs.readReceiptsDefault} onChange={setReadReceiptsDefault} label={t("settings.receiptLabel")} />
         </div>
         <div className="pref-row">
           <div>
-            <div className="pref-title">Sync across devices</div>
+            <div className="pref-title">{t("settings.syncTitle")}</div>
             <div className="muted">{syncDescription}</div>
-            {syncState.error && <div role="alert">{syncState.error}</div>}
+            {syncState.error && <div role="alert">{translateStatus(t, syncState.error)}</div>}
             {syncMessage && (
               <div role="status" className={`muted sync-status ${syncMessageKind === "success" ? "status-positive" : syncMessageKind === "error" ? "status-error" : ""}`}>
-                {syncMessage}
+                {translateStatus(t, syncMessage)}
               </div>
             )}
           </div>
@@ -293,7 +291,7 @@ export function Settings(
             onClick={handleSyncClick}
             disabled={syncState.isEncrypting}
           >
-            {syncState.isEncrypting ? "Signing..." : prefs.syncAcrossDevices && syncState.hasSessionKey ? "Turn off" : prefs.syncAcrossDevices ? "Re-enable" : "Turn on"}
+            {syncState.isEncrypting ? t("settings.signing") : prefs.syncAcrossDevices && syncState.hasSessionKey ? t("settings.turnOff") : prefs.syncAcrossDevices ? t("settings.reenable") : t("settings.turnOn")}
           </Button>
         </div>
       </section>
@@ -302,28 +300,28 @@ export function Settings(
 
       <section className="card">
         <div className="row-between">
-          <h2>Organizations</h2>
+          <h2>{t("settings.organizations")}</h2>
           <div className="gate-add">
-            <Button variant="ghost" onClick={onImportOrg}>Import</Button>
-            <Button variant="primary" onClick={onCreateOrg}>Create</Button>
+            <Button variant="ghost" onClick={onImportOrg}>{t("settings.import")}</Button>
+            <Button variant="primary" onClick={onCreateOrg}>{t("settings.create")}</Button>
           </div>
         </div>
-        <p className="muted">Import an org config or create one. Chats stay inside the active org.</p>
+        <p className="muted">{t("settings.orgHelp")}</p>
         <div className="org-table">
           {orgs.map((o) => (
-            <div key={o.id} className={`org-row ${o.id === activeOrgId ? "active" : ""}`}>
+            <div key={o.id} className={`org-row ${o.id === activeOrgId ? t("settings.active") : ""}`}>
               <Avatar id={o.id} label={o.branding.name} size={34} />
               <div className="org-row-main">
-                <div className="org-row-name">{o.branding.name} {o.id === activeOrgId && <span className="pill">active</span>}</div>
+                <div className="org-row-name">{o.branding.name} {o.id === activeOrgId && <span className="pill">{t("settings.active")}</span>}</div>
                 <div className="org-row-meta">
-                  ns: {o.namespace} · chain {o.chain.chainId} · entry: {gateSummary(o.entryGate)} · rooms: {o.defaultRooms.length}
-                  {o.gating.powerTier && ` · ${o.gating.powerTier.label} tiers`}
+                  {t("settings.orgMeta", undefined, { namespace: o.namespace, chain: o.chain.chainId, entry: gateSummary(o.entryGate), rooms: o.defaultRooms.length })}
+                  {o.gating.powerTier && t("settings.tiers", undefined, { label: o.gating.powerTier.label })}
                 </div>
               </div>
               <div className="org-row-actions">
-                {o.id !== activeOrgId && <Button variant="ghost" onClick={() => setActiveOrg(o.id)}>Switch</Button>}
-                <Button variant="ghost" onClick={() => download(`${o.branding.slug}.org.json`, serializeOrg(o))}>Export</Button>
-                {o.id !== "org_personal" && <Button variant="danger" onClick={() => removeOrg(o.id)}>Remove</Button>}
+                {o.id !== activeOrgId && <Button variant="ghost" onClick={() => setActiveOrg(o.id)}>{t("settings.switch")}</Button>}
+                <Button variant="ghost" onClick={() => download(`${o.branding.slug}.org.json`, serializeOrg(o))}>{t("settings.export")}</Button>
+                {o.id !== "org_personal" && <Button variant="danger" onClick={() => removeOrg(o.id)}>{t("settings.remove")}</Button>}
               </div>
             </div>
           ))}
@@ -331,23 +329,23 @@ export function Settings(
       </section>
 
       <section className="card">
-        <h2>Active organization</h2>
+        <h2>{t("settings.activeOrg")}</h2>
         <div className="org-detail">
           <div><strong>{activeOrg.branding.name}</strong> <span className="muted">({shortAddr(activeOrg.id)})</span></div>
-          <div className="muted">Accent {activeOrg.branding.accent} · namespace {activeOrg.namespace}</div>
-          {activeOrg.gateUrl && <div className="muted">Gate: {activeOrg.gateUrl}</div>}
-          <div className="muted">Roles: {activeOrg.roles.map((r) => r.label).join(", ") || "none"}</div>
+          <div className="muted">{t("settings.orgDetails", undefined, { accent: activeOrg.branding.accent ?? "", namespace: activeOrg.namespace })}</div>
+          {activeOrg.gateUrl && <div className="muted">{t("settings.gate", undefined, { url: activeOrg.gateUrl })}</div>}
+          <div className="muted">{t("settings.roles", undefined, { roles: activeOrg.roles.map((r) => r.label).join(", ") || t("settings.none") })}</div>
         </div>
       </section>
 
       <section className="card">
-        <h2>Sync device security</h2>
-        <p>Revoke all current sync device authorizations if a device is lost or compromised. Each device will need fresh wallet authorization. Saved encrypted data is retained.</p>
+        <h2>{t("settings.syncSecurity")}</h2>
+        <p>{t("settings.revokeHelp")}</p>
         <Button variant="danger" disabled={syncState.isEncrypting || mode !== "wallet"} onClick={async () => {
           const result = await revokeAllSyncDevices();
           setSyncMessage(result.message);
           setSyncMessageKind(result.ok ? "success" : "error");
-        }}>Revoke all sync devices</Button>
+        }}>{t("settings.revokeAll")}</Button>
       </section>
 
       <section className="card">
@@ -356,28 +354,25 @@ export function Settings(
       </section>
 
       <p className="muted settings-footer">
-        Direct messages use XMTP when enabled. Your profile picture comes from ENS. Preferences live on this device unless sync is on.
+        {t("settings.footer")}
       </p>
 
       {showRevokeConfirm && (
-        <Modal title="Revoke old sessions?" onClose={() => setShowRevokeConfirm(false)}>
+        <Modal title={t("settings.revokeTitle")} onClose={() => setShowRevokeConfirm(false)}>
           <p className="muted">
-            Your messaging inbox is at XMTP's limit of 10 devices/sessions. To enable messaging on
-            {" "}<strong>this</strong> device, Chirpy will revoke the existing installations on your inbox.
+            {t("settings.revokeLimit")}
           </p>
           <p className="muted">
-            This signs you out of Chirpy messaging on <strong>every other device and browser</strong> you've
-            enabled. Each will need to re-enable messaging (one signature) to reconnect. Your conversations and
-            history are not deleted.
+            {t("settings.revokeEffect")}
           </p>
-          <p className="muted">You'll be asked for one wallet signature to authorize the revoke.</p>
+          <p className="muted">{t("settings.revokeSignature")}</p>
           <div className="modal-actions">
-            <Button variant="ghost" onClick={() => setShowRevokeConfirm(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setShowRevokeConfirm(false)}>{t("settings.cancel")}</Button>
             <Button
               variant="danger"
               onClick={() => { setShowRevokeConfirm(false); void enableMessaging({ revokeStale: true }); }}
             >
-              Revoke other devices & enable here
+              {t("settings.revokeHere")}
             </Button>
           </div>
         </Modal>

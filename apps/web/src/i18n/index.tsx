@@ -18,7 +18,7 @@ function isLanguage(value: unknown): value is LangCode {
 
 const KEY = "chat:lang:v1";
 
-interface I18nCtx { lang: LangCode; setLang: (l: LangCode) => void; t: (key: string, fallback?: string) => string; }
+interface I18nCtx { lang: LangCode; setLang: (l: LangCode) => void; t: (key: string, fallback?: string, values?: Record<string, string | number>) => string; }
 const I18nContext = createContext<I18nCtx | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
@@ -34,8 +34,12 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem(KEY, lang); } catch { /* */ }
   }, [lang]);
 
-  const t = useCallback((key: string, fallback?: string) => {
-    return LANGS[lang]?.dict[key] ?? LANGS.en.dict[key] ?? fallback ?? key;
+  const t = useCallback((key: string, fallback?: string, values?: Record<string, string | number>) => {
+    const dictionary = LANGS[lang].dict;
+    const template = (Object.hasOwn(dictionary, key) ? dictionary[key] : undefined)
+      ?? (Object.hasOwn(LANGS.en.dict, key) ? LANGS.en.dict[key] : undefined) ?? fallback ?? key;
+    return template.replace(/\{([a-zA-Z][a-zA-Z0-9]*)\}/g, (placeholder, name) =>
+      values && Object.hasOwn(values, name) ? String(values[name]) : placeholder);
   }, [lang]);
 
   const value = useMemo<I18nCtx>(() => ({ lang, setLang, t }), [lang, setLang, t]);

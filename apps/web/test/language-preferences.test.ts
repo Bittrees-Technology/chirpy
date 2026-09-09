@@ -22,6 +22,9 @@ it.each(["constructor", "__proto__", "toString", "unknown", "es"])(
       expect(container.textContent).toBe("Ajustes");
       expect(document.documentElement.lang).toBe("es");
       expect(saved).toBe("es");
+      expect(current.t("settings.resolved", undefined, { name: "<img src=x>", address: "$&{name}" }))
+        .toBe("<img src=x> corresponde a $&{name}.");
+      expect(current.t("constructor", "Safe fallback")).toBe("Safe fallback");
       await act(async () => current.setLang("constructor" as any));
       expect(container.textContent).toBe("Ajustes");
       expect(saved).toBe("es");

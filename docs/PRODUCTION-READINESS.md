@@ -216,3 +216,9 @@ Regression tests delay authorization, a remote read and a write acknowledgment w
 Stored or runtime language values must be registered dictionary keys. Prototype names such as constructor and __proto__ no longer enter the translation state and crash rendering. Language changes also update the document language so assistive technologies receive the correct pronunciation language.
 
 Five regression cases cover malformed/prototype values, supported persisted Spanish, runtime rejection, persistence and document-language updates. They fail against the previous implementation. Broader translation coverage and assistive-technology acceptance remain outstanding.
+
+## Settings translation coverage
+
+Settings and the native update card now translate their controls, privacy/revocation explanations, organization metadata, ENS results and known sync status messages into Spanish. Names, addresses, release notes and unknown provider diagnostics remain literal text. ENS wording no longer equates an unresolved name with an available registration. Template interpolation preserves literal values and rejects inherited dictionary keys.
+
+Catalog tests require matching English/Spanish keys and placeholders. The browser flow verifies Spanish sync activation/revocation results, persisted language after reload, privacy controls, ENS validation, switching back to English and a 390-pixel viewport without horizontal page overflow. Dialogs and other application surfaces still need broader translation coverage; this does not establish full localization or assistive-technology acceptance.
