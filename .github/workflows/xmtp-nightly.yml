@@ -1,6 +1,7 @@
 name: xmtp-nightly
 
 on:
+  workflow_call:
   schedule:
     - cron: "0 7 * * *"
   workflow_dispatch:

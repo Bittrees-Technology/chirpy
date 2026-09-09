@@ -10,7 +10,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The local workflow checks this release revision without signing secrets.
+  prerequisites:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-checks.yml
   release:
+    needs: prerequisites
     timeout-minutes: 60
     env:
       VITE_TRANSPORT: xmtp
