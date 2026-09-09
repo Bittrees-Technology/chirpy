@@ -1,0 +1,73 @@
+{
+  "date": "2026-09-09",
+  "tool": "cargo-audit 0.22.2",
+  "vulnerabilityCount": 0,
+  "warnings": [
+    {
+      "category": "unmaintained",
+      "package": "proc-macro-error",
+      "version": "1.0.4",
+      "advisory": "RUSTSEC-2024-0370",
+      "title": "proc-macro-error is unmaintained",
+      "patched": [],
+      "reference": "https://rustsec.org/advisories/RUSTSEC-2024-0370.html"
+    },
+    {
+      "category": "unmaintained",
+      "package": "unic-char-property",
+      "version": "0.9.0",
+      "advisory": "RUSTSEC-2025-0081",
+      "title": "`unic-char-property` is unmaintained",
+      "patched": [],
+      "reference": "https://rustsec.org/advisories/RUSTSEC-2025-0081.html"
+    },
+    {
+      "category": "unmaintained",
+      "package": "unic-char-range",
+      "version": "0.9.0",
+      "advisory": "RUSTSEC-2025-0075",
+      "title": "`unic-char-range` is unmaintained",
+      "patched": [],
+      "reference": "https://rustsec.org/advisories/RUSTSEC-2025-0075.html"
+    },
+    {
+      "category": "unmaintained",
+      "package": "unic-common",
+      "version": "0.9.0",
+      "advisory": "RUSTSEC-2025-0080",
+      "title": "`unic-common` is unmaintained",
+      "patched": [],
+      "reference": "https://rustsec.org/advisories/RUSTSEC-2025-0080.html"
+    },
+    {
+      "category": "unmaintained",
+      "package": "unic-ucd-ident",
+      "version": "0.9.0",
+      "advisory": "RUSTSEC-2025-0100",
+      "title": "`unic-ucd-ident` is unmaintained",
+      "patched": [],
+      "reference": "https://rustsec.org/advisories/RUSTSEC-2025-0100.html"
+    },
+    {
+      "category": "unmaintained",
+      "package": "unic-ucd-version",
+      "version": "0.9.0",
+      "advisory": "RUSTSEC-2025-0098",
+      "title": "`unic-ucd-version` is unmaintained",
+      "patched": [],
+      "reference": "https://rustsec.org/advisories/RUSTSEC-2025-0098.html"
+    },
+    {
+      "category": "unsound",
+      "package": "glib",
+      "version": "0.18.5",
+      "advisory": "RUSTSEC-2024-0429",
+      "title": "Unsoundness in `Iterator` and `DoubleEndedIterator` impls for `glib::VariantStrIter`",
+      "patched": [
+        ">=0.20.0"
+      ],
+      "reference": "https://rustsec.org/advisories/RUSTSEC-2024-0429.html"
+    }
+  ],
+  "status": "Open upstream dependency follow-up; warnings are recorded, not suppressed. glib remains constrained by the GTK3 dependency graph."
+}
