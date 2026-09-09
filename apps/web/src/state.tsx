@@ -5,6 +5,7 @@ import {
 import {
   createTransport, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
 } from "@app/transport";
+import { createRefreshQueue } from "./refreshQueue";
 import { DEFAULT_TRANSPORT } from "./app.config";
 import { resolveEns, type EnsRecord } from "./ens";
 import {
@@ -850,10 +851,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setMessages([]);
       await reloadConversations();
       if (cancelled) return;
-      unsub = t.subscribe(() => {
-        reloadConversations();
-        setActiveId((cur) => { reloadMessages(cur); return cur; });
+      const queue = createRefreshQueue(async () => {
+        if (cancelled || document.visibilityState === "hidden") return;
+        await reloadConversations();
+        if (!cancelled) await reloadMessages(activeIdRef.current);
+      }, (error) => {
+        if (!cancelled) setTransportError(error instanceof Error ? error.message : "Unable to refresh chats.");
       });
+      const stop = t.subscribe(queue.notify);
+      unsub = () => { queue.cancel(); stop(); };
     })();
     return () => { cancelled = true; unsub(); };
   }, [activeOrg.id, identity.address, mode]); // eslint-disable-line react-hooks/exhaustive-deps
