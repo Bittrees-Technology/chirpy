@@ -71,6 +71,7 @@ async function main() {
       CHIRPY_RELEASE_CHANNEL: "staging",
       KV_REST_API_TOKEN: "token",
       KV_REST_API_URL: "https://kv.example",
+      CHIRPY_SYNC_SERVICE_URL: "https://chirpy.example/api/usersync",
       VERCEL_ENV: "preview",
       VITE_GATEKEEPER_ADDRESS: SAMPLE_GATEKEEPER_ADDRESS,
       VITE_MAINNET_RPC_URL: "https://rpc.example",
