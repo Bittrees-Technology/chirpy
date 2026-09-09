@@ -31,7 +31,19 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await sendMessage(pageB, "hi from B");
       await expect(pageA.locator(".msg-body", { hasText: "hi from B" })).toBeVisible({ timeout: 120_000 });
 
-      // TODO: add gated-room E2E once VITE_MAINNET_RPC_URL is available.
+      await expect(pageA.getByTestId("peer-receipt")).toHaveCount(0);
+      await pageB.bringToFront();
+      await pageB.getByRole("combobox", { name: "Send read receipts" }).selectOption("true");
+      // Opting in does not retroactively acknowledge already-read messages.
+      await pageA.bringToFront();
+      await sendMessage(pageA, "receipt acceptance message");
+      await pageB.bringToFront();
+      await expect(pageB.locator(".msg-body", { hasText: "receipt acceptance message" })).toBeVisible({ timeout: 120_000 });
+      await pageA.bringToFront();
+      await expect(pageA.getByTestId("peer-receipt")).toContainText("Last read receipt", { timeout: 120_000 });
+      await expect(pageA.locator(".list-item", { hasText: "receipt acceptance message" })).toBeVisible();
+      // Actual production gated-room acceptance still requires the configured gate and reviewed policy.
+
     } finally {
       await contextB.close();
       await contextA.close();

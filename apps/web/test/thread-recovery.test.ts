@@ -91,3 +91,15 @@ it("marks only visible focused history as read and leaves background messages un
     expect(state.markRead).not.toHaveBeenCalled();
   } finally { focus.mockRestore(); visible.mockRestore(); rects.mockRestore(); }
 });
+
+it("shows receipt time only in accepted peer DMs, without claiming a message was read", async () => {
+  state.activeConversation = { ...state.activeConversation, lastReadReceiptAt: 1700000000000 } as any;
+  await act(async () => root.render(React.createElement(Thread)));
+  expect(container.querySelector('[data-testid="peer-receipt"]').textContent).toContain("Last read receipt");
+  expect(container.querySelector('[data-testid="peer-receipt"]').title).toContain("does not identify an exact message");
+  for (const restriction of [{ blocked: true }, { pending: true }, { kind: "room" }]) {
+    state.activeConversation = { id: "dm", kind: "dm", title: "Peer", peers: ["0x1", "0x2"], lastReadReceiptAt: 1700000000000, ...restriction } as any;
+    await act(async () => root.render(React.createElement(Thread)));
+    expect(container.querySelector('[data-testid="peer-receipt"]')).toBeNull();
+  }
+});

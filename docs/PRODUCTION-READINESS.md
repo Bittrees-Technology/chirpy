@@ -42,7 +42,7 @@ Unread counts query XMTP's local message database for text/reply messages after 
 
 Read state advances only through a loaded message that is visible at the end of an active, focused conversation. New messages received while the reader is in history or another tab remain unread. Receipt preference controls outgoing receipts independently of local unread state; requests and blocked conversations send neither. Read state is device-local and clearing browser data resets it.
 
-Validation: 75 unit tests, both type checks, six mock/browser tests and two XMTP dev-network tests pass. The two-wallet round trip asserts the recipient's actual unread badge before acceptance. Per-chat overrides are now implemented; incoming receipt display remains follow-up work.
+Validation: 75 unit tests, both type checks, six mock/browser tests and two XMTP dev-network tests pass. The two-wallet round trip asserts the recipient's actual unread badge before acceptance. Per-chat overrides and incoming peer receipt times are now implemented.
 
 ## Wallet-switch isolation
 
@@ -169,4 +169,10 @@ Production, rollout/recovery, gate deployment, native release, README and roadma
 
 Accepted DMs offer inherit/on/off receipt controls. The default inherits the global setting; overrides are scoped to wallet, transport, network and conversation, persist locally and travel only inside opted-in encrypted settings sync. Returning to inherit removes the override from the newer settings snapshot. Requests, blocked conversations, rooms and self notes expose no per-peer receipt control; transport consent checks remain authoritative.
 
-Validation: 197 tests including real Redis checks, wallet/network isolation and override removal/merge coverage; the browser consent flow verifies reload persistence and blocked-control suppression. Type checks pass. Incoming receipt display remains pending.
+Validation: 197 tests including real Redis checks, wallet/network isolation and override removal/merge coverage; the browser consent flow verifies reload persistence and blocked-control suppression. Type checks pass. Incoming peer receipt times are implemented in the next increment.
+
+## Incoming receipt display
+
+Accepted peer DMs show the latest peer receipt timestamp from the SDK lastReadTimes index. Enriched message queries omit receipt events, so the display uses the receipt-specific index and the actual peer inbox. Missing, unrelated, self, invalid or future evidence is suppressed; blocked/request/room views do not display receipts. The label explicitly avoids claiming that a particular message was read. Text/reply previews remain stable when receipts arrive.
+
+Validation: the two-wallet XMTP dev flow under native CSP confirms no receipt before opt-in, then sends and reads a new message and verifies the actual receipt and retained preview. Opt-in does not retroactively acknowledge already-read messages. Unit coverage exercises consent, identity, malformed times and UI suppression.
