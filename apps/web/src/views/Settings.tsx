@@ -341,21 +341,8 @@ export function Settings(
       </section>
 
       <section className="card">
-        <h2>Blocked ({prefs.blocked.length})</h2>
-        {prefs.blocked.length === 0 ? (
-          <div className="muted blocked-empty">No one blocked.</div>
-        ) : (
-          <div className="org-table">
-            {prefs.blocked.map((addr) => (
-              <div key={addr} className="org-row">
-                <Avatar id={addr} size={34} />
-                <div className="org-row-main">
-                  <div className="org-row-name">{shortAddr(addr)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <h2>{t("list.blocked", "Blocked")}</h2>
+        <p>{t("settings.blockedHelp", "Manage blocked conversations in Chats → Blocked. Blocking hides this direct conversation and stops your outgoing messages and receipts. It does not remove messages from shared rooms.")}</p>
       </section>
 
       <p className="muted settings-footer">

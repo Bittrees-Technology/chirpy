@@ -42,5 +42,17 @@
   "thread.joinToSend": "Join this room to send messages.",
   "thread.compose": "Write a message",
   "thread.sending": "Sending…",
-  "thread.actionFailed": "This action failed. Try again."
+  "thread.actionFailed": "This action failed. Try again.",
+  "list.inboxView": "Conversation filter",
+  "list.inbox": "Inbox",
+  "list.requests": "Requests",
+  "list.blocked": "Blocked",
+  "thread.blockedNote": "This conversation is blocked. Messages and receipts are hidden.",
+  "thread.requestNote": "Message request. Accept to reply; no read receipts are sent before acceptance.",
+  "thread.unblock": "Unblock conversation",
+  "thread.accept": "Accept request",
+  "thread.reject": "Reject and block",
+  "thread.block": "Block conversation",
+  "thread.acceptToSend": "Accept or unblock this conversation to send messages.",
+  "settings.blockedHelp": "Manage blocked conversations in Chats → Blocked. Blocking hides this direct conversation and stops your outgoing messages and receipts. It does not remove messages from shared rooms."
 }

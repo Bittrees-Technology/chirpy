@@ -734,6 +734,7 @@ interface ChatCtx {
   createRoom: (input: StartRoomInput) => Promise<void>;
   requestRoomJoin: (conversationId: string) => Promise<{ ok: boolean; message: string }>;
   setRoomPolicy: (policy: Policy) => Promise<void>;
+  setConversationConsent: (state: "allowed" | "denied") => Promise<void>;
 }
 const ChatContext = createContext<ChatCtx | null>(null);
 
@@ -752,12 +753,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   activeIdRef.current = activeId;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
+  const conversationLoadRef = useRef(0);
   const reloadConversations = useCallback(async () => {
+    const request = ++conversationLoadRef.current;
     const t = transportRef.current; if (!t) return;
     try {
       const next = await t.listConversations();
-      if (transportRef.current === t) { setConversations(next); setTransportError(t.warning ?? null); }
-    } catch (error) { if (transportRef.current === t) setTransportError(error instanceof Error ? error.message : "Unable to load conversations."); }
+      if (transportRef.current === t && conversationLoadRef.current === request) { setConversations(next); setTransportError(t.warning ?? null); }
+    } catch (error) { if (transportRef.current === t && conversationLoadRef.current === request) setTransportError(error instanceof Error ? error.message : "Unable to load conversations."); }
   }, []);
 
   const messageLoadRef = useRef(0);
@@ -874,6 +877,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     await reloadConversations();
   }, [activeId, reloadConversations]);
 
+  const setConversationConsent = useCallback(async (state: "allowed" | "denied") => {
+    const transport = transportRef.current;
+    if (!activeId || !transport) throw new Error("Messaging is reconnecting. Try again shortly.");
+    await transport.setConversationConsent(activeId, state);
+    await reloadConversations();
+    await reloadMessages(activeId);
+  }, [activeId, reloadConversations, reloadMessages]);
+
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
     [conversations, activeId],
@@ -881,8 +892,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ChatCtx>(() => ({
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages,
-    enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy,
-  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy]);
+    enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
+  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, enableMessaging, select, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

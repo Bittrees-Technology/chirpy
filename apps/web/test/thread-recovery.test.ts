@@ -55,3 +55,13 @@ it("does not pull a reader away from older messages when new messages arrive", a
   expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
   state.messages = [];
 });
+
+it("hides stale loaded content immediately when a conversation becomes blocked", async () => {
+  state.messages = [{ id: "stale", conversationId: "dm", sender: "0x2", body: "private stale message", sentAt: 1 }] as any;
+  state.activeConversation = { ...state.activeConversation, blocked: true } as any;
+  await act(async () => root.render(React.createElement(Thread)));
+  expect(container.querySelector('.msg-body')).toBeNull();
+  expect(container.querySelector('.composer-input')).toBeNull();
+  expect(container.textContent).not.toContain("private stale message");
+  state.messages = [];
+});

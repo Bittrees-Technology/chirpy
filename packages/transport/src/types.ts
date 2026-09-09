@@ -28,6 +28,8 @@ export interface Conversation {
   unread: number;
   /** A DM that the peer has not yet accepted (request state). */
   pending?: boolean;
+  /** A denied DM stays discoverable in the blocked list without message previews. */
+  blocked?: boolean;
 }
 
 export interface StartRoomInput {
@@ -55,6 +57,7 @@ export interface Transport {
   send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage>;
   react(conversationId: string, messageId: string, emoji: string): Promise<void>;
   markRead(conversationId: string, options?: { sendReceipt: boolean }): Promise<void>;
+  setConversationConsent(conversationId: string, state: "allowed" | "denied"): Promise<void>;
   startDm(address: string, handle?: string): Promise<Conversation>;
   createRoom(input: StartRoomInput): Promise<Conversation>;
   /** Ask the configured gatekeeper bot to add this wallet/inbox to a gated room. */
