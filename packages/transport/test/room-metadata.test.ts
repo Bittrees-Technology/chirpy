@@ -67,7 +67,7 @@ it('keeps invalid metadata visible as blocked when a directory supplies the miss
 it('rejects oversized room creation before creating a network group', async () => {
   const t = new XmtpTransport(PERSONAL_ORG, { address: '0x0000000000000000000000000000000000000001' }, null) as any;
   const createGroup = vi.fn(); t.client = { inboxId: 'self', conversations: { createGroup } }; t.sdk = {}; t.status = 'ready';
-  await expect(t.createRoom({ title: 'New', description: 'x'.repeat(10001) })).rejects.toThrow(INVALID_ROOM_METADATA);
+  await expect(t.createRoom({ title: 'New', description: 'x'.repeat(10001) })).rejects.toThrow('10,000 characters or fewer');
   expect(createGroup).not.toHaveBeenCalled();
 });
 

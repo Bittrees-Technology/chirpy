@@ -5,6 +5,7 @@ const keys: Record<string, string> = {
   "XMTP inbox is not ready yet.": "status.inboxNotReady",
   "Connect a wallet to enable XMTP.": "status.xmtpConnect",
   "Connect a wallet to revoke installations.": "status.revokeInstallations",
+  "Room descriptions must be 10,000 characters or fewer.": "thread.descriptionLimit",
   "Room configuration is invalid or unsupported. Ask an administrator to repair it.": "thread.invalidRoom",
   "This room uses an unsupported production gate.": "status.unsupportedGate",
   "This wallet does not satisfy the room gate.": "status.gateDenied",

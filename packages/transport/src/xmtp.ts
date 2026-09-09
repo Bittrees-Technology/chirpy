@@ -1,4 +1,4 @@
-import { INVALID_ROOM_METADATA, ROOM_META_VERSION, parseRoomMeta, type RoomMeta } from "./roomMetadata.js";
+import { INVALID_ROOM_METADATA, MAX_ROOM_DESCRIPTION_LENGTH, ROOM_META_VERSION, parseRoomMeta, type RoomMeta } from "./roomMetadata.js";
 import { readMessagePage } from "./messagePage.js";
 import { mapConversations } from "./mapConversations.js";
 import {
@@ -882,6 +882,9 @@ export class XmtpTransport implements Transport {
     }
     if (hasGate(gate) && (this.org.chain.chainId !== 1 || !validateProductionGate(gate))) {
       throw new Error("Production gates currently support mainnet token rules (explicit ERC-1155 IDs), Safe owners, and ENS. Check the rule and a positive minimum.");
+    }
+    if (typeof input.description === "string" && input.description.length > MAX_ROOM_DESCRIPTION_LENGTH) {
+      throw new Error("Room descriptions must be 10,000 characters or fewer.");
     }
     const encodedMeta = roomMetaDescription(meta);
     if (parseRoomMeta(encodedMeta, this.org.policy).invalid) throw new Error(INVALID_ROOM_METADATA);

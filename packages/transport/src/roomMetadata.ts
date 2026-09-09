@@ -1,6 +1,7 @@
 import { mergePolicy, validateProductionGate, type Gate, type Policy } from '@app/core';
 
 export const ROOM_META_VERSION = 1;
+export const MAX_ROOM_DESCRIPTION_LENGTH = 10000;
 export interface RoomMeta {
   gate: Gate;
   policy: Policy;
@@ -27,7 +28,7 @@ export function parseRoomMeta(description: unknown, orgPolicy: Policy): RoomMeta
   if (parsed.chirpyRoom !== ROOM_META_VERSION) return invalid(parsed.namespace);
   try {
     if (parsed.namespace !== undefined && !namespace(parsed.namespace)) return invalid();
-    if (parsed.description !== undefined && (typeof parsed.description !== 'string' || parsed.description.length > 10000)) return invalid(parsed.namespace);
+    if (parsed.description !== undefined && (typeof parsed.description !== 'string' || parsed.description.length > MAX_ROOM_DESCRIPTION_LENGTH)) return invalid(parsed.namespace);
     let gate: unknown = parsed.gate ?? openGate();
     if (parsed.gate === null) return invalid(parsed.namespace);
     if (typeof gate === 'string') {
