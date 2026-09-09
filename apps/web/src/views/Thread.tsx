@@ -1,6 +1,7 @@
+import { receiptOverride } from "../receiptPreferences";
 import React, { useEffect, useRef, useState } from "react";
 import { policySummary, type Policy } from "@app/core";
-import { useChat, useIdentity } from "../state";
+import { useChat, useIdentity, useSettingsPrefs } from "../state";
 import { Avatar, Button, Empty, fmtTime, shortAddr } from "../ui";
 import { nameFor, useEnsProfiles } from "../useEns";
 import { useI18n } from "../i18n";
@@ -10,6 +11,7 @@ const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) {
   const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent, markRead, historyLoading, isHistory, hasOlderMessages, navigateHistory } = useChat();
   const { identity } = useIdentity();
+  const { prefs, setChatReadReceipts } = useSettingsPrefs();
   const { t } = useI18n();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const conversationKey = activeConversation?.id ?? "";
@@ -153,6 +155,15 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       {!isRoom && peerAddress?.toLowerCase() !== selfAddress && <div className="join-banner">
         {activeConversation.blocked ? t("thread.blockedNote", "This conversation is blocked. Messages and receipts are hidden.") : activeConversation.pending ? t("thread.requestNote", "Message request. Accept to reply; no read receipts are sent before acceptance.") : null}
         {needsConsent && <Button disabled={consentPending} onClick={() => void changeConsent("allowed")}>{activeConversation.blocked ? t("thread.unblock", "Unblock conversation") : t("thread.accept", "Accept request")}</Button>}
+        {!needsConsent && <label>
+          {t("thread.receipts", "Send read receipts")}
+          <select aria-label={t("thread.receipts", "Send read receipts")} value={String(receiptOverride(prefs.readReceiptOverrides, activeConversation.id) ?? "inherit")}
+            onChange={(event) => setChatReadReceipts(activeConversation.id, event.target.value === "inherit" ? undefined : event.target.value === "true")}>
+            <option value="inherit">{t("thread.receiptsDefault", "Use global setting")} ({prefs.readReceiptsDefault ? t("thread.receiptsOn", "On") : t("thread.receiptsOff", "Off")})</option>
+            <option value="true">{t("thread.receiptsOn", "On")}</option>
+            <option value="false">{t("thread.receiptsOff", "Off")}</option>
+          </select>
+        </label>}
         {!activeConversation.blocked && <Button variant="ghost" disabled={consentPending} onClick={() => void changeConsent("denied")}>{activeConversation.pending ? t("thread.reject", "Reject and block") : t("thread.block", "Block conversation")}</Button>}
       </div>}
       {joinStatus && (

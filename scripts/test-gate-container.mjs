@@ -17,7 +17,7 @@ async function request(url, options = {}) {
     return { status: response.status, headers: response.headers, body };
   } finally { clearTimeout(deadline); }
 }
-const run = () => docker('run', '--rm', '-d', '--name', name, '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=128',
+const run = () => docker('run', '-d', '--name', name, '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=128',
   '--tmpfs', '/tmp:rw,nosuid,noexec,size=64m', '-p', '127.0.0.1::8788', '-v', `${volume}:/data`, '-e', 'GATE_ALLOW_ORIGIN=https://chirpy.test', image);
 try {
   docker('volume', 'create', volume); run();
@@ -45,10 +45,10 @@ try {
   assert.throws(() => docker('exec', name, 'npm', '--version'));
   assert.throws(() => docker('exec', name, 'sh', '-c', 'true'));
   node(`import fs from 'node:fs'; if (!fs.existsSync('/etc/ssl/certs/ca-certificates.crt')) throw new Error('System TLS CA bundle missing');`);
-  docker('stop', name); run();
+  docker('stop', name); docker('rm', name); run();
   node(`import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(fs.readFileSync('/data/persistence-probe','utf8'), 'synthetic persistence check');`);
   console.log('Gate container: non-root, read-only root, no capabilities, no privilege escalation, native SDK, HTTP rejection, persistent volume and absence of shell/package managers passed.');
 } finally {
-  try { docker('rm', '-f', name); } catch { /* The --rm container may already be gone. */ }
+  try { docker('rm', '-f', name); } catch { /* Startup may have failed before creation. */ }
   try { docker('volume', 'rm', volume); } catch (error) { console.error('Test volume cleanup failed:', volume); throw error; }
 }

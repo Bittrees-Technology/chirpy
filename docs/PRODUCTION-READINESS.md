@@ -42,7 +42,7 @@ Unread counts query XMTP's local message database for text/reply messages after 
 
 Read state advances only through a loaded message that is visible at the end of an active, focused conversation. New messages received while the reader is in history or another tab remain unread. Receipt preference controls outgoing receipts independently of local unread state; requests and blocked conversations send neither. Read state is device-local and clearing browser data resets it.
 
-Validation: 75 unit tests, both type checks, six mock/browser tests and two XMTP dev-network tests pass. The two-wallet round trip asserts the recipient's actual unread badge before acceptance. Incoming receipt display and optional per-chat overrides remain follow-up work.
+Validation: 75 unit tests, both type checks, six mock/browser tests and two XMTP dev-network tests pass. The two-wallet round trip asserts the recipient's actual unread badge before acceptance. Per-chat overrides are now implemented; incoming receipt display remains follow-up work.
 
 ## Wallet-switch isolation
 
@@ -164,3 +164,9 @@ Validation includes wrong/stale chain data, failed or hung probes, recovery, reg
 ## Documentation reconciliation
 
 Production, rollout/recovery, gate deployment, native release, README and roadmap instructions now reflect the external gate, encrypted persistent storage, sync v2, live readiness and draft release gates. Removed obsolete serverless gate and incomplete bare-container instructions. Operator decisions and device/production acceptance are explicitly distinguished from automated evidence.
+
+## Per-conversation receipt preferences
+
+Accepted DMs offer inherit/on/off receipt controls. The default inherits the global setting; overrides are scoped to wallet, transport, network and conversation, persist locally and travel only inside opted-in encrypted settings sync. Returning to inherit removes the override from the newer settings snapshot. Requests, blocked conversations, rooms and self notes expose no per-peer receipt control; transport consent checks remain authoritative.
+
+Validation: 197 tests including real Redis checks, wallet/network isolation and override removal/merge coverage; the browser consent flow verifies reload persistence and blocked-control suppression. Type checks pass. Incoming receipt display remains pending.

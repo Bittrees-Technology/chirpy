@@ -91,3 +91,10 @@ it("does not interpret an unavailable store as empty", async () => {
   await expect(pullRemoteBlob("offline-device")).rejects.toThrow("Unable to read");
   expect(await pushBlob("offline-device", null as any, {} as any)).toEqual({ ok: false, stale: true });
 });
+
+it("keeps the newer receipt override map including removals instead of resurrecting old opt-ins", () => {
+  const older = payload({ settingsPrefs: { readReceiptsDefault: false, syncAcrossDevices: true, blocked: [], readReceiptOverrides: { "xmtp:production:dm": true } }, updatedAt: 1 });
+  const newer = payload({ settingsPrefs: { readReceiptsDefault: false, syncAcrossDevices: true, blocked: [], readReceiptOverrides: {} }, updatedAt: 2 });
+  expect(mergePayload(older, newer).settingsPrefs.readReceiptOverrides).toEqual({});
+  expect(mergePayload(newer, older).settingsPrefs.readReceiptOverrides).toEqual({});
+});

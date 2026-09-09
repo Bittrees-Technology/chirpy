@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Thread } from "../src/views/Thread";
 const state = vi.hoisted(() => ({ send: vi.fn(), markRead: vi.fn().mockResolvedValue(undefined), activeConversation: { id: "dm", kind: "dm", title: "Peer", peers: ["0x1", "0x2"] }, messages: [] }));
-vi.mock("../src/state", () => ({ useChat: () => ({ ...state, react: vi.fn(), setRoomPolicy: vi.fn(), requestRoomJoin: vi.fn() }), useIdentity: () => ({ identity: { address: "0x1" } }) }));
+vi.mock("../src/state", () => ({ useSettingsPrefs: () => ({ prefs: { readReceiptsDefault: false }, setChatReadReceipts: vi.fn() }), useChat: () => ({ ...state, react: vi.fn(), setRoomPolicy: vi.fn(), requestRoomJoin: vi.fn() }), useIdentity: () => ({ identity: { address: "0x1" } }) }));
 vi.mock("../src/useEns", () => ({ useEnsProfiles: () => new Map(), nameFor: (_id, _record, fallback) => fallback || "Peer" }));
 vi.mock("../src/i18n", () => ({ useI18n: () => ({ t: (_key, fallback) => fallback }) }));
 let container; let root;

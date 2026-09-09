@@ -61,5 +61,9 @@
   "thread.latest": "Últimos mensajes",
   "thread.refresh": "Actualizar mensajes",
   "thread.loadingHistory": "Cargando mensajes…",
-  "thread.earlierReply": "Respuesta a un mensaje anterior"
+  "thread.earlierReply": "Respuesta a un mensaje anterior",
+  "thread.receipts": "Enviar confirmaciones de lectura",
+  "thread.receiptsDefault": "Usar ajuste general",
+  "thread.receiptsOn": "Activadas",
+  "thread.receiptsOff": "Desactivadas"
 }

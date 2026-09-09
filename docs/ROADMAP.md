@@ -22,7 +22,7 @@ The [production readiness ledger](PRODUCTION-READINESS.md) records implementatio
 
 ## Product and integration follow-ups
 
-- Incoming receipt display and optional per-chat overrides.
+- Incoming receipt display (per-chat outgoing overrides are implemented).
 - Very large inbox performance and incremental conversation synchronization.
 - Consistent room administrator controls, broader translations and mobile/accessibility acceptance.
 - Trusted role/power/delegate/multi-chain resolvers and verified presets where needed.

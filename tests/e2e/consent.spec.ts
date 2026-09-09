@@ -12,10 +12,21 @@ test('incoming request can be accepted, blocked and unblocked without leaking bl
   await page.getByRole('button', { name: 'Requests', exact: true }).click();
   await page.getByRole('button', { name: /request peer/ }).click();
   await expect(page.getByRole('button', { name: 'Accept request', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Send read receipts' })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Accept request', exact: true }).click();
+  const receipts = page.getByRole('combobox', { name: 'Send read receipts' });
+  await expect(receipts).toHaveValue('inherit');
+  await receipts.selectOption('true');
+  await page.reload();
+  await page.getByRole('button', { name: /request peer/ }).click();
+  await expect(receipts).toHaveValue('true');
+  await receipts.selectOption('false');
+  await expect(receipts).toHaveValue('false');
+
   await expect(page.getByRole('textbox', { name: 'Write a message' })).toBeVisible();
   await page.getByRole('button', { name: 'Block conversation', exact: true }).click();
+  await expect(receipts).toHaveCount(0);
   await expect(page.locator('.msg-body')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveCount(0);
   await page.reload();
@@ -23,6 +34,9 @@ test('incoming request can be accepted, blocked and unblocked without leaking bl
   await page.getByRole('button', { name: /request peer/ }).click();
   await expect(page.locator('.msg-body')).toHaveCount(0);
   await page.getByRole('button', { name: 'Unblock conversation', exact: true }).click();
+  await expect(receipts).toHaveValue('false');
+  await receipts.selectOption('inherit');
+  await expect(receipts).toHaveValue('inherit');
   await expect(page.locator('.msg-body', { hasText: 'incoming request content' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Write a message' })).toBeVisible();
 });

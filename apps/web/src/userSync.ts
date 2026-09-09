@@ -3,7 +3,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { SYNC_AUTH_MAX_AGE, syncGrantMessage, syncWriteMessage, syncRevokeDeviceMessage, syncRevokeAllMessage, type SyncDeviceGrant } from "@app/core";
 
 import { syncEndpoint } from "./apiEndpoint";
-export interface SettingsPrefsSnapshot { readReceiptsDefault: boolean; syncAcrossDevices: boolean; blocked: string[]; }
+export interface SettingsPrefsSnapshot { readReceiptOverrides?: Record<string, boolean>; readReceiptsDefault: boolean; syncAcrossDevices: boolean; blocked: string[]; }
 export interface SavedMessageSnapshot { id: string; [key: string]: unknown; }
 export interface SettingsSyncPayload { version: 1; settingsPrefs: SettingsPrefsSnapshot; savedMessages: SavedMessageSnapshot[]; updatedAt: number; }
 export interface EncryptedSyncBlobSnapshot { version: 1; algorithm: "AES-GCM"; kdf: "HKDF-SHA-256"; address: string; iv: string; ciphertext: string; updatedAt: number; }

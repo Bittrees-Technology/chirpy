@@ -23,5 +23,20 @@ it("passes the actual current Settings preference to the transport", async () =>
     await act(async () => chat.select("dm"));
     await act(async () => chat.markRead("seen"));
     expect(mock.markRead).toHaveBeenLastCalledWith("dm", { sendReceipt: true, throughMessageId: "seen" });
+    await act(async () => settings.setChatReadReceipts("dm", false));
+    await act(async () => chat.markRead("seen"));
+    expect(mock.markRead).toHaveBeenLastCalledWith("dm", { sendReceipt: false, throughMessageId: "seen" });
+    await act(async () => chat.select("other"));
+    await act(async () => chat.markRead("other-seen"));
+    expect(mock.markRead).toHaveBeenLastCalledWith("other", { sendReceipt: true, throughMessageId: "other-seen" });
+    await act(async () => settings.setReadReceiptsDefault(false));
+    await act(async () => settings.setChatReadReceipts("dm", true));
+    await act(async () => chat.select("dm"));
+    await act(async () => chat.markRead("seen"));
+    expect(mock.markRead).toHaveBeenLastCalledWith("dm", { sendReceipt: true, throughMessageId: "seen" });
+    await act(async () => settings.setChatReadReceipts("dm", undefined));
+    await act(async () => chat.markRead("seen"));
+    expect(mock.markRead).toHaveBeenLastCalledWith("dm", { sendReceipt: false, throughMessageId: "seen" });
+
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals(); }
 });
