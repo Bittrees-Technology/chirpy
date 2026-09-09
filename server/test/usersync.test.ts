@@ -42,9 +42,9 @@ async function write(blob = "encrypted", expectedRevision = 0, authorization?: a
   authorization ??= await grant();
   return { action: "write", address: account.address, authorization, blob, expectedRevision, signature: await device.signMessage({ message: syncWriteMessage(authorization, expectedRevision, keccak256(stringToHex(blob))) }) };
 }
-async function call(body = {}, method = "POST") {
+async function call(body = {}, method = "POST", extraHeaders = {}) {
   const res = { code: 0, body: null as any, setHeader() {}, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
-  await handler({ method, headers: { "content-type": "application/json" }, query: { address: account.address }, body }, res); return res;
+  await handler({ method, headers: { "content-type": "application/json", ...extraHeaders }, query: { address: account.address }, body }, res); return res;
 }
 it("allows only one of two writes at a revision and rejects captured write replay", async () => {
   const first = await write("first"); const second = await write("second");
@@ -87,4 +87,14 @@ it("reports storage outages without treating them as empty records", async () =>
   expect((await call({}, "GET")).code).toBe(503);
   expect((await call(await write())).code).toBe(503);
   expect(records.size).toBe(0);
+});
+
+it("allows configured native preflight but still requires signed writes", async () => {
+  vi.stubEnv("CHIRPY_SYNC_ALLOWED_ORIGINS", "tauri://localhost");
+  expect((await call({}, "OPTIONS", { origin: "tauri://localhost", "access-control-request-method": "POST", "access-control-request-headers": "content-type" })).code).toBe(204);
+  expect(fetch).not.toHaveBeenCalled();
+  expect((await call({ address: account.address, action: "write" }, "POST", { origin: "tauri://localhost" })).code).toBe(401);
+  expect(records.size).toBe(0);
+  expect((await call(await write(), "POST", { origin: "tauri://localhost" })).code).toBe(200);
+  expect((await call(await write("blocked", 1), "POST", { origin: "https://evil.test" })).code).toBe(403);
 });
