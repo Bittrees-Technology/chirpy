@@ -29,7 +29,7 @@ Only mainnet token holdings, explicit ERC-1155 IDs, Safe owners and ENS are supp
 ## Release acceptance
 
 - Require green CI, audits, restricted-container tests and expanded XMTP nightly evidence.
-- Verify web configuration, live sync authorization/storage and production gate dependencies separately. Web health alone does not prove admission.
+- Verify web configuration, live sync authorization/storage and production gate dependencies separately. Web health alone does not prove admission. Release preflight also requires the checked gate host/port to match web routing and rejects dev-network builds.
 - Exercise qualifying and denied wallets, substituted inboxes, replay, restart and wallet/org switching against the intended production room and chain policy.
 - Accept operator backup restore, alert delivery and incident ownership. Review membership audit outcomes before enforcement.
 - Complete privacy/terms and moderation/retention decisions, signed native artifact/install/updater acceptance and real-device wallet return.

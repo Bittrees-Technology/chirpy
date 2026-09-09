@@ -153,3 +153,30 @@ describe("roomJoinHandler logging", () => {
     }
   });
 });
+
+const readyWeb = {
+  VITE_TRANSPORT: 'xmtp', VITE_MAINNET_RPC_URL: 'https://rpc.example',
+  VITE_GATEKEEPER_ADDRESS: '0x0000000000000000000000000000000000000001',
+  CHIRPY_EXTERNAL_GATE_URL: 'https://gate.example/api/room-join',
+  CHIRPY_SYNC_SERVICE_URL: 'https://chirpy.example/api/usersync',
+  KV_REST_API_URL: 'https://kv.example', KV_REST_API_TOKEN: 'synthetic',
+};
+it.each(['garbage', 'http://gate.example/api/room-join', 'https://gate.example/', 'https://secret:credential@gate.example/api/room-join', 'https://gate.example/api/room-join?x=1', 'https://gate.example/api/room-join#x', ' https://gate.example/api/room-join'])('rejects invalid external routing in web readiness: %s', endpoint => {
+  const report = buildHealthReport({ ...readyWeb, CHIRPY_EXTERNAL_GATE_URL: endpoint });
+  expect(report.readiness.gateReady).toBe(false);
+  expect(report.readiness.releaseReady).toBe(false);
+  expect(report.runtime.externalGate).toBeNull();
+  expect(JSON.stringify(report)).not.toContain('credential');
+});
+it.each(['https://', 'http://chirpy.example/api/usersync', 'https://chirpy.example/', 'https://user:secret@chirpy.example/api/usersync', 'https://chirpy.example/api/usersync?x=1'])('rejects invalid sync service identity in web readiness: %s', endpoint => {
+  const report = buildHealthReport({ ...readyWeb, CHIRPY_SYNC_SERVICE_URL: endpoint });
+  expect(report.readiness.syncReady).toBe(false);
+  expect(report.readiness.releaseReady).toBe(false);
+});
+
+it('does not mark an XMTP dev web build production ready', () => {
+  const report = buildHealthReport({ ...readyWeb, VITE_XMTP_ENV: 'dev' });
+  expect(report.readiness.releaseReady).toBe(false);
+  expect(report.runtime.xmtpNetwork).toBe('dev');
+  expect(report.status).toBe('degraded');
+});

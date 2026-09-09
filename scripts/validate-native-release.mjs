@@ -15,19 +15,25 @@ export function validateNativeRelease(env, versions) {
   if (env.VITE_TRANSPORT !== 'xmtp' || env.VITE_XMTP_ENV !== 'production') throw new Error('Release must use production XMTP, never mock or dev.');
   httpsUrl(env.VITE_API_ORIGIN, 'VITE_API_ORIGIN', true);
   httpsUrl(env.VITE_MAINNET_RPC_URL, 'VITE_MAINNET_RPC_URL');
-  httpsUrl(env.CHIRPY_GATE_HEALTH_URL, 'CHIRPY_GATE_HEALTH_URL');
+  gateHealthUrl(env.CHIRPY_GATE_HEALTH_URL);
   const required = ['VITE_WALLETCONNECT_PROJECT_ID', 'TAURI_SIGNING_PRIVATE_KEY'];
   if (env.RUNNER_OS === 'macOS') required.push('APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_ID', 'APPLE_PASSWORD', 'APPLE_TEAM_ID');
   const missing = required.filter(name => !env[name]?.trim());
   if (missing.length) throw new Error(`Missing release configuration: ${missing.join(', ')}.`);
 }
+function gateHealthUrl(value) {
+  const url = httpsUrl(value, 'CHIRPY_GATE_HEALTH_URL');
+  if (value !== url.origin + '/health') throw new Error('CHIRPY_GATE_HEALTH_URL must be the canonical HTTPS /health endpoint.');
+  return url;
+}
 export async function verifyReleaseServices(env, fetcher = fetch) {
   const webUrl = new URL('/api/health', httpsUrl(env.VITE_API_ORIGIN, 'VITE_API_ORIGIN', true));
-  const gateUrl = httpsUrl(env.CHIRPY_GATE_HEALTH_URL, 'CHIRPY_GATE_HEALTH_URL');
+  const gateUrl = gateHealthUrl(env.CHIRPY_GATE_HEALTH_URL);
   const [webResponse, gateResponse] = await Promise.all([webUrl, gateUrl].map(url => fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(10_000) })));
   if (!webResponse.ok || !gateResponse.ok) throw new Error('Production services are not ready for a native release.');
   const [web, gate] = await Promise.all([webResponse.json(), gateResponse.json()]);
-  if (web.runtime?.transport !== 'xmtp' || web.readiness?.releaseReady !== true || gate.ok !== true || gate.network !== 'production' || gate.dependencies?.ready !== true) throw new Error('Production service readiness is incomplete; configuration-only gate health is insufficient.');
+  if (web.runtime?.transport !== 'xmtp' || web.runtime?.xmtpNetwork !== 'production' || web.readiness?.releaseReady !== true || gate.ok !== true || gate.network !== 'production' || gate.dependencies?.ready !== true) throw new Error('Production service readiness is incomplete; configuration-only gate health is insufficient.');
+  if (web.runtime?.gateMode !== 'external' || web.runtime?.externalGate !== gateUrl.host) throw new Error('The checked gate must match the external gate configured by the web deployment.');
   const syncUrl = new URL('/api/usersync', webUrl);
   const response = await fetcher(new URL(syncUrl.href + '?address=0x0000000000000000000000000000000000000001'), { redirect: 'error', signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error('Live sync storage is unavailable.');
