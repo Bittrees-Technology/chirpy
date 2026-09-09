@@ -105,7 +105,8 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const policy: Policy | null = isRoom ? (activeConversation.policy ?? null) : null;
   const readOnly = policy?.mode === "read-only";
   const isAdmin = isRoom && activeConversation.isAdmin === true;
-  const postingBlocked = readOnly && !isAdmin;
+  const configurationError = isRoom && activeConversation.configurationError === true;
+  const postingBlocked = configurationError || (readOnly && !isAdmin);
   const needsConsent = !isRoom && (activeConversation.pending || activeConversation.blocked);
   const changeConsent = async (state: "allowed" | "denied") => {
     setConsentPending(true);
@@ -146,7 +147,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
               : shortAddr(activeConversation.peers.find((p) => p !== identity.address) ?? activeConversation.peers[0])}
           </div>
         </div>
-        {(isRoom && policy) || isGatedRoom ? (
+        {!configurationError && ((isRoom && policy) || isGatedRoom) ? (
           <div className="thread-actions">
             {isGatedRoom && !isMember && (
               <Button variant="primary" disabled={joinPending} onClick={requestJoin}>
@@ -161,6 +162,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           </div>
         ) : null}
       </header>
+      {configurationError && <div className="error-banner" role="alert">{t("thread.invalidRoom", "Room configuration is invalid or unsupported. Ask an administrator to repair it.")}</div>}
 
       {!isRoom && peerAddress?.toLowerCase() !== selfAddress && <div className="join-banner dm-controls">
         {!needsConsent && activeConversation.lastReadReceiptAt && <span data-testid="peer-receipt" title={t("thread.receiptMeaning", "The peer sent a read receipt at this time. It does not identify an exact message.")}>
@@ -246,8 +248,8 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
       {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{translateStatus(t, sendError.message)} {t("thread.draftKept", "Your draft has been kept.")}</div>}
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
-      {readOnly && isAdmin && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chirpy. Administrators can still post; other clients may ignore this policy.")}</div>}
-      {needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : postingBlocked ? (
+      {readOnly && isAdmin && !configurationError && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chirpy. Administrators can still post; other clients may ignore this policy.")}</div>}
+      {configurationError ? null : needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : postingBlocked ? (
         <div className="composer readonly-note">{t("thread.readOnly", "Member posting is paused in Chirpy. Other clients may still send messages.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>

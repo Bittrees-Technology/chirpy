@@ -1,7 +1,7 @@
+import { INVALID_ROOM_METADATA, MAX_ROOM_DESCRIPTION_LENGTH, ROOM_META_VERSION, parseRoomMeta, type RoomMeta } from "./roomMetadata.js";
 import { readMessagePage } from "./messagePage.js";
 import { mapConversations } from "./mapConversations.js";
 import {
-  decodeGate,
   encodeGate,
   evalGate,
   validateProductionGate,
@@ -39,12 +39,6 @@ interface PeerState {
   accountIdentifiers?: { identifier?: string }[];
 }
 
-interface RoomMeta {
-  gate: Gate;
-  policy: Policy;
-  description?: string;
-  namespace?: string;
-}
 
 export interface ConversationClassificationMeta {
   metadata?: { conversationType?: unknown };
@@ -57,7 +51,6 @@ let sharedXmtp: { address: string; client: XmtpClient } | null = null;
 const READY_PREFIX = "chirpy.xmtp.ready.";
 const PEER_KEY = "chirpy.xmtp.peers";
 const ETH_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
-const ROOM_META_VERSION = 1;
 const OPEN_GATE: Gate = { combine: "any", rules: [] };
 
 
@@ -145,35 +138,6 @@ const textEncoder = new TextEncoder();
 const bytesToHex = (bytes: Uint8Array) =>
   `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 
-function parseRoomMeta(description: string | undefined, orgPolicy: Policy): RoomMeta {
-  const fallback: RoomMeta = {
-    gate: OPEN_GATE,
-    policy: mergePolicy(orgPolicy),
-    description: description || undefined,
-  };
-  if (!description) return fallback;
-  try {
-    const parsed = JSON.parse(description) as {
-      chirpyRoom?: number;
-      namespace?: string;
-      description?: string;
-      gate?: string | Gate;
-      policy?: Policy;
-    };
-    if (parsed.chirpyRoom !== ROOM_META_VERSION) return fallback;
-    const gate = typeof parsed.gate === "string"
-      ? decodeGate(parsed.gate)
-      : parsed.gate ?? OPEN_GATE;
-    return {
-      gate,
-      policy: mergePolicy(orgPolicy, parsed.policy),
-      description: parsed.description,
-      namespace: parsed.namespace,
-    };
-  } catch {
-    return fallback;
-  }
-}
 
 function getImportMetaEnv(): Record<string, string | undefined> {
   return (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
@@ -527,6 +491,7 @@ export class XmtpTransport implements Transport {
   }
 
   private async assertGateAllows(meta: RoomMeta) {
+    if (meta.invalid) throw new Error(INVALID_ROOM_METADATA);
     if ((meta.gate.rules?.length ?? 0) === 0) return;
     if (this.org.chain.chainId !== 1 || !validateProductionGate(meta.gate)) throw new Error("This room uses an unsupported production gate.");
     const passes = await evalGate(meta.gate, this.myAddress, this.chainReader(), this.org.gating);
@@ -577,6 +542,7 @@ export class XmtpTransport implements Transport {
       gate: meta.gate,
       policy: meta.policy,
       isAdmin: await this.isCurrentUserAdmin(conversation).catch(() => false),
+      configurationError: meta.invalid === true,
       lastMessage,
       unread: await this.unreadCount(conversation),
     };
@@ -707,9 +673,14 @@ export class XmtpTransport implements Transport {
       try { directory = await this.publishedRooms(); this.warning = undefined; }
       catch { this.warning = "Published rooms are unavailable. Existing chats still work; room joins may need to be retried."; directory = this.catalogCache?.rooms ?? []; }
       for (const room of directory) {
-        const existing = scoped.find((c) => c.id === room.id);
-        if (!existing) scoped.push(room);
-        else existing.gate = room.gate;
+        let existing = scoped.find((c) => c.id === room.id);
+        if (!existing) {
+          const received = next.get(room.id);
+          existing = received?.configurationError
+            ? { ...room, configurationError: true, policy: received.policy, description: received.description }
+            : { ...room };
+          scoped.push(existing);
+        } else existing.gate = room.gate;
         // The directory supplies admission rules, not the joined group's current
         // posting policy. Preserve a pause and other group policy overrides.
         this.roomMeta.set(room.id, { ...this.roomMeta.get(room.id), namespace: room.namespace,
@@ -912,6 +883,11 @@ export class XmtpTransport implements Transport {
     if (hasGate(gate) && (this.org.chain.chainId !== 1 || !validateProductionGate(gate))) {
       throw new Error("Production gates currently support mainnet token rules (explicit ERC-1155 IDs), Safe owners, and ENS. Check the rule and a positive minimum.");
     }
+    if (typeof input.description === "string" && input.description.length > MAX_ROOM_DESCRIPTION_LENGTH) {
+      throw new Error("Room descriptions must be 10,000 characters or fewer.");
+    }
+    const encodedMeta = roomMetaDescription(meta);
+    if (parseRoomMeta(encodedMeta, this.org.policy).invalid) throw new Error(INVALID_ROOM_METADATA);
     const gatekeeperAddress = hasGate(gate) ? this.gatekeeperAddress() : null;
     const gatekeeperInboxId = gatekeeperAddress
       ? await client.fetchInboxIdByIdentifier(await this.identifier(gatekeeperAddress))
@@ -928,7 +904,7 @@ export class XmtpTransport implements Transport {
 
     const updates = [
       group.updateName(input.title),
-      group.updateDescription(roomMetaDescription(meta)),
+      group.updateDescription(encodedMeta),
       group.addSuperAdmin(this.requireInboxId()).catch(() => undefined),
     ];
     if (gatekeeperInboxId) updates.push(group.addSuperAdmin(gatekeeperInboxId));
@@ -954,6 +930,7 @@ export class XmtpTransport implements Transport {
   async requestRoomJoin(conversationId: string): Promise<void> {
     const meta = this.roomMeta.get(conversationId);
     if (!meta || meta.namespace !== this.org.namespace) throw new Error("Room not found in this organization.");
+    if (meta.invalid) throw new Error(INVALID_ROOM_METADATA);
     if (!hasGate(meta.gate)) throw new Error("This room is open.");
     if (!this.provider || !this.org.gateUrl) throw new Error("Connect a wallet and configure the organization's external gate.");
     const endpoint = this.gateEndpoint();
@@ -997,6 +974,7 @@ export class XmtpTransport implements Transport {
   async setRoomPolicy(conversationId: string, policy: Policy): Promise<void> {
     const conversation = this.conversations.get(conversationId);
     if (!conversation || !this.roomMeta.has(conversationId)) return;
+    if (this.roomMeta.get(conversationId)?.invalid) throw new Error(INVALID_ROOM_METADATA);
     if (!await this.isCurrentUserAdmin(conversation)) throw new Error("Admins only.");
 
     const current = this.roomMeta.get(conversationId) ?? {
@@ -1006,7 +984,9 @@ export class XmtpTransport implements Transport {
     const next: RoomMeta = { ...current, policy };
     const group = conversation as XmtpConversation & { updateDescription?: (description: string) => Promise<void> };
     if (!group.updateDescription) throw new Error("Room policy updates are unavailable.");
-    await group.updateDescription(roomMetaDescription(next));
+    const encodedMeta = roomMetaDescription(next);
+    if (parseRoomMeta(encodedMeta, this.org.policy).invalid) throw new Error(INVALID_ROOM_METADATA);
+    await group.updateDescription(encodedMeta);
     this.roomMeta.set(conversationId, next);
     this.invalidateConversation(conversationId);
   }

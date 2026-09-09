@@ -32,6 +32,8 @@ export interface Conversation {
   policy?: Policy;
   /** Current identity's room role, derived from the transport; actions recheck it. */
   isAdmin?: boolean;
+  /** Invalid or unsupported received room metadata; room actions must be blocked. */
+  configurationError?: boolean;
   lastMessage?: ChatMessage;
   /** Latest peer receipt time; XMTP receipts do not identify an exact message. */
   lastReadReceiptAt?: number;
