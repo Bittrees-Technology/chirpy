@@ -222,3 +222,9 @@ Five regression cases cover malformed/prototype values, supported persisted Span
 Settings and the native update card now translate their controls, privacy/revocation explanations, organization metadata, ENS results and known sync status messages into Spanish. Names, addresses, release notes and unknown provider diagnostics remain literal text. ENS wording no longer equates an unresolved name with an available registration. Template interpolation preserves literal values and rejects inherited dictionary keys.
 
 Catalog tests require matching English/Spanish keys and placeholders. The browser flow verifies Spanish sync activation/revocation results, persisted language after reload, privacy controls, ENS validation, switching back to English and a 390-pixel viewport without horizontal page overflow. Dialogs and other application surfaces still need broader translation coverage; this does not establish full localization or assistive-technology acceptance.
+
+## Organization import validation
+
+Organization imports validate nested branding, chain, gating rules, policy, room seeds, roles and administrators before entering application state. Invalid present fields are rejected; absent legacy collections, branding slugs, gating defaults and policies are normalized. Imports reject the reserved Personal organization ID, duplicate seed IDs, oversized collections and files above 256 KB UTF-8. Error output is bounded. This schema validation does not certify gate authority, deployment URLs, contract presets or production support for additional rule types.
+
+Twenty-nine regression cases cover malformed render inputs, rule/policy values, legacy normalization, preset round trips and resource limits. The browser test rejects malformed roles without changing stored organizations, then imports a legacy config and verifies Settings after reload without page errors. Dialog localization and recovery from previously corrupted local storage remain follow-ups.

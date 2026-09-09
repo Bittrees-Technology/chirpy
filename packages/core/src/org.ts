@@ -1,3 +1,5 @@
+import { validateOrgConfig } from "./orgValidation.js";
+export { validateOrgConfig, type OrgValidation } from "./orgValidation.js";
 import type { GatingConfig, OrgConfig, Policy, RoomRule } from "./types.js";
 import { DEFAULT_POLICY, mergePolicy } from "./policy.js";
 
@@ -79,33 +81,24 @@ export function createOrg(input: CreateOrgInput): OrgConfig {
   };
 }
 
-export interface OrgValidation { ok: boolean; errors: string[]; }
-
-/** Validate an arbitrary parsed object as an OrgConfig. */
-export function validateOrgConfig(o: any): OrgValidation {
-  const errors: string[] = [];
-  if (!o || typeof o !== "object") errors.push("not an object");
-  if (o?.version !== 1) errors.push("unsupported or missing version (expected 1)");
-  if (!o?.branding?.name) errors.push("branding.name is required");
-  if (!o?.namespace) errors.push("namespace is required");
-  if (typeof o?.chain?.chainId !== "number") errors.push("chain.chainId must be a number");
-  if (!Array.isArray(o?.entryGate)) errors.push("entryGate must be an array");
-  if (!o?.gating) errors.push("gating is required");
-  return { ok: errors.length === 0, errors };
-}
-
 export function serializeOrg(o: OrgConfig): string {
   return JSON.stringify(o, null, 2);
 }
 
 /** Parse + validate JSON text into an OrgConfig. Throws on invalid input. */
 export function parseOrg(text: string): OrgConfig {
+  if (typeof text !== "string" || new TextEncoder().encode(text).byteLength > 256_000) throw new Error("Organization config exceeds the 256 KB import limit.");
   let parsed: any;
   try { parsed = JSON.parse(text); } catch (e) { throw new Error("Invalid JSON"); }
   const v = validateOrgConfig(parsed);
   if (!v.ok) throw new Error(`Invalid org config: ${v.errors.join("; ")}`);
   // Ensure an id exists.
   if (!parsed.id) parsed.id = `org_${slugify(parsed.branding.name)}_${rid()}`;
+  parsed.branding.slug ??= slugify(parsed.branding.name);
+  parsed.gating = { ...openGating(), ...parsed.gating };
+  parsed.defaultRooms ??= [];
+  parsed.roles ??= [];
+  parsed.admins ??= [];
   // Backward-compat: policy was added after v1 shipped; default it if absent.
   parsed.policy = mergePolicy(DEFAULT_POLICY, parsed.policy);
   return parsed as OrgConfig;
