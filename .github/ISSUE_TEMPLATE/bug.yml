@@ -1,0 +1,21 @@
+name: Bug report or support
+description: Report an ordinary bug or ask for help using Chirpy.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities use private reporting: https://github.com/Bittrees-Technology/chirpy/security/advisories/new. Do not include credentials, signatures, seed phrases, or private messages."
+  - type: input
+    id: version
+    attributes:
+      label: Browser or app version
+      description: Include OS and Chirpy commit/version if known.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include expected behavior and reproduction steps using synthetic data.
+    validations:
+      required: true

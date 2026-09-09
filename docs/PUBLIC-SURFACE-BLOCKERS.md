@@ -7,12 +7,12 @@ or invented copy.
 
 The repository does not currently contain approved public artifacts for:
 
-- `/support`
-- `/security`
 - `/privacy`
 - `/terms`
 
-Until the owning reviewer supplies approved content for those paths, the Vercel SPA rewrite
+Support and security reporting now have factual pages using the verified GitHub issue tracker and enabled private vulnerability reporting. No email address, legal entity, or response-time promise is invented.
+
+Until the owning reviewer supplies approved content for the remaining privacy/terms paths, the Vercel SPA rewrite
 excludes them so they do not render the chat application as a misleading fallback page.
 
 Do not add placeholder legal, privacy, security, or support claims. Add real static artifacts

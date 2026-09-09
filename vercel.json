@@ -4,6 +4,22 @@
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
+      "source": "/support",
+      "destination": "/support.html"
+    },
+    {
+      "source": "/support/",
+      "destination": "/support.html"
+    },
+    {
+      "source": "/security",
+      "destination": "/security.html"
+    },
+    {
+      "source": "/security/",
+      "destination": "/security.html"
+    },
+    {
       "source": "/((?!api/|support/?$|security/?$|privacy/?$|terms/?$).*)",
       "destination": "/index.html"
     }

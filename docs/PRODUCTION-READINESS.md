@@ -5,14 +5,14 @@ We implement and merge independent changes in increasing complexity, while prese
 | Order | Increment | Status / completion evidence |
 |---|---|---|
 | 1 | HTTP hardening: size/time limits, proxy trust, CORS, sanitized errors, security headers, real HTTP regression tests | Merged in PR #3; 63 tests, type checks, build and rollout proof pass |
-| 2 | Keyboard accessibility, message scrolling, translated chat controls | Implemented; native-dialog and message-history regression tests in this PR |
+| 2 | Keyboard accessibility, message scrolling, translated chat controls | Merged in PR #4; 64 tests and three browser tests pass |
 | 3 | Unread counts, request acceptance/rejection, blocking and receipts | Pending |
 | 4 | Wallet-specific preferences and revocable sync authorization | Pending |
 | 5 | Pagination, bounded refresh, long-history performance | Pending |
 | 6 | Trusted gate resolvers and protocol-enforceable moderation/membership lifecycle | Pending |
 | 7 | Dependency remediation, live probes, backup/restore and release acceptance | Pending |
 | 8 | Production gate deployment and multi-wallet acceptance | Needs hosting/bot identity and reviewed room registry |
-| 9 | Public support/security/privacy/terms material | Needs actual operator/contact/retention decisions |
+| 9 | Public support/security/privacy/terms material | Support/security pages and GitHub private reporting implemented; privacy/terms still need actual operator/retention decisions |
 | 10 | Native release/signing, iOS real-device and TestFlight acceptance | Needs release credentials and device/store access |
 | 11 | Shared UI/embed and Governance/Research integration | Pending |
 | 12 | Final artwork and documentation reconciliation | Pending |
