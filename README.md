@@ -121,10 +121,10 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROLLOUT-RUNBOOK.md
 - ✅ Cross-org persistence: DMs follow your wallet across all orgs + personal; rooms per org.
 - ✅ Generalized gating model + evaluator (token / Safe / ENS / role-cascade / power-tier) — `packages/core`.
 - ✅ **Action policy** layer (read-only rooms, block attachments, size caps) — freeze a room live.
-- ✅ **Serverless token-gate** (`api/room-join.js`): signature-verified `evalGate` + viem chain
-  reader + an XMTP gatekeeper bot that adds the inbox to a gated room. Deployed on Vercel.
+- ✅ **Self-hosted token-gate** (`server/room-join.js`): signature-verified `evalGate` + viem chain
+  reader + an XMTP gatekeeper bot that adds the inbox to a gated room. Requires a durable external gate deployment.
 - ✅ **Encrypted cross-device sync** (`api/usersync.js`): settings + saved messages, key derived
-  from a wallet signature, stored in Upstash/Vercel KV (last-write-wins with a stale guard).
+  from a wallet signature, stored in Upstash/Vercel KV with atomic revisions and revocable, expiring device authorization.
 - ✅ Per-org **drop-in CSS theming**, a styled **error page**, and an i18n framework (EN/ES).
 - ✅ **macOS desktop app** (Tauri 2) with generated icons and signed **auto-update** (ed25519
   updater key + GitHub Releases `latest.json`); release CI in `.github/workflows/release.yml`.
@@ -139,7 +139,7 @@ docs/          PLAN.md · ARCHITECTURE.md · PRODUCTION.md · ROLLOUT-RUNBOOK.md
 - ⏳ **iOS**: the Rust shell and icons are ready, but the Xcode project isn't generated yet
   (`pnpm tauri ios init` / `ios dev`). See [docs/NATIVE.md](docs/NATIVE.md).
 - ✅ **Self-host bundle** (`selfhost/`): `gate.Dockerfile` + `gate-server.mjs` (a working Node
-  HTTP wrapper around `api/room-join.js` with CORS) are built and documented in
+  HTTP wrapper around `server/room-join.js` with CORS) are built and documented in
   `selfhost/DEPLOY.md`. Per-org `OrgConfig.gateUrl` is consumed by the client
   (`packages/transport/src/xmtp.ts` `gateEndpoint()`) — point it at a self-hosted gate to route
   around the Vercel serverless limitation below.

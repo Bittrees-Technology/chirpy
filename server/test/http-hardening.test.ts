@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { request } from "node:http";
 import { once } from "node:events";
 import { createGateServer } from "../../selfhost/gate-server.mjs";
-import { checkRateLimit, resetRateLimits } from "../server-utils.js";
+import { checkRateLimit, resetRateLimits } from "../../server/server-utils.js";
 
 let server; let url; let handler;
 beforeEach(async () => {

@@ -35,9 +35,6 @@ importers:
       '@app/core':
         specifier: workspace:*
         version: link:../packages/core
-      '@xmtp/node-sdk':
-        specifier: ^6.0.0
-        version: 6.0.0
       viem:
         specifier: ^2.53.1
         version: 2.53.1(typescript@5.9.3)(zod@3.25.76)
@@ -96,6 +93,15 @@ importers:
       '@xmtp/browser-sdk':
         specifier: ^7.0.0
         version: 7.0.0(viem@2.53.1(typescript@5.9.3)(zod@3.25.76))
+
+  server:
+    dependencies:
+      '@xmtp/node-sdk':
+        specifier: ^6.0.0
+        version: 6.0.0
+      viem:
+        specifier: ^2.53.1
+        version: 2.53.1(typescript@5.9.3)(zod@3.25.76)
 
 packages:
 

@@ -6,13 +6,13 @@ also the **recommended** way to run the gatekeeper at all: it uses `@xmtp/node-s
 native bindings don't run on Vercel's serverless runtime, so an always-on container (or any
 VM) is the right home for it.
 
-The gate runs the **same** `api/room-join.js` handler the web app expects — it verifies a
+The gate runs the `server/room-join.js` handler the web app expects — it verifies a
 wallet signature, evaluates the room's gate with `@app/core`'s `evalGate`, and (as a room
 super-admin) adds the wallet's inbox to the XMTP-MLS group.
 
 ## What's here
 
-- `gate-server.mjs` — Node HTTP server that wraps `api/room-join.js`; serves `POST /api/room-join` (+ `/health`) with CORS.
+- `gate-server.mjs` — Node HTTP server that wraps `server/room-join.js`; serves `POST /api/room-join` (+ `/health`) with CORS.
 - `gate.Dockerfile` — container image for the gate (Debian/glibc base, so the XMTP native bindings load).
 - `docker-compose.yml` — the `gate` service.
 - `gate.package.json` — the gate's runtime deps (kept lean, separate from the monorepo).
@@ -67,3 +67,5 @@ required secrets to serve room joins.
   container/VM), which Vercel serverless doesn't provide.
 - **No Vercel dependency** — run on your own box behind your own nginx/TLS.
 - **Censorship-resistance** — optionally front it with a reverse-proxy relay.
+
+The web deployment's `/api/room-join` is a fail-closed placeholder. It returns a clear 503 until each organization points to its external gate URL; it never starts a gatekeeper or imports native bindings. Shared server helpers and tests live outside the API route directory.

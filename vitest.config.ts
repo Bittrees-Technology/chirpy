@@ -17,7 +17,7 @@ export default defineConfig({
         test: {
           name: "api",
           environment: "node",
-          include: ["api/test/**/*.test.ts"],
+          include: ["server/test/**/*.test.ts"],
         },
       },
       {

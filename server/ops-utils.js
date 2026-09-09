@@ -118,7 +118,7 @@ export function buildHealthReport(env = process.env) {
   const blockingIssues = [];
   const checks = [];
   const externalGateHost = pickDeploymentHost(profile.gate.externalUrl);
-  const gateRouteReady = profile.gate.externalConfigured || (profile.gate.configured && !env.VERCEL_ENV);
+  const gateRouteReady = profile.gate.externalConfigured;
 
   checks.push(
     healthCheck(
@@ -158,50 +158,13 @@ export function buildHealthReport(env = process.env) {
         `Gated-room joins are routed to the external gate at ${externalGateHost}.`,
       ),
     );
-    if (profile.gate.configured) {
-      checks.push(
-        healthCheck(
-          "gatekeeper",
-          "ok",
-          "Embedded gatekeeper credentials are also configured on this deployment.",
-        ),
-      );
-    } else {
-      checks.push(
-        healthCheck(
-          "gatekeeper",
-          "info",
-          "This deployment relies on the external gate and does not host embedded gatekeeper credentials.",
-        ),
-      );
-    }
-  } else if (profile.gate.configured) {
-    checks.push(
-      healthCheck(
-        "gate-route",
-        "ok",
-        "Gated-room joins use this deployment's own /api/room-join handler.",
-      ),
-    );
-    checks.push(healthCheck("gatekeeper", "ok", "Gatekeeper credentials and server RPC are configured."));
+    checks.push(healthCheck("gatekeeper", "info", "Membership changes run on the external gate's durable process."));
   } else {
-    const missing = [];
-    if (!profile.gate.privateKeyConfigured) missing.push("XMTP_GATEKEEPER_PRIVATE_KEY");
-    if (!profile.gate.serverRpcConfigured) missing.push("MAINNET_RPC_URL");
-    const summary = `Same-origin gatekeeper is not fully configured; missing ${missing.join(" and ")}.`;
-    checks.push(
-      healthCheck(
-        "gate-route",
-        "degraded",
-        "Gated-room joins fall back to this deployment's /api/room-join handler, but that handler is not fully configured.",
-      ),
-    );
+    const summary = "The web deployment requires an external gate service and an explicit room gate URL.";
+    checks.push(healthCheck("gate-route", "degraded", summary));
     checks.push(healthCheck("gatekeeper", "degraded", summary));
-    if (profile.transport === "xmtp") {
-      blockingIssues.push(summary);
-    } else {
-      warnings.push(summary);
-    }
+    if (profile.transport === "xmtp") blockingIssues.push(summary);
+    else warnings.push(summary);
   }
 
   if (profile.gatekeeperAddressConfigured) {
@@ -246,7 +209,7 @@ export function buildHealthReport(env = process.env) {
     readiness: {
       previewReady: true,
       gateReady: gateRouteReady,
-      embeddedGateReady: profile.gate.configured,
+      embeddedGateReady: false,
       syncReady: profile.sync.configured,
       releaseReady,
     },
