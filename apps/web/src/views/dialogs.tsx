@@ -104,9 +104,9 @@ export function GateRuleEditor(
     <div className="gate-editor">
       <div className="gate-add">
         <span className="field-label">{t("dialog.addRule")}</span>
-        <button className="chip" onClick={() => add("token")}>Token</button>
+        <button data-insights="token" className="chip" onClick={() => add("token")}>Token</button>
         {gating.enableSafeRules && <button className="chip" onClick={() => add("safe")}>{production ? t("dialog.safeOwners") : "Safe"}</button>}
-        {gating.enableEnsRules && <button className="chip" onClick={() => add("ens")}>ENS</button>}
+        {gating.enableEnsRules && <button data-insights="ens" className="chip" onClick={() => add("ens")}>ENS</button>}
         {!production && <button className="chip" onClick={() => add("role")}>{t("dialog.role")}</button>}
         {!production && gating.powerTier && <button className="chip" onClick={() => add("power")}>{gating.powerTier.label}</button>}
       </div>

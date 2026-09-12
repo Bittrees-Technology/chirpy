@@ -22,7 +22,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
           <p className="muted">The app hit an unexpected error. Your chats are stored locally and are safe.</p>
           <pre className="error-detail">{this.state.error.message}</pre>
           <div className="row-end">
-            <button className="btn btn-primary" onClick={() => location.reload()}>Reload</button>
+            <button data-insights="reload" className="btn btn-primary" onClick={() => location.reload()}>Reload</button>
           </div>
         </div>
       </div>
