@@ -16,6 +16,11 @@ See [REMAINING-WORK.md](REMAINING-WORK.md) for the consolidated unfinished backl
 | 10 | Native release/signing, iOS real-device and TestFlight acceptance | Needs release credentials and device/store access |
 | 11 | Shared UI/embed and Governance/Research integration | Consumer inspection and migration contract in INTEGRATION.md; history/authority decisions and implementation pending |
 | 12 | Final artwork and documentation reconciliation | Operations/roadmap/native guides reconciled; final artwork pending |
+| 13 | Recipient routing and wallet/email channels | Web recipient routing, external email handoff and wallet invitations in PR #53; bounded HTTPS links in PR #54 |
+| 14 | Wallet-authorized outbound email | Disabled encrypted outbox pilot in PR #55; atomic signature expiry in PR #56 |
+| 15 | Mail operations and recipient protection | Worker liveness/backlog in PR #57; durable suppression in PR #58; signed provider events in PR #59; explicit recipient opt-out in PR #60 |
+| 16 | Remaining known wallet/sync/ENS status translations | English/Spanish follow-up merged in PR #61; catalog, web and native checks pass |
+| 17 | Recipient quota case normalization | PR #62 reproduces and closes a verified-address case-variant quota bypass; 444 tests and 24 browser tests pass |
 | Later | Voice, presence, optional relays | Product expansion, after core production readiness |
 
 ## HTTP hardening acceptance
@@ -326,3 +331,84 @@ Nineteen hardening cases cover database/WAL/salt corruption, missing/extra files
 A healthy stream with a successfully reconciled inbox now waits one minute before the next periodic full refresh. Intermediate ten-second timer ticks skip both network synchronization and local full-list enumeration. Streamed messages and local changes still invalidate and refresh immediately. Missing initial state, explicit full invalidation, unhealthy streams, failed refreshes and directory failures retain the ten-second fallback; focus, online and visibility events force immediate reconciliation. Moving the wall clock backwards also forces the fallback instead of postponing recovery indefinitely.
 
 This reduces healthy idle periodic work from six full refreshes per minute to at most one. It deliberately allows silently missed or non-streamed updates to take up to roughly 70 seconds to reconcile (the one-minute interval plus timer alignment), plus operation time. The interval starts after successful full-refresh completion. It does not reduce the cost of a single initial/full refresh or establish real-device scale acceptance. Regression tests reproduce excessive old polling, count skipped SDK calls, and cover failure retries and clock rollback; existing stream/reconnect/local-action tests remain in place.
+
+## Wallet/email pilot hardening evidence (13 September 2026)
+
+These increments add an explicit wallet-authorized outbound service, not automatic
+XMTP forwarding, inbound email or an email-only identity provider. They do not
+activate production sending, invent recipient verification, provision service
+keys or replace operator/device acceptance.
+
+| Increment | Merged change | Verification |
+|---|---|---|
+| [#53](https://github.com/Bittrees-Technology/chirpy/pull/53) | Recipient routing, external email composition, wallet invitation fragments and Channels view | 378 tests, 18 browser tests and live synthetic XMTP dev acceptance |
+| [#54](https://github.com/Bittrees-Technology/chirpy/pull/54) | Bounded explicit HTTPS links with no previews or automatic external requests | 398 tests, 19 browser tests and native validation |
+| [#55](https://github.com/Bittrees-Technology/chirpy/pull/55) | Wallet signatures, private consent records, encrypted immutable outbox, quota/idempotency/lease/retry boundaries | 420 tests, 21 browser tests and native validation |
+| [#56](https://github.com/Bittrees-Technology/chirpy/pull/56) | Recheck signed request expiry using Redis time at atomic enqueue | Reproduced the old failure; 421 tests pass after fixing the boundary |
+| [#57](https://github.com/Bittrees-Technology/chirpy/pull/57) | Authenticated read-only worker liveness/backlog and successful-tick heartbeat | 424 tests; status reads cannot send, mutate receipts or refresh heartbeat |
+| [#58](https://github.com/Bittrees-Technology/chirpy/pull/58) | Durable recipient suppression across sending wallets, including queue/claim/handoff races | 430 tests; case variants, legacy jobs and re-imported consent cannot bypass suppression |
+| [#59](https://github.com/Bittrees-Technology/chirpy/pull/59) | Signed provider bounce/complaint processing with atomic deduplication | 439 tests plus web/security/macOS/iOS checks; deployed preview and production load the disabled handler correctly |
+| [#60](https://github.com/Bittrees-Technology/chirpy/pull/60) | Private recipient opt-out link and explicit English/Spanish confirmation | 443 tests and 24 browser tests; private token handling, retry, mobile width and keyboard checks; macOS/iOS pass |
+
+PR [#62](https://github.com/Bittrees-Technology/chirpy/pull/62) aligns recipient
+quota hashing with conservative case-folded suppression. The regression first
+reproduced a queued request after the recipient limit had been reached, then
+confirmed rejection before a job, payload or wallet quota charge. The full suite
+passes 444 tests and 24 browser tests.
+
+PR [#61](https://github.com/Bittrees-Technology/chirpy/pull/61) also closes the known
+application-generated wallet, sync and ENS status translation gaps. The existing
+catalog/interpolation, full web and native checks pass; third-party diagnostics
+remain verbatim and native-language acceptance is still separate.
+
+Mail tests use isolated real Redis keys and synthetic provider responses. They
+cover concurrent enqueue/claims, signature and content substitution, revoked or
+expired consent, payload encryption/deletion, crash-after-provider-acceptance
+recovery, replay, quota enforcement, forged/expired webhook signatures, bounded
+bodies and stalled streams, durable event conflicts, stopped queued delivery and
+opt-out continuity after payload deletion/encryption-key rotation. Browser tests
+also confirm that simply opening an opt-out link never submits a change and that
+no private token enters browser storage or an external resource URL.
+
+[WALLET-EMAIL.md](WALLET-EMAIL.md) holds the configuration, data lifetimes and
+operator runbook. Provider acceptance is not delivery or reading. Worker health
+is not deliverability or global release readiness. Hash-only suppression, event
+and opt-out records remain private data subject to the operator's retention and
+backup policy; they are not anonymous records.
+
+## Current external acceptance boundary
+
+The hosted app uses production XMTP and has configured cross-device sync, but
+`gateReady` and `releaseReady` remain false because the persistent gate service
+and gatekeeper identity are not configured. Mail endpoints remain disabled until
+their real configuration and acceptance are supplied. Passing CI does not change
+these results.
+
+Before a supervised mail pilot: provide the verified dedicated sender domain,
+provider/storage secrets, genuinely verified correspondent-specific consent,
+scheduler and independent alert destination; register the signed webhook and
+exercise delivery, failure/retry, suppression and opt-out against consenting test
+accounts. Serve `/mail/optout/` and its static assets on the same HTTPS origin as
+`CHIRPY_MAIL_SERVICE_URL`. Preserve the private suppression/opt-out records when
+pausing sending or rotating payload keys. Actual email link rewriting/scanning
+and device behavior still need acceptance.
+
+Before broader release: finish the gate host/TLS/persistent keys/reviewed registry,
+real on-chain admission and multi-device acceptance, independent backups/restore
+rehearsal, actual operator/privacy/retention/support policy, platform signing and
+signed-device/update/TestFlight checks. Identity-service deployment, inbound
+email-to-wallet authorization, consumer migrations, additional authoritative rule
+sources and protocol-wide posting enforcement remain distinct dependencies in
+[REMAINING-WORK.md](REMAINING-WORK.md). Production identities, roles and consent records
+require genuine operator-approved evidence.
+
+The 13 September production environment-name inventory contains the existing
+Redis REST credentials, sync identity/origin configuration, browser RPC and
+WalletConnect project ID. None of the `CHIRPY_MAIL_*` or `RESEND_*` configuration
+entries are present, so outbound mail and provider events correctly remain off.
+The GitHub repository secret-name inventory contains the updater signing key
+only, and its release-variable inventory is empty. Organization-level secret
+metadata is unavailable to the current GitHub credential (403); an organization
+administrator must confirm any inherited platform credentials. Secret values were not read
+or copied during this audit. These are concrete configuration dependencies,
+not failures that synthetic tests can turn into production acceptance.
