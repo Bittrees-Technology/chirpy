@@ -134,6 +134,7 @@ input, textarea, select { font-family: inherit; }
 .msg-bubble { background: var(--bg-2); padding: 9px 12px; border-radius: 14px; border-bottom-left-radius: 4px; font-size: 14px; line-height: 1.4; display: flex; gap: 8px; align-items: flex-end; }
 .msg-row.mine .msg-bubble { background: var(--accent); color: var(--accent-text); border-radius: 14px; border-bottom-right-radius: 4px; }
 .msg-body { white-space: pre-wrap; word-break: break-word; }
+.msg-body a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .msg-time { font-size: 10px; opacity: .6; flex: 0 0 auto; }
 .msg-reply-ref { font-size: 11px; color: var(--muted); border-left: 2px solid var(--accent); padding-left: 6px; margin-bottom: 3px; }
 .msg-tools { position: absolute; top: -26px; opacity: 0; display: flex; gap: 2px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 10px; padding: 2px 4px; transition: opacity .12s; }

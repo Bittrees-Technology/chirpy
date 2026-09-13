@@ -24,6 +24,19 @@ OS universal-link registration and mail-app handoff acceptance remain untested.
 Email composition supports a conservative single ASCII mailbox, not display-name
 lists, internationalized addresses, attachments or arbitrary mailto headers.
 
+## Links inside messages
+
+Explicit HTTPS URLs in message bodies are clickable, including Mercado notification
+links. Original text and React escaping remain intact; arbitrary HTML and other
+protocols are not rendered as links. Credentials, backslashes, display-control
+characters and malformed percent escapes are rejected. Links open with no referrer
+and no access to the original window. Chirpy performs no preview or prefetch
+request. Rendering is capped at 100 links per message and 2,048 characters per URL;
+remaining content stays text. Following a link does not prove the destination is
+trusted or grant any Mercado permission: the destination must authenticate and
+authorize every view/action. Native external-window behavior still needs device
+acceptance alongside the existing native distribution work.
+
 ## Recommended production configuration
 
 1. **Identity:** independent verified email and wallet identities attached to a

@@ -1,3 +1,4 @@
+import { MessageBody } from "./MessageBody";
 import { receiptOverride } from "../receiptPreferences";
 import React, { useEffect, useRef, useState } from "react";
 import { formatBytes, type Policy } from "@app/core";
@@ -213,7 +214,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                   <div className="msg-reply-ref">↩ {(parent?.body ?? m.replyPreview)?.slice(0, 60) ?? t("thread.earlierReply", "Reply to an earlier message")}</div>
                 )}
                 <div className="msg-bubble">
-                  <span className="msg-body">{m.body}</span>
+                  <MessageBody body={m.body} />
                   <span className="msg-time">{fmtTime(m.sentAt, lang)}</span>
                 </div>
                 <div className="msg-tools">
