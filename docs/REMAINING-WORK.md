@@ -19,6 +19,8 @@ Use [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) for completed work and ev
 10. **Additional resolvers and presets:** trusted role, voting-power, Safe-delegate and other-chain sources; verified real preset contracts and broader ERC-1155 discovery if required. Unsupported production rules remain disabled. Protocol-wide posting freezes require an enforcement mechanism beyond the current advisory client policy.
 11. **Artwork:** replace interim icons with approved final brand assets and verify native/export sizes.
 
+12. **Email and wallet interoperability:** recipient routing, external email composition, web wallet invitation links and the Channels view are implemented. Automatic email↔wallet forwarding, verified email onboarding, bridge delivery/history, abuse handling and an in-app email inbox remain unfinished. Configuration defaults and acceptance gates are in [MESSAGE-ROUTING.md](MESSAGE-ROUTING.md). Native mailto/universal-link acceptance remains required.
+
 ## Later expansion
 
 Voice calls, presence/SSE and optional organization relays follow core release acceptance. They are not implemented by the security hardening increments.

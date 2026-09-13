@@ -64,7 +64,7 @@ async function enableMessaging(page: Page, walletAddress: string) {
 
 async function startDm(page: Page, peerAddress: string, displayName: string) {
   await page.getByRole("button", { name: "+ Chat" }).click();
-  await page.getByLabel("Address or ENS name").fill(peerAddress);
+  await page.getByLabel("Recipient").fill(peerAddress);
   await page.getByLabel("Display name (optional)").fill(displayName);
   await page.getByRole("button", { name: "Start chat" }).click();
   await expect(page.locator(".composer-input")).toBeVisible({ timeout: 120_000 });

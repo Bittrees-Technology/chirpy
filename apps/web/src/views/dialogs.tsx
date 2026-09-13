@@ -8,7 +8,9 @@ import { Button, Field, Modal } from "../ui";
 import { useI18n } from "../i18n";
 import { translateStatus } from "../i18n/statusMessages";
 import { PRESETS } from "../presets";
-import { isAddress, isEnsName, resolveEns } from "../ens";
+import { isAddress, resolveEns } from "../ens";
+
+import { parseRecipient, emailComposeUrl } from "../messageRouting";
 
 function download(filename: string, text: string) {
   const blob = new Blob([text], { type: "application/json" });
@@ -19,15 +21,18 @@ function download(filename: string, text: string) {
 }
 
 // ---------------- New DM ----------------
-export function NewDmDialog({ onClose, onCreated }: { onClose: () => void; onCreated?: () => void }) {
+export function NewDmDialog({ onClose, onCreated, initialRecipient = "" }: { onClose: () => void; onCreated?: () => void; initialRecipient?: string }) {
   const { t } = useI18n();
   const { startDm } = useChat();
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState(initialRecipient);
   const [handle, setHandle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const input = address.trim();
-  const valid = isAddress(input) || isEnsName(input);
+  const recipient = parseRecipient(address);
+  const isEmail = recipient?.kind === "email";
+  const valid = !!recipient && !isEmail;
+  const emailUrl = emailComposeUrl(address);
   const start = async () => {
     if (!valid || busy) return;
     setBusy(true);
@@ -55,26 +60,28 @@ export function NewDmDialog({ onClose, onCreated }: { onClose: () => void; onCre
     }
   };
   return (
-    <Modal title={t("dialog.dmTitle")} onClose={onClose}>
-      <Field label={t("dialog.address")} hint={t("dialog.addressHint")}>
+    <Modal title={t("routing.compose")} onClose={onClose}>
+      <Field label={t("routing.recipient")} hint={t("routing.recipientHint")}>
         <input
           className="input"
           value={address}
+          disabled={busy}
           onChange={(e) => { setAddress(e.target.value); setError(null); }}
           onKeyDown={(e) => { if (e.key === "Enter") void start(); }}
-          placeholder={t("dialog.addressPlaceholder")}
+          placeholder={t("routing.recipientHint")}
           autoFocus
         />
       </Field>
-      <Field label={t("dialog.displayName")}>
+      <p className="field-hint" role="status">{isEmail ? t("routing.emailNotice") : t("routing.walletNotice")}</p>
+      {!isEmail && <Field label={t("dialog.displayName")}>
         <input className="input" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="alice" />
-      </Field>
+      </Field>}
       {error && <div role="alert" className="error-banner">{translateStatus(t, error)}</div>}
       <div className="modal-actions">
         <Button variant="ghost" onClick={onClose}>{t("dialog.cancel")}</Button>
-        <Button variant="primary" disabled={!valid || busy} onClick={() => { void start(); }}>
+        {emailUrl ? <a className="btn btn-primary" href={emailUrl}>{t("routing.openEmail")}</a> : <Button variant="primary" disabled={!valid || busy} onClick={() => { void start(); }}>
           {busy ? t("dialog.resolving") : t("dialog.startChat")}
-        </Button>
+        </Button>}
       </div>
     </Modal>
   );
