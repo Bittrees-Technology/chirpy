@@ -23,3 +23,7 @@ playwright-report/
 
 # Operator-reviewed local gate registry
 selfhost/rooms.json
+
+# Private wallet-email service configuration and verification records
+selfhost/mail.env
+selfhost/mail-bindings.json

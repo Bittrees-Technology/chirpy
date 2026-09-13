@@ -1,3 +1,4 @@
+import { WalletEmail } from "./WalletEmail";
 import React from "react";
 import { useIdentity, useChat } from "../state";
 import { useI18n } from "../i18n";
@@ -25,6 +26,7 @@ export function MessageRoutes({ onCompose }: { onCompose: () => void }) {
       <h2>{t("routing.emailTitle")}</h2>
       <p>{t("routing.emailNotice")}</p>
     </div>
+    <WalletEmail key={identity.address} />
     <div className="card">
       <h2>{t("routing.bridgeTitle")}</h2>
       <p>{t("routing.bridgeNotice")}</p>
