@@ -64,6 +64,9 @@
     }
   ],
   "functions": {
+    "api/mail-events.js": {
+      "maxDuration": 30
+    },
     "api/mail-worker.js": {
       "maxDuration": 60
     },

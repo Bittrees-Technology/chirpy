@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "@xmtp/node-sdk": "^6.0.0",
+    "svix": "2.5.0",
     "viem": "^2.53.1"
   }
 }

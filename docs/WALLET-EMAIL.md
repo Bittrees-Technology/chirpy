@@ -124,8 +124,8 @@ Still required before an operator activates the supervised pilot:
    documented support ownership.
 3. Provider bounce/complaint monitoring with immediate operator suppression for the
    pilot. Durable recipient-wide suppression is implemented below. Public enrollment
-   still requires automated signed event processing and self-service opt-out before
-   removing the allowlist.
+   still requires provider webhook configuration/acceptance and self-service opt-out
+   before removing the allowlist. Signed event processing is implemented below.
 4. Approved retention/privacy notices and a recipient support/opt-out contact.
    Provider and recipient copies have separate lifetimes from the Chirpy queue.
 5. Smart-contract wallet support, email-only signup/key export, inbound email to
@@ -177,5 +177,40 @@ Enqueue checks suppression atomically before creating a job or charging quota.
 Workers check it while claiming new jobs and again immediately before provider
 handoff, including jobs created before this feature. A stopped job loses its
 queued payload; existing receipt status remains available. Already handed-off
-mail cannot be recalled. Signed provider event ingestion and recipient self-service
-opt-out remain unfinished; this command supplies the enforcement foundation.
+mail cannot be recalled. Signed provider event ingestion uses the same enforcement, as described below.
+Recipient self-service opt-out remains unfinished.
+
+## Signed provider events
+
+`/api/mail-events` accepts Resend `email.bounced` and `email.complained` events.
+It verifies the exact raw bytes using the pinned Svix library, including its
+five-minute delivery-signature timestamp check, before parsing JSON or touching
+storage. Bodies are bounded to 64 KiB and five seconds. One recipient and the
+configured plain sender address are required; other applications and unsupported
+event types are ignored. This endpoint cannot send mail, grant verification or
+remove suppression. It does not mark a message delivered or read.
+
+Set `CHIRPY_MAIL_WEBHOOK_ENABLED=1` and `RESEND_WEBHOOK_SECRET` from the provider's
+webhook endpoint only after configuring that endpoint and retaining its secret
+securely. This activation is separate from `CHIRPY_MAIL_ENABLED`: late complaints
+continue to be processed while sending is paused. The remaining mail service and
+storage configuration must still be present. Preview deployments reject events.
+No webhook or secret has been provisioned by the implementation.
+
+Register the production HTTPS endpoint for these two events. Verify a synthetic
+signed event in the actual deployed runtime, a forged event rejection, concurrent
+redelivery, storage-outage retry and suppression of a previously queued synthetic
+message before activation. Monitor provider webhook failures separately from the
+worker heartbeat. This deployed acceptance remains an external dependency.
+
+A Redis transaction records the event digest for 30 days and the suppression
+without automatic expiry. Concurrent/retried delivery is idempotent; reusing an
+event ID for a different scope returns 409. Storage failures return 503 so the
+provider can retry. The event ledger stores hashes only, not subjects, bodies or
+addresses. Keep the private ledger and suppression records in protected backups;
+retention and recipient reactivation policy still require operator review.
+
+References: [Resend signature verification](https://resend.com/docs/webhooks/verify-webhooks-requests),
+[bounces](https://resend.com/docs/webhooks/emails/bounced),
+[complaints](https://resend.com/docs/webhooks/emails/complained), and
+[Vercel Web Handler API](https://vercel.com/docs/functions/functions-api-reference).
