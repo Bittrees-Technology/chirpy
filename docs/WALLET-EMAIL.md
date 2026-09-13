@@ -124,8 +124,9 @@ Still required before an operator activates the supervised pilot:
    documented support ownership.
 3. Provider bounce/complaint monitoring with immediate operator suppression for the
    pilot. Durable recipient-wide suppression is implemented below. Public enrollment
-   still requires provider webhook configuration/acceptance and self-service opt-out
-   before removing the allowlist. Signed event processing is implemented below.
+   still requires provider webhook configuration/acceptance, broader abuse controls
+   and approved support policy before removing the allowlist. Signed event processing
+   and recipient self-service opt-out are implemented below.
 4. Approved retention/privacy notices and a recipient support/opt-out contact.
    Provider and recipient copies have separate lifetimes from the Chirpy queue.
 5. Smart-contract wallet support, email-only signup/key export, inbound email to
@@ -178,7 +179,7 @@ Workers check it while claiming new jobs and again immediately before provider
 handoff, including jobs created before this feature. A stopped job loses its
 queued payload; existing receipt status remains available. Already handed-off
 mail cannot be recalled. Signed provider event ingestion uses the same enforcement, as described below.
-Recipient self-service opt-out remains unfinished.
+Recipient self-service opt-out is described below.
 
 ## Signed provider events
 
@@ -214,3 +215,35 @@ References: [Resend signature verification](https://resend.com/docs/webhooks/ver
 [bounces](https://resend.com/docs/webhooks/emails/bounced),
 [complaints](https://resend.com/docs/webhooks/emails/complained), and
 [Vercel Web Handler API](https://vercel.com/docs/functions/functions-api-reference).
+
+## Recipient self-service opt-out
+
+New outbound emails include a private link to `/mail/optout/`. A recipient can
+stop future mail to that address from every Chirpy wallet without a wallet login.
+Opening or previewing the link never changes preferences: the page requires an
+explicit confirmation, and the API accepts POST only. Anyone possessing the link
+can suppress that recipient, so treat forwarded emails and links as private.
+The link never permits sending, reading history, identity linking or reactivation.
+
+The 256-bit random capability is in the URL fragment, removed from the address bar
+on page load, and sent only in the confirmation POST body. This standalone page
+loads no analytics, external resources or messaging SDK, uses no browser storage,
+and offers English and Spanish instructions. Failed requests remain retryable;
+unknown links never display a success confirmation. After reloading, reopen the
+original email link because the page deliberately does not persist its token.
+
+Enqueue atomically stores a hash of the token mapped to a private recipient hash.
+Denied/duplicate requests create no additional link record. Accepted-message
+payload deletion and encryption-key rotation do not break the link. Link records
+have no automatic expiry; include them with suppression records in protected
+backups and the operator's retention policy review. Deleting these records breaks
+previously delivered opt-out links and must not be treated as routine queue cleanup.
+
+Confirmation atomically adds durable suppression. Existing receipt statuses remain
+truthful, queued mail stops at the next worker check, and email already handed to
+the provider cannot be recalled. The endpoint remains usable while sending is
+paused, with the existing service/storage configuration retained. Preview remains
+disabled. Already delivered emails from before this feature require the documented
+operator suppression path. Actual email-link delivery, provider rewriting/scanning,
+mobile browsers, signed-device acceptance and approved recipient support ownership
+still require deployment acceptance; no real messages were sent by these tests.

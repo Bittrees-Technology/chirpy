@@ -1,7 +1,7 @@
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { recoverMessageAddress } from 'viem';
 import { normalizeMailAddress, mailSignMessage } from '../packages/core/src/mailAuth.js';
-import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_HEARTBEAT } from './mail-store.js';
+import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_HEARTBEAT, APPLY_MAIL_OPTOUT } from './mail-store.js';
 export const hash = value => createHash('sha256').update(value).digest('hex');
 const address = value => typeof value === 'string' && /^0x[a-f0-9]{40}$/.test(value);
 const id = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
@@ -35,6 +35,17 @@ export async function verifyMailCommand(c, signature, service, now) {
 export const bindingKey = (config, wallet, email) => `${config.prefix}binding:${hash(`${wallet}\n${email}`)}`;
 // Fold case conservatively for suppression so spelling changes cannot bypass opt-out.
 export const suppressionKey = (config, email) => `${config.prefix}suppressed:${hash(email.toLowerCase())}`;
+export const mailOptoutKey = (config, token) => `${config.prefix}optout:${hash(token)}`;
+export async function optOutMail(config,token,kv=mailKv(config)) {
+  if(typeof token!=='string' || !/^[a-f0-9]{64}$/.test(token))return {status:'invalid'};
+  const key=mailOptoutKey(config,token);const sk=await kv(['GET',key]);
+  if(sk===null)return {status:'unknown'};
+  const prefix=`${config.prefix}suppressed:`;
+  if(typeof sk!=='string' || !sk.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(sk.slice(prefix.length)))throw Error('invalid opt-out record');
+  const result=await kv(['EVAL',APPLY_MAIL_OPTOUT,'2',key,sk,JSON.stringify({version:1,reason:'opt-out',evidenceHash:hash(token)})]);
+  if(!['opted-out','unknown'].includes(result))throw Error('invalid storage result');
+  return {status:result};
+}
 export async function suppressMailRecipient(config, record, kv = mailKv(config)) {
   const email=normalizeMailAddress(record?.email);
   if(!email || !['bounce','complaint','opt-out'].includes(record?.reason) || typeof record?.evidenceId!=='string' || !record.evidenceId.trim() || record.evidenceId.length>200) throw Error('A valid recipient, suppression reason and evidence ID are required.');
@@ -74,10 +85,12 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
       if (!config.senders.includes(c.wallet)) return { status:'denied', id:c.id };
       const bk=bindingKey(config,c.wallet,c.to); const raw=await kv(['GET',bk]); const b=raw?JSON.parse(raw):null;
       if (!validMailBinding(b,c.wallet,c.to)) return { status:'denied', id:c.id };
-      const payload={ from:config.from,to:[c.to],subject:c.subject,text:`Sent through Chirpy by wallet ${c.wallet}.\nThis email was authorized by a wallet signature. Email is not end-to-end encrypted wallet chat. Replies to this service address are not forwarded.\n\n${c.text}` };
+      const optoutToken=randomBytes(32).toString('hex');
+      const optoutUrl=new URL('/mail/optout/',config.service);optoutUrl.hash=`token=${optoutToken}`;
+      const payload={ from:config.from,to:[c.to],subject:c.subject,text:`Sent through Chirpy by wallet ${c.wallet}.\nThis email was authorized by a wallet signature. Email is not end-to-end encrypted wallet chat. Replies to this service address are not forwarded.\n\n${c.text}\n\nStop future Chirpy email to this address (confirmation required): ${optoutUrl.href}` };
       const sk=suppressionKey(config,c.to);
       const record={digest,wallet:c.wallet,id:c.id,bindingKey:bk,bindingVersion:b.version,suppressionKey:sk};
-      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'7',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to)}`,`${key}:payload`,sk,digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
+      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'8',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to)}`,`${key}:payload`,sk,mailOptoutKey(config,optoutToken),digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
       return {status,id:c.id};
     },
     async drain() {

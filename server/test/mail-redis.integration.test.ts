@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { privateKeyToAccount } from 'viem/accounts';
 import { mailSignMessage } from '../../packages/core/src/mailAuth.js';
 import { verifyMailCommand } from '../mail-service.js';
-import { createMailService, mailConfig, bindingKey, hash, suppressionKey, suppressMailRecipient } from '../mail-service.js';
+import { createMailService, mailConfig, bindingKey, hash, suppressionKey, suppressMailRecipient, optOutMail, mailOptoutKey } from '../mail-service.js';
 import { APPLY_MAIL_EVENT } from '../mail-events.js';
 import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL } from '../mail-store.js';
 const container=process.env.CHIRPY_TEST_REDIS_CONTAINER;const exec=promisify(execFile);
@@ -104,6 +104,22 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     expect(await redis(['EVAL',APPLY_MAIL_EVENT,'2',ek,sk,'different',record])).toBe('conflict');
     const existing=await redis(['GET',sk]);await redis(['DEL',ek]);expect(await apply()).toBe('applied');expect(await redis(['GET',sk])).toBe(existing);
     await service.drain();expect(sends).toBe(0);expect((await status()).status).toBe('stopped');expect(await redis(['GET',`${key}:payload`])).toBeNull();
+  });
+  it('keeps recipient opt-out usable after delivery, payload deletion and encryption-key rotation',async()=>{
+    let body='';let sends=0;
+    const service=createMailService(config,redis,async(_url,options)=>{sends++;body=JSON.parse(options.body).text;return {ok:true,json:async()=>({id:'provider-optout'})};});
+    await service.execute(c);await service.execute(c);
+    expect([...keys].filter(k=>k.startsWith(`${config.prefix}optout:`))).toHaveLength(1);
+    await service.drain();expect(await redis(['GET',`${key}:payload`])).toBeNull();
+    const token=/#token=([a-f0-9]{64})/.exec(body)![1];
+    expect(body).toContain('https://chirpy.test/mail/optout/#token=');
+    const tokenKey=mailOptoutKey(config,token);expect(await redis(['GET',tokenKey])).toBe(suppressionKey(config,c.to));expect(await redis(['TTL',tokenKey])).toBe(-1);
+    const next={...c,id:randomBytes(16).toString('hex')};await service.execute(next);
+    const rotated={...config,key:Buffer.alloc(32,8)};
+    expect(await optOutMail(rotated,token,redis)).toEqual({status:'opted-out'});expect(await optOutMail(rotated,token,redis)).toEqual({status:'opted-out'});
+    await service.drain();expect(sends).toBe(1);expect((await service.execute({...next,action:'status'})).status).toBe('stopped');
+    expect((await service.execute(c)).status).toBe('accepted');expect((await service.execute({...c,id:randomBytes(16).toString('hex')})).status).toBe('denied');
+    expect(await optOutMail(config,'ff'.repeat(32),redis)).toEqual({status:'unknown'});
   });
   it('queues atomically, encrypts payload, prevents changed-content reuse and charges quota once',async()=>{
     const service=createMailService(config,redis);
