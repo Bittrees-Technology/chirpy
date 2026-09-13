@@ -5,8 +5,8 @@ import { randomBytes } from 'node:crypto';
 import { privateKeyToAccount } from 'viem/accounts';
 import { mailSignMessage } from '../../packages/core/src/mailAuth.js';
 import { verifyMailCommand } from '../mail-service.js';
-import { createMailService, mailConfig, bindingKey, hash } from '../mail-service.js';
-import { ENQUEUE_MAIL, FINISH_MAIL } from '../mail-store.js';
+import { createMailService, mailConfig, bindingKey, hash, suppressionKey, suppressMailRecipient } from '../mail-service.js';
+import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL } from '../mail-store.js';
 const container=process.env.CHIRPY_TEST_REDIS_CONTAINER;const exec=promisify(execFile);
 const wallet=`0x${'3'.repeat(40)}`;
 // Multi-step scenarios cross the Docker boundary for every Redis command.
@@ -63,6 +63,36 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     const service=createMailService(config,async(args)=>{if(args[0]==='ZRANGEBYSCORE')throw Error('storage down');return redis(args);});
     await expect(service.drain()).rejects.toThrow('storage down');
     expect((await service.workerStatus()).lastSuccessfulTickAt).toBeNull();
+  });
+  it('suppresses a recipient across wallets and case variants without expiry or quota charges',async()=>{
+    await suppressMailRecipient(config,{email:c.to.toUpperCase(),reason:'opt-out',evidenceId:'synthetic-opt-out'},redis);
+    const sk=suppressionKey(config,c.to);const stored=await redis(['GET',sk]);
+    expect(stored).not.toContain(c.to);expect(await redis(['TTL',sk])).toBe(-1);
+    await suppressMailRecipient(config,{email:c.to,reason:'bounce',evidenceId:'synthetic-bounce'},redis);expect(await redis(['GET',sk])).toBe(stored);
+    for(const w of [wallet,`0x${'4'.repeat(40)}`]) {
+      config.senders.push(w);await redis(['SET',bindingKey(config,w,c.to),JSON.stringify({...binding,wallet:w})]);
+      expect((await createMailService(config,redis).execute({...c,wallet:w})).status).toBe('denied');expect(await redis(['GET',`${config.prefix}quota:wallet:${w}`])).toBeNull();
+    }
+    expect(await redis(['ZCARD',queue])).toBe(0);expect(await redis(['GET',`${key}:payload`])).toBeNull();
+  });
+  it.each(['enqueue','claim','handoff','legacy'])('blocks suppression racing with %s',async(boundary)=>{
+    let sends=0;let applied=false;
+    const suppress=async()=>{applied=true;await suppressMailRecipient(config,{email:c.to,reason:'complaint',evidenceId:'synthetic-complaint'},redis);};
+    const racing=async(args)=>{
+      if(!applied && ((boundary==='enqueue' && args[0]==='EVAL' && args[1]===ENQUEUE_MAIL) || (boundary==='claim' && args[0]==='EVAL' && args[1]===CLAIM_MAIL) || (boundary==='handoff' && args[0]==='EXISTS')))await suppress();
+      return redis(args);
+    };
+    const service=createMailService(config,racing,async()=>{sends++;return {ok:true,json:async()=>({id:'unexpected'})};});
+    const queued=await service.execute(c);
+    if(boundary==='enqueue')expect(queued.status).toBe('denied');
+    else {
+      if(boundary==='legacy') {const j=await status();delete j.suppressionKey;await redis(['SET',key,JSON.stringify(j),'KEEPTTL']);await suppress();}
+      // Re-importing a binding cannot cancel the recipient-wide suppression.
+      await redis(['SET',bk,JSON.stringify(binding)]);
+      await service.drain();expect((await status()).status).toBe('stopped');
+      expect((await service.execute(c)).status).toBe('stopped');
+    }
+    expect(sends).toBe(0);expect(await redis(['GET',`${key}:payload`])).toBeNull();
   });
   it('queues atomically, encrypts payload, prevents changed-content reuse and charges quota once',async()=>{
     const service=createMailService(config,redis);

@@ -122,9 +122,10 @@ Still required before an operator activates the supervised pilot:
 2. Synthetic deliverability and failure tests using explicitly consenting test
    accounts; backups, key rotation/recovery rehearsal, backlog/worker alerts and
    documented support ownership.
-3. Provider bounce/complaint monitoring with immediate manual revocation for the
-   pilot. Public enrollment requires automated signed event processing, durable
-   suppression and self-service opt-out before removing the allowlist.
+3. Provider bounce/complaint monitoring with immediate operator suppression for the
+   pilot. Durable recipient-wide suppression is implemented below. Public enrollment
+   still requires automated signed event processing and self-service opt-out before
+   removing the allowlist.
 4. Approved retention/privacy notices and a recipient support/opt-out contact.
    Provider and recipient copies have separate lifetimes from the Chirpy queue.
 5. Smart-contract wallet support, email-only signup/key export, inbound email to
@@ -154,3 +155,27 @@ it does not prove email delivery, sender verification or overall release readine
 Provider failures may be retrying while worker status remains healthy; continue
 provider bounce/complaint monitoring and acceptance checks. Explicit unknown
 worker actions return 400 without sending; a bodyless POST remains a legacy tick.
+
+## Recipient-wide suppression
+
+For a genuine bounce, complaint or opt-out, an authorized operator can run
+`node scripts/mail-suppress.mjs /private/path/record.json`. The private JSON record
+must contain `email`, `reason` (`bounce`, `complaint` or `opt-out`) and `evidenceId`
+referring to the independently retained support/provider evidence. Never fabricate
+recipient consent or expose this trusted operator command as a browser API. It can
+run while sending is paused, with the same configured private service/storage
+credentials; preview configuration remains rejected. Do not commit the record.
+
+Suppression applies to every sending wallet for that Chirpy service. It uses a
+case-folded recipient hash in private storage, keeps only reason and an evidence
+hash, and has no automatic expiry. Hashes are not anonymous data. Include these
+records in protected backups and operator retention review. Repeated suppression
+is idempotent; re-importing consent does not remove it. No automatic reactivation
+or suppression-removal command is provided.
+
+Enqueue checks suppression atomically before creating a job or charging quota.
+Workers check it while claiming new jobs and again immediately before provider
+handoff, including jobs created before this feature. A stopped job loses its
+queued payload; existing receipt status remains available. Already handed-off
+mail cannot be recalled. Signed provider event ingestion and recipient self-service
+opt-out remain unfinished; this command supplies the enforcement foundation.

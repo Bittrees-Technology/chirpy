@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
-import { mailConfig, validMailCommand, verifyMailCommand, validMailBinding } from '../mail-service.js';
+import { mailConfig, validMailCommand, verifyMailCommand, validMailBinding, suppressMailRecipient } from '../mail-service.js';
 import { mailSignMessage } from '../../packages/core/src/mailAuth.js';
 import handler from '../../api/mail.js';
 import worker from '../../api/mail-worker.js';
@@ -40,6 +40,11 @@ describe('wallet email authorization',()=>{
     fetcher.mockResolvedValue({ok:true,json:async()=>({result:[1000000,2,1,42,999999]})});
     const allowed=res();await worker({method:'POST',headers:{authorization:`Bearer ${env.CHIRPY_MAIL_WORKER_SECRET}`},body:{action:'status'}},allowed);
     expect(allowed.code).toBe(200);expect(allowed.body).toMatchObject({workerHealthy:true,queued:2,due:1});expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it('rejects unsupported suppression records before storage',async()=>{
+    const kv=vi.fn();const config=mailConfig(env);
+    for(const record of [null,{}, {email:'bad',reason:'opt-out',evidenceId:'e'}, {email:'a@example.com',reason:'other',evidenceId:'e'}, {email:'a@example.com',reason:'complaint',evidenceId:''}])await expect(suppressMailRecipient(config,record,kv)).rejects.toThrow();
+    expect(kv).not.toHaveBeenCalled();
   });
   it('disabled handlers perform no storage or provider requests',async()=>{
     vi.stubEnv('CHIRPY_MAIL_ENABLED','');const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
