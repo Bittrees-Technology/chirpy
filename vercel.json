@@ -3,6 +3,8 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
+    { "source": "/mail/optout", "destination": "/mail/optout/index.html" },
+    { "source": "/mail/optout/", "destination": "/mail/optout/index.html" },
     {
       "source": "/es/support",
       "destination": "/es/support/index.html"
@@ -36,7 +38,7 @@
       "destination": "/security.html"
     },
     {
-      "source": "/((?!api/|(?:es/)?support/?$|(?:es/)?security/?$|privacy/?$|terms/?$).*)",
+      "source": "/((?!api/|mail/optout/?$|(?:es/)?support/?$|(?:es/)?security/?$|privacy/?$|terms/?$).*)",
       "destination": "/index.html"
     }
   ],

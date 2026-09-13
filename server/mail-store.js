@@ -14,6 +14,8 @@ if tonumber(redis.call('GET',KEYS[4]) or '0')>=20 or tonumber(redis.call('GET',K
 local j=cjson.decode(ARGV[2]); j.createdAt=now; j.deadline=now+82800000; j.status='queued'; j.attempts=0
 redis.call('SET',KEYS[1],cjson.encode(j),'PX',2592000000)
 redis.call('SET',KEYS[6],ARGV[4],'PX',86400000)
+-- Keep only hashes so delivered links survive payload deletion and key rotation.
+redis.call('SET',KEYS[8],KEYS[7],'NX')
 redis.call('ZADD',KEYS[2],now,KEYS[1])
 for i=4,5 do if redis.call('INCR',KEYS[i])==1 then redis.call('PEXPIRE',KEYS[i],86400000) end end
 return {'queued'}
@@ -59,4 +61,10 @@ export const MAIL_WORKER_HEARTBEAT = `
 local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
 redis.call('SET',KEYS[1],now,'EX',86400)
 return now
+`;
+
+export const APPLY_MAIL_OPTOUT = `
+if redis.call('GET',KEYS[1])~=KEYS[2] then return 'unknown' end
+redis.call('SET',KEYS[2],ARGV[1],'NX')
+return 'opted-out'
 `;
