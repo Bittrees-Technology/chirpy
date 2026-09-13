@@ -9,7 +9,8 @@ import { createMailService, mailConfig, bindingKey, hash } from '../mail-service
 import { ENQUEUE_MAIL, FINISH_MAIL } from '../mail-store.js';
 const container=process.env.CHIRPY_TEST_REDIS_CONTAINER;const exec=promisify(execFile);
 const wallet=`0x${'3'.repeat(40)}`;
-describe.skipIf(!container)('real Redis email outbox',()=>{
+// Multi-step scenarios cross the Docker boundary for every Redis command.
+describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
   let config:any,c:any,binding:any,bk:string,key:string,queue:string;const keys=new Set<string>();
   const redis=async(args:any[])=>{
     if(args[0]==='SET')keys.add(args[1]);
