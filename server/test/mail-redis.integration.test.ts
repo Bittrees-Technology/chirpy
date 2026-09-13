@@ -6,6 +6,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { mailSignMessage } from '../../packages/core/src/mailAuth.js';
 import { verifyMailCommand } from '../mail-service.js';
 import { createMailService, mailConfig, bindingKey, hash, suppressionKey, suppressMailRecipient } from '../mail-service.js';
+import { APPLY_MAIL_EVENT } from '../mail-events.js';
 import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL } from '../mail-store.js';
 const container=process.env.CHIRPY_TEST_REDIS_CONTAINER;const exec=promisify(execFile);
 const wallet=`0x${'3'.repeat(40)}`;
@@ -93,6 +94,16 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
       expect((await service.execute(c)).status).toBe('stopped');
     }
     expect(sends).toBe(0);expect(await redis(['GET',`${key}:payload`])).toBeNull();
+  });
+  it('atomically deduplicates provider suppression events and preserves existing opt-outs',async()=>{
+    let sends=0;const service=createMailService(config,redis,async()=>{sends++;throw Error('must not send');});await service.execute(c);
+    const ek=`${config.prefix}event:synthetic`;const sk=suppressionKey(config,c.to);const record=JSON.stringify({version:1,reason:'complaint',evidenceHash:hash('synthetic-event')});
+    const apply=()=>redis(['EVAL',APPLY_MAIL_EVENT,'2',ek,sk,'digest',record]);
+    expect((await Promise.all([apply(),apply()])).sort()).toEqual(['applied','duplicate']);
+    expect(await redis(['TTL',sk])).toBe(-1);expect(await redis(['TTL',ek])).toBeGreaterThan(2591900);
+    expect(await redis(['EVAL',APPLY_MAIL_EVENT,'2',ek,sk,'different',record])).toBe('conflict');
+    const existing=await redis(['GET',sk]);await redis(['DEL',ek]);expect(await apply()).toBe('applied');expect(await redis(['GET',sk])).toBe(existing);
+    await service.drain();expect(sends).toBe(0);expect((await status()).status).toBe('stopped');expect(await redis(['GET',`${key}:payload`])).toBeNull();
   });
   it('queues atomically, encrypts payload, prevents changed-content reuse and charges quota once',async()=>{
     const service=createMailService(config,redis);
