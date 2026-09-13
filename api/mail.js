@@ -17,7 +17,7 @@ export default async function handler(req,res) {
     const {command,signature}=req.body||{};
     if(!await verifyMailCommand(command,signature,config.service)) return res.status(401).json({error:'Invalid or expired wallet authorization.'});
     const result=await createMailService(config).execute(command);
-    const status={denied:403,conflict:409,limited:429}[result.status]||200;
+    const status={denied:403,conflict:409,limited:429,expired:401}[result.status]||200;
     return res.status(status).json(result);
   } catch {return res.status(503).json({error:'Email service unavailable. Keep this request ID and check its status before composing another message.'});}
 }

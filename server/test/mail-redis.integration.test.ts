@@ -2,6 +2,9 @@ import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
+import { privateKeyToAccount } from 'viem/accounts';
+import { mailSignMessage } from '../../packages/core/src/mailAuth.js';
+import { verifyMailCommand } from '../mail-service.js';
 import { createMailService, mailConfig, bindingKey, hash } from '../mail-service.js';
 import { ENQUEUE_MAIL, FINISH_MAIL } from '../mail-store.js';
 const container=process.env.CHIRPY_TEST_REDIS_CONTAINER;const exec=promisify(execFile);
@@ -25,6 +28,22 @@ describe.skipIf(!container)('real Redis email outbox',()=>{
   afterEach(async()=>{if(keys.size)await redis(['DEL',...keys]);keys.clear();});
   const status=async()=>JSON.parse(await redis(['GET',key]));
   const readyAgain=async()=>{const j=await status();j.lockedUntil=0;await redis(['SET',key,JSON.stringify(j),'KEEPTTL']);await redis(['ZADD',queue,'0',key]);};
+  it('rejects authorization that expires between signature verification and the queue transaction',async()=>{
+    const signer=privateKeyToAccount(`0x${'3'.repeat(64)}`);
+    const expired={...c,wallet:signer.address.toLowerCase(),expiresAt:Date.now()-1};
+    const signature=await signer.signMessage({message:mailSignMessage(expired)});
+    // Verification succeeded at receipt time; the storage commit occurs later.
+    expect(await verifyMailCommand(expired,signature,config.service,expired.expiresAt-1000)).toBe(true);
+    config.senders.push(expired.wallet);
+    const expiredBinding=bindingKey(config,expired.wallet,c.to);
+    await redis(['SET',expiredBinding,JSON.stringify({...binding,wallet:expired.wallet})]);
+    expect((await createMailService(config,redis).execute(expired)).status).toBe('expired');
+    const expiredKey=`${config.prefix}job:${hash(`${expired.wallet}\n${expired.id}`)}`;
+    for(const k of [expiredKey,`${expiredKey}:payload`,`${config.prefix}quota:wallet:${expired.wallet}`,`${config.prefix}quota:email:${hash(c.to)}`])expect(await redis(['GET',k])).toBeNull();
+    expect(await redis(['ZCARD',queue])).toBe(0);
+    const retry={...expired,expiresAt:Date.now()+60000};
+    expect((await createMailService(config,redis).execute(retry)).status).toBe('queued');
+  });
   it('queues atomically, encrypts payload, prevents changed-content reuse and charges quota once',async()=>{
     const service=createMailService(config,redis);
     const results=await Promise.all([service.execute(c),service.execute({...c,expiresAt:c.expiresAt+1})]);
