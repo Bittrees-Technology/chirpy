@@ -134,3 +134,23 @@ Still required before an operator activates the supervised pilot:
 Sources: [Resend send API](https://resend.com/docs/api-reference/emails/send-email),
 [provider idempotency](https://resend.com/docs/dashboard/emails/idempotency-keys),
 [Vercel function duration](https://vercel.com/docs/functions/configuring-functions/duration).
+
+## Worker monitoring
+
+Run `node scripts/mail-worker.mjs status` with the same service URL and worker
+secret as the scheduled tick. It performs an authenticated, read-only snapshot;
+it never dequeues mail, contacts the provider or refreshes the heartbeat. The
+JSON exposes counts and times only, with no wallet, recipient or job identifiers.
+A successful tick (including an empty queue) records a Redis-clock heartbeat with
+a 24-hour lifetime. Status exits nonzero if no successful tick was recorded in
+five minutes, the heartbeat is in the future, or the oldest due queue entry is
+more than five minutes overdue. `oldestDueAgeMs` measures eligibility delay,
+not total message age. Future retries remain in `queued` but not `due`.
+
+Schedule ticks at least once per minute and have an independent monitor invoke
+status and alert on failure. Those external schedules and alert recipients still
+need provisioning. Healthy means the worker is alive and its due queue is moving;
+it does not prove email delivery, sender verification or overall release readiness.
+Provider failures may be retrying while worker status remains healthy; continue
+provider bounce/complaint monitoring and acceptance checks. Explicit unknown
+worker actions return 400 without sending; a bodyless POST remains a legacy tick.
