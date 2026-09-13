@@ -9,7 +9,10 @@ import { Thread } from "./views/Thread";
 import { Settings } from "./views/Settings";
 import { NewDmDialog, NewRoomDialog, CreateOrgDialog, ImportOrgDialog } from "./views/dialogs";
 
-type View = "chats" | "rooms" | "settings";
+import { MessageRoutes } from "./views/MessageRoutes";
+import { recipientFromFragment } from "./messageRouting";
+
+type View = "chats" | "rooms" | "settings" | "routes";
 const AppViewContext = createContext<{ view: View; setView: (view: View) => void } | null>(null);
 /** Keep navigation stable while wallet-owned state is discarded on account changes. */
 export function AppViewProvider({ children }: { children: React.ReactNode }) {
@@ -50,6 +53,7 @@ function Sidebar(
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chats", label: t("nav.chats"), icon: "💬" },
     { id: "rooms", label: t("nav.rooms", "Rooms"), icon: "👥" },
+    { id: "routes", label: t("routing.nav"), icon: "✉️" },
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
   return (
@@ -84,6 +88,7 @@ function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chats", label: t("nav.chats"), icon: "💬" },
     { id: "rooms", label: t("nav.rooms", "Rooms"), icon: "👥" },
+    { id: "routes", label: t("routing.nav"), icon: "✉️" },
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
   return (
@@ -106,13 +111,23 @@ export function App() {
   if (!navigation) throw new Error("App requires AppViewProvider");
   const { view, setView } = navigation;
   const [mobilePane, setMobilePane] = useState<MobilePane>("list");
-  const [dialog, setDialog] = useState<Dialog>(null);
-  const close = () => setDialog(null);
+  const [linkedRecipient, setLinkedRecipient] = useState<string | null>(() => recipientFromFragment(window.location.hash));
+  const [dialog, setDialog] = useState<Dialog>(() => recipientFromFragment(window.location.hash) ? "newDm" : null);
+  const close = () => { setDialog(null); setLinkedRecipient(null); };
   const needsConnect = transportId === "xmtp" && transportStatus !== "ready";
   const openView = (next: View) => {
     setView(next);
     if (next === "chats" || next === "rooms") setMobilePane("list");
   };
+
+  useEffect(() => {
+    const receive = () => {
+      const recipient = recipientFromFragment(window.location.hash);
+      if (recipient) { setLinkedRecipient(recipient); setDialog("newDm"); }
+    };
+    window.addEventListener("hashchange", receive);
+    return () => window.removeEventListener("hashchange", receive);
+  }, []);
 
   // Silent auto-update check on launch (desktop only; no-op on web/mobile).
   useEffect(() => { void autoUpdateOnLaunch(); }, []);
@@ -136,13 +151,14 @@ export function App() {
             <Thread showBack onBack={() => setMobilePane("list")} />
           </div>
         )}
+        {view === "routes" && <MessageRoutes onCompose={() => { setLinkedRecipient(null); setDialog("newDm"); }} />}
         {view === "settings" && (
           <Settings onCreateOrg={() => setDialog("createOrg")} onImportOrg={() => setDialog("importOrg")} />
         )}
       </main>
       <MobileNav view={view} setView={openView} />
 
-      {dialog === "newDm" && <NewDmDialog onClose={close} onCreated={() => setMobilePane("thread")} />}
+      {dialog === "newDm" && <NewDmDialog key={linkedRecipient ?? "manual"} initialRecipient={linkedRecipient ?? ""} onClose={close} onCreated={() => { setView("chats"); setMobilePane("thread"); }} />}
       {dialog === "newRoom" && <NewRoomDialog onClose={close} onCreated={() => setMobilePane("thread")} />}
       {dialog === "createOrg" && <CreateOrgDialog onClose={close} />}
       {dialog === "importOrg" && <ImportOrgDialog onClose={close} />}

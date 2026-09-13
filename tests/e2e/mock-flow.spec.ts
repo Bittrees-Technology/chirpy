@@ -11,7 +11,7 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
 
   await page.locator(".nav-item", { hasText: "Chats" }).click();
   await page.getByRole("button", { name: "+ Chat" }).click();
-  await page.getByLabel("Address or ENS name").fill("0x000000000000000000000000000000000000dEaD");
+  await page.getByLabel("Recipient").fill("0x000000000000000000000000000000000000dEaD");
   await page.getByLabel("Display name (optional)").fill("e2e peer");
   await page.getByRole("button", { name: "Start chat" }).click();
   await expect(page.locator(".thread-title", { hasText: "e2e peer" })).toBeVisible();

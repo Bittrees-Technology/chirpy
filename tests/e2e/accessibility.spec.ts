@@ -4,7 +4,7 @@ test("dialogs contain keyboard focus, close with Escape and return focus", async
   await page.goto("/");
   const opener = page.getByRole("button", { name: "+ Chat" });
   await opener.click();
-  const dialog = page.getByRole("dialog", { name: "New direct message" });
+  const dialog = page.getByRole("dialog", { name: "New message" });
   await expect(dialog).toBeVisible();
   for (let i = 0; i < 10; i++) {
     await page.keyboard.press("Tab");

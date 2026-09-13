@@ -9,8 +9,8 @@ test('Spanish dialogs create chats, edit labeled gate rules and recover from imp
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('es');
   await page.locator('.nav-item', { hasText: 'Chats' }).click();
   await page.getByRole('button', { name: '+ Chat', exact: true }).click();
-  const dm = page.getByRole('dialog', { name: 'Nuevo mensaje directo' });
-  await dm.getByRole('textbox', { name: 'Dirección o nombre ENS', exact: false }).fill('0x000000000000000000000000000000000000dEaD');
+  const dm = page.getByRole('dialog', { name: 'Nuevo mensaje' });
+  await dm.getByRole('textbox', { name: 'Destinatario', exact: false }).fill('0x000000000000000000000000000000000000dEaD');
   await dm.getByRole('textbox', { name: 'Nombre visible (opcional)' }).fill('Amiga');
   await dm.getByRole('button', { name: 'Iniciar chat' }).click();
   await expect(page.locator('.thread-title')).toContainText('Amiga');
