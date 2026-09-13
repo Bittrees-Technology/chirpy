@@ -24,3 +24,5 @@ Use [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) for completed work and ev
 ## Later expansion
 
 Voice calls, presence/SSE and optional organization relays follow core release acceptance. They are not implemented by the security hardening increments.
+
+Offline preparation: `node scripts/mail-preflight.mjs` now checks mail and webhook configuration without network access or secret output. Passing it does not satisfy the external activation and acceptance dependencies above.

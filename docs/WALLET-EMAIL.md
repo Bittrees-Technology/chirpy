@@ -249,3 +249,24 @@ disabled. Already delivered emails from before this feature require the document
 operator suppression path. Actual email-link delivery, provider rewriting/scanning,
 mobile browsers, signed-device acceptance and approved recipient support ownership
 still require deployment acceptance; no real messages were sent by these tests.
+
+## Offline configuration preflight
+
+Run `node scripts/mail-preflight.mjs` with the intended settings supplied through
+an operator-controlled environment. Do not put credentials in command arguments.
+The command performs no network requests, storage writes, sends or activation.
+It reports missing variable names and boolean validation results only; it never
+prints addresses, wallets, endpoints or secret values. Nonempty malformed settings
+may produce an empty `missing` list with `configurationValid: false`; use the
+configuration requirements above to correct them.
+
+Exit 0 means outbound and webhook settings pass the existing runtime validators,
+even while sending is paused. Exit 1 means incomplete or invalid configuration
+(including preview environments); exit 2 means unsupported command arguments.
+`sendingEnabled` and `webhookEnabled` additionally reflect their activation flags.
+The check does not modify environment variables or bypass the preview guard.
+
+This is configuration validation only. It cannot verify credential validity,
+provider domain ownership, webhook registration, scheduler health, recipient
+consent, backups, alert delivery or real-device acceptance. Complete those external
+checks before activation; `externalVerificationRequired` always remains true.
