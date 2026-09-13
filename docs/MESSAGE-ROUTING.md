@@ -1,8 +1,10 @@
 # Messaging channels: first-pass decisions
 
 Status: recipient routing, external email composition, wallet invitation links and
-an English/Spanish Channels view are implemented. Automatic email↔wallet delivery,
-email sign-in and an in-app email inbox are **not implemented or activated**.
+an English/Spanish Channels view are implemented. A disabled wallet-authorized
+[outbound email pilot](WALLET-EMAIL.md) now includes a signed composer and durable
+worker. Automatic inbound email→wallet delivery, email sign-in and an in-app email
+inbox are **not implemented or activated**.
 This is a staged start, not a production email service or a unified mailbox.
 
 ## Available routes
@@ -12,7 +14,7 @@ This is a staged start, not a production email service or a unified mailbox.
 | Wallet → wallet / ENS | Existing XMTP direct chat and request/accept/block controls |
 | Email → email | Recipient opens the user's email app using a single-recipient mailto link; the user chooses the email sender account |
 | Email → wallet | Share a wallet invitation link in an email; recipient opens Chirpy and explicitly starts wallet chat. This is an invitation, not forwarding |
-| Wallet → email | External email composition is available, but uses the email app's sender identity. Sending email authenticated as a wallet requires the bridge below |
+| Wallet → email | Signed email composer and encrypted queue/worker implemented for an allowlisted pilot; disabled until provider, verification/consent and scheduler setup |
 
 Invitation format: `https://chirpy.bittrees.org/#to=<wallet-or-ENS>`.
 The fragment is not sent to the web server. It remains visible to the browser,
@@ -36,6 +38,9 @@ remaining content stays text. Following a link does not prove the destination is
 trusted or grant any Mercado permission: the destination must authenticate and
 authorize every view/action. Native external-window behavior still needs device
 acceptance alongside the existing native distribution work.
+
+The outbound pilot in [WALLET-EMAIL.md](WALLET-EMAIL.md) does not require an XMTP bot.
+The design below describes the later bidirectional bridge.
 
 ## Recommended production configuration
 
