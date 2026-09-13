@@ -44,6 +44,25 @@ describe.skipIf(!container)('real Redis email outbox',()=>{
     const retry={...expired,expiresAt:Date.now()+60000};
     expect((await createMailService(config,redis).execute(retry)).status).toBe('queued');
   });
+  it('reports liveness and backlog without sending or changing the receipt or heartbeat',async()=>{
+    let sends=0;const service=createMailService(config,redis,async()=>{sends++;throw Error('no send');});
+    expect((await service.workerStatus()).workerHealthy).toBe(false);
+    await service.drain();expect((await service.workerStatus()).workerHealthy).toBe(true);
+    await service.execute(c);
+    const heartbeat=`${config.prefix}worker:last-success`;
+    const before=await redis(['GET',heartbeat]);const receipt=await redis(['GET',key]);const payload=await redis(['GET',`${key}:payload`]);
+    const snapshot=await service.workerStatus();expect(snapshot).toMatchObject({queued:1,due:1,workerHealthy:true});
+    expect(JSON.stringify(snapshot)).not.toContain(wallet);expect(JSON.stringify(snapshot)).not.toContain(c.to);
+    expect(await redis(['GET',heartbeat])).toBe(before);expect(await redis(['GET',key])).toBe(receipt);expect(await redis(['GET',`${key}:payload`])).toBe(payload);expect(sends).toBe(0);
+    await redis(['ZADD',queue,String(Date.now()-360000),key]);expect((await service.workerStatus()).workerHealthy).toBe(false);
+    await redis(['ZADD',queue,String(Date.now()+360000),key]);
+    for(const time of [Date.now()-360000,Date.now()+360000]) {await redis(['SET',heartbeat,String(time)]);expect((await service.workerStatus()).workerHealthy).toBe(false);}
+  });
+  it('does not record a successful tick when storage fails',async()=>{
+    const service=createMailService(config,async(args)=>{if(args[0]==='ZRANGEBYSCORE')throw Error('storage down');return redis(args);});
+    await expect(service.drain()).rejects.toThrow('storage down');
+    expect((await service.workerStatus()).lastSuccessfulTickAt).toBeNull();
+  });
   it('queues atomically, encrypts payload, prevents changed-content reuse and charges quota once',async()=>{
     const service=createMailService(config,redis);
     const results=await Promise.all([service.execute(c),service.execute({...c,expiresAt:c.expiresAt+1})]);

@@ -45,3 +45,17 @@ if j.status=='queued' then redis.call('ZADD',KEYS[2],now+math.min(900000,60000*2
 else redis.call('ZREM',KEYS[2],KEYS[1]); redis.call('DEL',KEYS[3]) end
 redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); return 1
 `;
+
+// Read-only operational snapshot; never expose job identifiers or payloads.
+export const MAIL_WORKER_STATUS = `
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
+local first=redis.call('ZRANGE',KEYS[1],0,0,'WITHSCORES')
+local age=0
+if #first>0 then age=math.max(0,now-tonumber(first[2])) end
+return {now,redis.call('ZCARD',KEYS[1]),redis.call('ZCOUNT',KEYS[1],'-inf',now),age,tonumber(redis.call('GET',KEYS[2])) or 0}
+`;
+export const MAIL_WORKER_HEARTBEAT = `
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
+redis.call('SET',KEYS[1],now,'EX',86400)
+return now
+`;

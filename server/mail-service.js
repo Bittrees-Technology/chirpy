@@ -1,7 +1,7 @@
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { recoverMessageAddress } from 'viem';
 import { normalizeMailAddress, mailSignMessage } from '../packages/core/src/mailAuth.js';
-import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL } from './mail-store.js';
+import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_HEARTBEAT } from './mail-store.js';
 export const hash = value => createHash('sha256').update(value).digest('hex');
 const address = value => typeof value === 'string' && /^0x[a-f0-9]{40}$/.test(value);
 const id = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
@@ -48,7 +48,13 @@ function decrypt(config, raw, aad) {
 export function createMailService(config, kv = mailKv(config), request = fetch) {
   const queue = `${config.prefix}queue`;
   const jobKey = c => `${config.prefix}job:${hash(`${c.wallet}\n${c.id}`)}`;
+  const heartbeat = `${config.prefix}worker:last-success`;
   return {
+    async workerStatus() {
+      const [now,queued,due,oldestDueAgeMs,lastSuccessfulTickAt] = await kv(['EVAL',MAIL_WORKER_STATUS,'2',queue,heartbeat]);
+      const workerHealthy = lastSuccessfulTickAt>0 && lastSuccessfulTickAt<=now && now-lastSuccessfulTickAt<=300000 && oldestDueAgeMs<=300000;
+      return {status:workerHealthy?'ok':'degraded',workerHealthy,checkedAt:now,queued,due,oldestDueAgeMs,lastSuccessfulTickAt:lastSuccessfulTickAt||null};
+    },
     async execute(c) {
       const key=jobKey(c);
       if (c.action==='status') { const raw=await kv(['GET',key]); return { status:raw?JSON.parse(raw).status:'unknown', id:c.id }; }
@@ -93,6 +99,7 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
         } catch { /* Keep the immutable payload and idempotency key for bounded retries. */ }
         await kv(['EVAL',FINISH_MAIL,'3',key,queue,`${key}:payload`,lease,outcome,providerId]); processed++;
       }
+      await kv(['EVAL',MAIL_WORKER_HEARTBEAT,'1',heartbeat]);
       return {processed};
     },
   };

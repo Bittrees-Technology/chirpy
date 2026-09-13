@@ -30,6 +30,17 @@ describe('wallet email authorization',()=>{
     expect(validMailBinding(b,c.wallet,c.to)).toBe(true);
     for(const patch of [{revoked:true},{consentedAt:0},{verifiedAt:0},{email:'other@example.com'},{version:''},{expiresAt:0},{evidenceId:''}]) expect(validMailBinding({...b,...patch},c.wallet,c.to)).toBe(false);
   });
+  it('rejects invalid worker actions before storage and authenticates status reads',async()=>{
+    for(const [key,value] of Object.entries(env))vi.stubEnv(key,value);
+    const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
+    for(const body of [null,{},[],{action:'stats'},{action:'tick',extra:true},'status']) {
+      const response=res();await worker({method:'POST',headers:{authorization:`Bearer ${env.CHIRPY_MAIL_WORKER_SECRET}`},body},response);expect(response.code).toBe(400);
+    }
+    const denied=res();await worker({method:'POST',headers:{},body:{action:'status'}},denied);expect(denied.code).toBe(401);expect(fetcher).not.toHaveBeenCalled();
+    fetcher.mockResolvedValue({ok:true,json:async()=>({result:[1000000,2,1,42,999999]})});
+    const allowed=res();await worker({method:'POST',headers:{authorization:`Bearer ${env.CHIRPY_MAIL_WORKER_SECRET}`},body:{action:'status'}},allowed);
+    expect(allowed.code).toBe(200);expect(allowed.body).toMatchObject({workerHealthy:true,queued:2,due:1});expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it('disabled handlers perform no storage or provider requests',async()=>{
     vi.stubEnv('CHIRPY_MAIL_ENABLED','');const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
     const a=res();await handler({method:'POST',body:{},headers:{}},a);expect(a.code).toBe(503);
