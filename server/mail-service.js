@@ -33,6 +33,14 @@ export async function verifyMailCommand(c, signature, service, now) {
   try { return (await recoverMessageAddress({ message: mailSignMessage(c), signature })).toLowerCase() === c.wallet; } catch { return false; }
 }
 export const bindingKey = (config, wallet, email) => `${config.prefix}binding:${hash(`${wallet}\n${email}`)}`;
+// Fold case conservatively for suppression so spelling changes cannot bypass opt-out.
+export const suppressionKey = (config, email) => `${config.prefix}suppressed:${hash(email.toLowerCase())}`;
+export async function suppressMailRecipient(config, record, kv = mailKv(config)) {
+  const email=normalizeMailAddress(record?.email);
+  if(!email || !['bounce','complaint','opt-out'].includes(record?.reason) || typeof record?.evidenceId!=='string' || !record.evidenceId.trim() || record.evidenceId.length>200) throw Error('A valid recipient, suppression reason and evidence ID are required.');
+  // No expiry: consent re-import and elapsed time must never reactivate mail.
+  await kv(['SET',suppressionKey(config,email),JSON.stringify({version:1,reason:record.reason,evidenceHash:hash(record.evidenceId)}),'NX']);
+}
 export function validMailBinding(b, wallet, email, now = Date.now()) {
   return b && id(b.version) && b.wallet === wallet && b.email === email && b.revoked === false && Number.isSafeInteger(b.verifiedAt) && b.verifiedAt > 0 && b.verifiedAt <= now && Number.isSafeInteger(b.consentedAt) && b.consentedAt >= b.verifiedAt && b.consentedAt <= now && Number.isSafeInteger(b.expiresAt) && b.expiresAt > now && typeof b.evidenceId === 'string' && b.evidenceId.length > 0 && b.evidenceId.length <= 200;
 }
@@ -67,8 +75,9 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
       const bk=bindingKey(config,c.wallet,c.to); const raw=await kv(['GET',bk]); const b=raw?JSON.parse(raw):null;
       if (!validMailBinding(b,c.wallet,c.to)) return { status:'denied', id:c.id };
       const payload={ from:config.from,to:[c.to],subject:c.subject,text:`Sent through Chirpy by wallet ${c.wallet}.\nThis email was authorized by a wallet signature. Email is not end-to-end encrypted wallet chat. Replies to this service address are not forwarded.\n\n${c.text}` };
-      const record={digest,wallet:c.wallet,id:c.id,bindingKey:bk,bindingVersion:b.version};
-      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'6',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to)}`,`${key}:payload`,digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
+      const sk=suppressionKey(config,c.to);
+      const record={digest,wallet:c.wallet,id:c.id,bindingKey:bk,bindingVersion:b.version,suppressionKey:sk};
+      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'7',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to)}`,`${key}:payload`,sk,digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
       return {status,id:c.id};
     },
     async drain() {
@@ -79,7 +88,7 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
         if (typeof key!=='string' || !key.startsWith(`${config.prefix}job:`)) throw Error('invalid job');
         const raw=await kv(['GET',key]); if (!raw) { await kv(['ZREM',queue,key]); continue; }
         const known=JSON.parse(raw); const lease=randomBytes(16).toString('hex');
-        const claimed=await kv(['EVAL',CLAIM_MAIL,'4',key,queue,known.bindingKey,`${key}:payload`,lease]);
+        const claimed=await kv(['EVAL',CLAIM_MAIL,'5',key,queue,known.bindingKey,`${key}:payload`,known.suppressionKey||`${config.prefix}legacy-suppression-placeholder`,lease]);
         if (!claimed) continue;
         const [record,encrypted]=claimed; const job=JSON.parse(record);
         let outcome='queued'; let providerId='';
@@ -89,7 +98,8 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
             const payload=decrypt(config,encrypted,key);
             // Fresh authorization check immediately before handing plaintext to the provider.
             const br=await kv(['GET',job.bindingKey]); const binding=br?JSON.parse(br):null;
-            if (!validMailBinding(binding,job.wallet,payload.to[0]) || binding.version!==job.bindingVersion) outcome='stopped';
+            const suppressed=await kv(['EXISTS',suppressionKey(config,payload.to[0])]);
+            if (suppressed || !validMailBinding(binding,job.wallet,payload.to[0]) || binding.version!==job.bindingVersion) outcome='stopped';
             else {
               const response=await request('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${config.providerKey}`,'Content-Type':'application/json','Idempotency-Key':`chirpy-mail/${hash(config.service)}/${job.wallet}/${job.id}`},body:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});
               if (response.ok) { const result=await response.json(); if (typeof result.id==='string' && result.id.length<=200 && result.id) { outcome='accepted'; providerId=result.id; } }

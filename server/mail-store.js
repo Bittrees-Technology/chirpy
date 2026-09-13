@@ -6,6 +6,7 @@ local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(ton
 if (tonumber(ARGV[5]) or 0)<=now then return {'expired'} end
 local old=redis.call('GET',KEYS[1])
 if old then local j=cjson.decode(old); if j.digest~=ARGV[1] then return {'conflict'} end; return {j.status} end
+if redis.call('EXISTS',KEYS[7])==1 then return {'denied'} end
 local raw=redis.call('GET',KEYS[3]); if not raw then return {'denied'} end
 local b=cjson.decode(raw)
 if b.version~=ARGV[3] or b.revoked or tonumber(b.expiresAt)<=now then return {'denied'} end
@@ -26,7 +27,7 @@ if j.status=='sending' and tonumber(j.lockedUntil or 0)>now then return nil end
 local score=redis.call('ZSCORE',KEYS[2],KEYS[1]); if score and tonumber(score)>now then return nil end
 local br=redis.call('GET',KEYS[3]); local b=br and cjson.decode(br) or {}
 local payload=redis.call('GET',KEYS[4])
-if j.deadline<=now or j.attempts>=5 or not payload or b.version~=j.bindingVersion or b.revoked or tonumber(b.expiresAt or 0)<=now then
+if redis.call('EXISTS',KEYS[5])==1 or j.deadline<=now or j.attempts>=5 or not payload or b.version~=j.bindingVersion or b.revoked or tonumber(b.expiresAt or 0)<=now then
  j.status='stopped'; redis.call('DEL',KEYS[4]); redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); redis.call('ZREM',KEYS[2],KEYS[1]); return nil
 end
 j.status='sending'; j.attempts=j.attempts+1; j.lease=ARGV[1]; j.lockedUntil=now+60000
