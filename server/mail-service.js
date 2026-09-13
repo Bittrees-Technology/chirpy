@@ -90,7 +90,7 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
       const payload={ from:config.from,to:[c.to],subject:c.subject,text:`Sent through Chirpy by wallet ${c.wallet}.\nThis email was authorized by a wallet signature. Email is not end-to-end encrypted wallet chat. Replies to this service address are not forwarded.\n\n${c.text}\n\nStop future Chirpy email to this address (confirmation required): ${optoutUrl.href}` };
       const sk=suppressionKey(config,c.to);
       const record={digest,wallet:c.wallet,id:c.id,bindingKey:bk,bindingVersion:b.version,suppressionKey:sk};
-      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'8',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to)}`,`${key}:payload`,sk,mailOptoutKey(config,optoutToken),digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
+      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'8',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to.toLowerCase())}`,`${key}:payload`,sk,mailOptoutKey(config,optoutToken),digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
       return {status,id:c.id};
     },
     async drain() {

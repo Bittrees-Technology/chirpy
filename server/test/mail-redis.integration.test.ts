@@ -121,6 +121,14 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     expect((await service.execute(c)).status).toBe('accepted');expect((await service.execute({...c,id:randomBytes(16).toString('hex')})).status).toBe('denied');
     expect(await optOutMail(config,'ff'.repeat(32),redis)).toEqual({status:'unknown'});
   });
+  it('shares the recipient quota across verified address case variants',async()=>{
+    const variant={...c,to:'RECIPIENT@example.com'};
+    await redis(['SET',bindingKey(config,wallet,variant.to),JSON.stringify({...binding,email:variant.to})]);
+    await redis(['SET',`${config.prefix}quota:email:${hash(c.to.toLowerCase())}`,'50','PX','86400000']);
+    expect((await createMailService(config,redis).execute(variant)).status).toBe('limited');
+    expect(await redis(['GET',key])).toBeNull();expect(await redis(['GET',`${key}:payload`])).toBeNull();
+    expect(await redis(['GET',`${config.prefix}quota:wallet:${wallet}`])).toBeNull();
+  });
   it('queues atomically, encrypts payload, prevents changed-content reuse and charges quota once',async()=>{
     const service=createMailService(config,redis);
     const results=await Promise.all([service.execute(c),service.execute({...c,expiresAt:c.expiresAt+1})]);

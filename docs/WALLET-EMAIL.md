@@ -32,7 +32,9 @@ Keep the deployed `CHIRPY_MAIL_ENABLED=0` until recipient verification, consent,
 suppression operations, provider/domain configuration and synthetic delivery
 acceptance are complete. Configure a small explicit `CHIRPY_MAIL_SENDERS` EOA
 allowlist. Sender wallets are limited to 20 new requests per rolling 24-hour
-counter window; recipients to 50 across all senders. Anonymous wallet creation
+counter window; recipients to 50 across all senders. Recipient quota keys fold
+address case conservatively, matching suppression, so verified spelling variants
+share the same limit. Binding checks still require the exact verified address. Anonymous wallet creation
 cannot bypass the sender allowlist. This is not a public bulk-mail relay.
 
 ## Verification boundary and wallet.bittrees.org
