@@ -78,7 +78,8 @@ for the same wallet/request/content, even when a retry uses a fresh signature.
 Reusing an ID for different content fails. Status queries require a fresh signature
 from the same wallet; IDs are not bearer credentials.
 
-Redis atomically checks the binding version and shared quotas while creating the
+Redis atomically rechecks signature expiry using millisecond-precision server time,
+as well as the binding version and shared quotas, while creating the
 job and payload. AES-256-GCM encrypts the immutable provider payload with the job
 key as authenticated context. Payload TTL is 24 hours. Metadata TTL is 30 days;
 the queue index contains opaque job hashes and is cleared as the worker processes

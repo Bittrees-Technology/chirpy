@@ -1,7 +1,9 @@
 // Every mutation uses Redis time. Bindings are private records supplied by the
 // trusted verification authority, never by the browser's send request.
 export const ENQUEUE_MAIL = `
-local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
+-- Recheck the signed authorization at the atomic mutation, after storage delays.
+if (tonumber(ARGV[5]) or 0)<=now then return {'expired'} end
 local old=redis.call('GET',KEYS[1])
 if old then local j=cjson.decode(old); if j.digest~=ARGV[1] then return {'conflict'} end; return {j.status} end
 local raw=redis.call('GET',KEYS[3]); if not raw then return {'denied'} end
@@ -16,7 +18,7 @@ for i=4,5 do if redis.call('INCR',KEYS[i])==1 then redis.call('PEXPIRE',KEYS[i],
 return {'queued'}
 `;
 export const CLAIM_MAIL = `
-local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
 local raw=redis.call('GET',KEYS[1]); if not raw then redis.call('ZREM',KEYS[2],KEYS[1]); return nil end
 local j=cjson.decode(raw)
 if j.status~='queued' and j.status~='sending' then redis.call('ZREM',KEYS[2],KEYS[1]); return nil end
@@ -34,7 +36,7 @@ return {cjson.encode(j),payload}
 export const FINISH_MAIL = `
 local raw=redis.call('GET',KEYS[1]); if not raw then return 0 end
 local j=cjson.decode(raw); if j.lease~=ARGV[1] or j.status~='sending' then return 0 end
-local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
 j.providerId=ARGV[3]; j.lockedUntil=0
 if ARGV[2]=='accepted' then j.status='accepted'
 elseif ARGV[2]=='stopped' or j.attempts>=5 or now>=j.deadline then j.status='stopped'

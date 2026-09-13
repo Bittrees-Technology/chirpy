@@ -62,11 +62,11 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
       if (!validMailBinding(b,c.wallet,c.to)) return { status:'denied', id:c.id };
       const payload={ from:config.from,to:[c.to],subject:c.subject,text:`Sent through Chirpy by wallet ${c.wallet}.\nThis email was authorized by a wallet signature. Email is not end-to-end encrypted wallet chat. Replies to this service address are not forwarded.\n\n${c.text}` };
       const record={digest,wallet:c.wallet,id:c.id,bindingKey:bk,bindingVersion:b.version};
-      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'6',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to)}`,`${key}:payload`,digest,JSON.stringify(record),b.version,encrypt(config,payload,key)]);
+      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'6',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to)}`,`${key}:payload`,digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
       return {status,id:c.id};
     },
     async drain() {
-      const clock=await kv(['TIME']); const now=Number(clock[0])*1000;
+      const clock=await kv(['TIME']); const now=Number(clock[0])*1000+Math.floor(Number(clock[1])/1000);
       const keys=await kv(['ZRANGEBYSCORE',queue,'-inf',String(now),'LIMIT','0','1']);
       let processed=0;
       for (const key of keys) {
