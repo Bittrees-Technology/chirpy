@@ -1,5 +1,13 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "WalletConnect is not configured.": "status.walletConnectMissing",
+  "WalletConnect did not return an account.": "status.walletConnectAccountMissing",
+  "Revocation was not confirmed. Refresh and retry.": "status.revokeRefresh",
+  "Sync requires an HTTPS API origin without a path or credentials.": "status.syncOriginInvalid",
+  "This native build has no sync API origin configured.": "status.syncOriginMissing",
+  "Sync write failed": "status.syncWriteFailed",
+  "Sync conflict; retry required": "status.syncWriteConflict",
+  "ENS lookup failed": "status.ensFailed",
   "Enter a valid 0x address.": "status.validAddress",
   "XMTP messaging is not enabled yet.": "status.xmtpDisabled",
   "XMTP inbox is not ready yet.": "status.inboxNotReady",

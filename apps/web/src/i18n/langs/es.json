@@ -369,5 +369,13 @@
   "mail.status.limited": "Se alcanzó el límite de reenvío.",
   "mail.status.conflict": "Este ID pertenece a otro mensaje. Comprueba su estado.",
   "mail.status.unknown": "No se encontró ninguna solicitud para esta cartera e ID.",
-  "mail.status.uncertain": "El resultado es desconocido. Guarda el ID; comprueba su estado o reintenta la misma solicitud antes de redactar otro mensaje."
+  "mail.status.uncertain": "El resultado es desconocido. Guarda el ID; comprueba su estado o reintenta la misma solicitud antes de redactar otro mensaje.",
+  "status.walletConnectMissing": "WalletConnect no está configurado.",
+  "status.walletConnectAccountMissing": "WalletConnect no proporcionó una cuenta de billetera. Vuelve a conectarla e inténtalo de nuevo.",
+  "status.revokeRefresh": "No se confirmó la revocación. Actualiza e inténtalo de nuevo.",
+  "status.syncOriginInvalid": "Esta versión necesita una dirección segura válida para el servicio de sincronización. Contacta con tu administrador.",
+  "status.syncOriginMissing": "La sincronización no está configurada para esta aplicación. Contacta con tu administrador.",
+  "status.syncWriteFailed": "No se pudo guardar la sincronización. Inténtalo de nuevo.",
+  "status.syncWriteConflict": "La sincronización cambió mientras se guardaba. Inténtalo de nuevo.",
+  "status.ensFailed": "No se pudo consultar el nombre ENS. Inténtalo de nuevo."
 }
