@@ -36,7 +36,7 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await expect(page.locator(".msg-body", { hasText: "room before freeze" })).toBeVisible();
 
   await page.getByRole("button", { name: "Pause member posting", exact: true }).click();
-  await expect(page.getByText("Member posting is paused in Chirpy. Administrators can still post; other clients may ignore this policy.")).toBeVisible();
+  await expect(page.getByText("Member posting is paused in Chat. Administrators can still post; other clients may ignore this policy.")).toBeVisible();
   await page.getByPlaceholder("Message #e2e-room").fill("admin announcement");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".msg-body", { hasText: "admin announcement" })).toBeVisible();
@@ -53,7 +53,7 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await page.locator(".nav-item", { hasText: "Rooms" }).click();
   await page.locator(".list-item", { hasText: "e2e-room" }).click();
   await expect(page.getByRole("button", { name: "Resume member posting", exact: true })).toHaveCount(0);
-  await expect(page.getByText("Member posting is paused in Chirpy. Other clients may still send messages.")).toBeVisible();
+  await expect(page.getByText("Member posting is paused in Chat. Other clients may still send messages.")).toBeVisible();
   await expect(page.getByPlaceholder("Message #e2e-room")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "React with 👍" }).first()).toBeDisabled();
 });

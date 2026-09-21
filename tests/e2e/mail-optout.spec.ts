@@ -16,7 +16,7 @@ test('email opt-out requires a click, keeps the capability private and safely re
 test('invalid links cannot submit and Spanish instructions remain available',async({page})=>{
   let calls=0;await page.route('**/api/mail-optout',route=>{calls++;return route.abort();});
   await page.goto(`/mail/optout/#token=${token}&other=1`);await expect(page.getByRole('button')).toBeDisabled();
-  await page.getByLabel('Language / Idioma').selectOption('es');await expect(page.getByRole('heading')).toHaveText('Dejar de recibir correos de Chirpy');
+  await page.getByLabel('Language / Idioma').selectOption('es');await expect(page.getByRole('heading')).toHaveText('Dejar de recibir correos de Chat');
   await expect(page.getByRole('status')).toContainText('enlace falta');expect(calls).toBe(0);
 });
 test('mobile Spanish confirmation fits the viewport and works with the keyboard',async({page},testInfo)=>{

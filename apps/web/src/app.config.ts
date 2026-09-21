@@ -1,8 +1,9 @@
 import type { TransportMode } from "@app/transport";
 
 // Product-level config. The app ships org-agnostic: no organization is baked in.
-// `APP_NAME` is the only brand string; change it in one place to rebrand.
-export const APP_NAME = "Chirpy";
+// Visible product name. Static/native assets have matching display labels.
+// Legacy storage and signing identifiers deliberately keep their original names.
+export const APP_NAME = "Chat";
 export const APP_TAGLINE = "Wallet-native community chat";
 // Keep in sync with apps/web/src-tauri/tauri.conf.json `version`.
 export const APP_VERSION = "0.1.0";

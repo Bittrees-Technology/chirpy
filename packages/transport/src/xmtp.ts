@@ -202,7 +202,7 @@ function toChatMessage(
     replyTo = reply?.inReplyTo?.id ?? reply?.referenceId;
     if (typeof reply?.inReplyTo?.content === "string") replyPreview = reply.inReplyTo.content.slice(0, 200);
   }
-  if (body === null && sdk.isReply(message)) body = "This reply contains content Chirpy cannot display yet.";
+  if (body === null && sdk.isReply(message)) body = "This reply contains content Chat cannot display yet.";
   if (body === null) return null;
 
   rememberSender(message.id, message.senderInboxId);

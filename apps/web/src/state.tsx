@@ -8,7 +8,7 @@ import {
 } from "@app/transport";
 import { createRefreshQueue } from "./refreshQueue";
 import { MAX_SAVED_ORGANIZATIONS, ORGANIZATIONS_KEY, loadOrganizationStore } from "./orgStorage";
-import { DEFAULT_TRANSPORT } from "./app.config";
+import { APP_NAME, DEFAULT_TRANSPORT } from "./app.config";
 import { resolveEns, type EnsRecord } from "./ens";
 import {
   clearActiveProvider,
@@ -337,7 +337,7 @@ export function OrgProvider({ children }: { children: React.ReactNode }) {
   // Apply org branding to the document theme, including optional drop-in CSS.
   useEffect(() => {
     document.documentElement.style.setProperty("--accent", activeOrg.branding.accent || "#F7931A");
-    document.title = `${activeOrg.branding.name} · Chirpy`;
+    document.title = `${activeOrg.branding.name} · ${APP_NAME}`;
     const ID = "org-theme-css";
     let el = document.getElementById(ID) as HTMLStyleElement | null;
     const css = activeOrg.branding.themeCss?.trim();

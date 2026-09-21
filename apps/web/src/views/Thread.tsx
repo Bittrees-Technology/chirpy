@@ -249,9 +249,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
       {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{translateStatus(t, sendError.message)} {t("thread.draftKept", "Your draft has been kept.")}</div>}
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
-      {readOnly && isAdmin && !configurationError && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chirpy. Administrators can still post; other clients may ignore this policy.")}</div>}
+      {readOnly && isAdmin && !configurationError && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chat. Administrators can still post; other clients may ignore this policy.")}</div>}
       {configurationError ? null : needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : postingBlocked ? (
-        <div className="composer readonly-note">{t("thread.readOnly", "Member posting is paused in Chirpy. Other clients may still send messages.")}</div>
+        <div className="composer readonly-note">{t("thread.readOnly", "Member posting is paused in Chat. Other clients may still send messages.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>
           <input
