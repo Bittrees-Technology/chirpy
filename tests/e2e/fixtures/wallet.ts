@@ -11,8 +11,8 @@ type WalletInjectionTarget = Page | BrowserContext;
 const isHex = (value: unknown): value is `0x${string}` =>
   typeof value === "string" && /^0x[0-9a-fA-F]*$/.test(value);
 
-export async function injectSyntheticWallet(target: WalletInjectionTarget): Promise<string> {
-  const account = privateKeyToAccount(generatePrivateKey());
+export async function injectSyntheticWallet(target: WalletInjectionTarget, privateKey = generatePrivateKey()): Promise<string> {
+  const account = privateKeyToAccount(privateKey);
   if (process.env.CHIRPY_TEST_NATIVE_CSP === "1") {
     const policy = JSON.parse(readFileSync("apps/web/src-tauri/tauri.conf.json", "utf8")).app.security.csp;
     await target.route("http://127.0.0.1:*/**", async route => {

@@ -1,15 +1,17 @@
 import type { Page } from "@playwright/test";
+import { generatePrivateKey } from 'viem/accounts';
 import { expect, injectSyntheticWallet, test } from "./fixtures/wallet";
 
 test.describe("XMTP two-wallet direct messages @xmtp", () => {
   test.describe.configure({ retries: 2, timeout: 480_000 });
 
-  test("two synthetic wallets can exchange a DM round trip", async ({ browser }) => {
+  test("two synthetic wallets exchange DMs and recover history on a fresh installation", async ({ browser }) => {
     test.skip(process.env.XMTP_E2E !== "1", "XMTP E2E is nightly/opt-in only.");
 
     const contextA = await browser.newContext();
     const contextB = await browser.newContext();
-    const walletA = await injectSyntheticWallet(contextA);
+    const keyA = generatePrivateKey();
+    const walletA = await injectSyntheticWallet(contextA, keyA);
     const walletB = await injectSyntheticWallet(contextB);
     const pageA = await contextA.newPage();
     const pageB = await contextB.newPage();
@@ -42,6 +44,23 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await pageA.bringToFront();
       await expect(pageA.getByTestId("peer-receipt")).toContainText("Last read receipt", { timeout: 120_000 });
       await expect(pageA.locator(".list-item", { hasText: "receipt acceptance message" })).toBeVisible();
+      // A separate browser context has no XMTP database or application storage.
+      // Keep the old installation online; the same wallet alone is not recovery proof.
+      const freshContext = await browser.newContext();
+      try {
+        await injectSyntheticWallet(freshContext, keyA);
+        const freshPage = await freshContext.newPage();
+        await enableMessaging(freshPage, walletA);
+        await freshPage.locator('.nav-item', { hasText: 'Settings' }).click();
+        await freshPage.getByRole('button', { name: 'Request message history', exact: true }).click();
+        await expect(freshPage.getByRole('status').filter({ hasText: 'History requested.' })).toBeVisible();
+        await freshPage.getByRole('button', { name: 'Chats', exact: true }).click();
+        await openConversationWithMessage(freshPage, 'receipt acceptance message');
+        await expect(freshPage.locator('.msg-body', { hasText: 'hello from A' })).toBeVisible({ timeout: 120_000 });
+        await expect(freshPage.locator('.msg-body', { hasText: 'hi from B' })).toBeVisible({ timeout: 120_000 });
+        // The imported accepted consent makes the recovered DM usable without accepting again.
+        await expect(freshPage.locator('.composer-input')).toBeVisible();
+      } finally { await freshContext.close(); }
       // Actual production gated-room acceptance still requires the configured gate and reviewed policy.
 
     } finally {
