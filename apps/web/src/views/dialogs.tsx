@@ -26,11 +26,11 @@ function download(filename: string, text: string) {
 }
 
 // ---------------- New DM ----------------
-export function NewDmDialog({ onClose, onCreated, initialRecipient = "" }: { onClose: () => void; onCreated?: () => void; initialRecipient?: string }) {
+export function NewDmDialog({ onClose, onCreated, initialRecipient = "", initialLabel = "", onContacts }: { onClose: () => void; onCreated?: () => void; initialRecipient?: string; initialLabel?: string; onContacts?: () => void }) {
   const { t } = useI18n();
   const { startDm } = useChat();
   const [address, setAddress] = useState(initialRecipient);
-  const [handle, setHandle] = useState("");
+  const [handle, setHandle] = useState(initialLabel);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const input = address.trim();
@@ -66,6 +66,7 @@ export function NewDmDialog({ onClose, onCreated, initialRecipient = "" }: { onC
   };
   return (
     <Modal title={t("routing.compose")} onClose={onClose}>
+      {onContacts && <Button variant="ghost" disabled={busy} onClick={onContacts}>{t("local.contacts")}</Button>}
       <Field label={t("routing.recipient")} hint={t("routing.recipientHint")}>
         <input
           className="input"

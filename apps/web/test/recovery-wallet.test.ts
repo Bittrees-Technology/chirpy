@@ -33,7 +33,7 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 it('proves EOA ownership locally with a fresh scoped challenge and releases listeners', async () => {
   const proof = await verifyRecoveryWallet(owner.address, () => {});
-  expect(signed[0]).toContain('Chat local settings export');
+  expect(signed[0]).toContain('Chat local data export');
   expect(signed[0]).toContain('Origin: https://chat.bittrees.org');
   expect(signed[0]).toContain(owner.address.toLowerCase());
   expect(signed[0]).toMatch(/Nonce: 0x[0-9a-f]{32}/);

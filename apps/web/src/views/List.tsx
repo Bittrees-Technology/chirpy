@@ -6,11 +6,12 @@ import { nameFor, useEnsProfiles } from "../useEns";
 import { useI18n } from "../i18n";
 
 export function ConversationColumn(
-  { title, mode, onNewDm, onNewRoom, needsConnect, onOpenSettings, onOpenConversation }:
+  { title, mode, onNewDm, onNewRoom, needsConnect, onOpenSettings, onOpenConversation, onLocalData }:
   {
     title: string;
     mode: "chats" | "rooms";
     onNewDm: () => void;
+    onLocalData: (kind: "contacts" | "notes") => void;
     onNewRoom: () => void;
     needsConnect: boolean;
     onOpenSettings: () => void;
@@ -104,6 +105,10 @@ export function ConversationColumn(
             </div>
           </button>
         )}
+        {!isRooms && <div className="local-shortcuts">
+          <button className="btn btn-ghost btn-sm" onClick={() => onLocalData("contacts")}>{t("local.contacts")}</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => onLocalData("notes")}>{t("local.notes")}</button>
+        </div>}
         {!isRooms && <div className="list-actions" role="group" aria-label={t("list.inboxView", "Conversation filter")}>
           {(["inbox", "requests", "blocked"] as const).map((view) => <button key={view} className="btn btn-ghost btn-sm" aria-pressed={inboxView === view} onClick={() => { setInboxView(view); setPage(0); }}>{t(`list.${view}`, view === "inbox" ? "Inbox" : view === "requests" ? "Requests" : "Blocked")}</button>)}
         </div>}
