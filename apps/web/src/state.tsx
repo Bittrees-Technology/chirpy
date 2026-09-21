@@ -840,6 +840,7 @@ interface ChatCtx {
   hasOlderMessages: boolean;
   navigateHistory: (direction: "older" | "newer" | "latest" | "refresh") => void;
   enableMessaging: (opts?: { revokeStale?: boolean }) => Promise<void>;
+  requestHistorySync: () => Promise<void>;
   select: (id: string | null) => void;
   markRead: (throughMessageId: string) => Promise<void>;
   send: (body: string, replyTo?: string) => Promise<void>;
@@ -986,6 +987,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, [reloadConversations]);
 
+  const requestHistorySync = useCallback(async () => {
+    const transport = transportRef.current;
+    if (!transport?.requestHistorySync || transport.status !== 'ready') throw new Error('Messaging is not ready.');
+    await transport.requestHistorySync();
+    if (transportRef.current !== transport) throw new Error('Wallet or organization changed.');
+    // SDK background sync and the normal stream/poll refresh pick up the archive later.
+  }, []);
+
   const send = useCallback(async (body: string, replyTo?: string) => {
     if (!activeId || !body.trim()) return;
     if (!transportRef.current) throw new Error("Messaging is reconnecting. Try again shortly.");
@@ -1048,8 +1057,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<ChatCtx>(() => ({
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages,
     historyLoading, isHistory: history.before !== undefined, hasOlderMessages: olderCursor !== undefined, navigateHistory,
-    enableMessaging, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+    enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
+  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

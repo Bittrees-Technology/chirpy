@@ -377,5 +377,11 @@
   "status.syncOriginMissing": "Sync is not configured for this app. Contact your administrator.",
   "status.syncWriteFailed": "Sync could not be saved. Please try again.",
   "status.syncWriteConflict": "Sync changed while saving. Please try again.",
-  "status.ensFailed": "The ENS name could not be looked up. Please try again."
+  "status.ensFailed": "The ENS name could not be looked up. Please try again.",
+  "settings.historyRecovery": "Message history",
+  "settings.historyRecoveryHelp": "Moving to this browser or device? Keep Chat open and messaging enabled on your old device or at chirpy.bittrees.org, using the same wallet. Then request your XMTP message history here. This does not transfer local settings or Push rooms.",
+  "settings.historyRequest": "Request message history",
+  "settings.historyRequesting": "Requesting history…",
+  "settings.historyRequested": "History requested. Keep your old session open while messages and conversation consent sync. A request does not confirm that all history has arrived; check your conversations before leaving the old session.",
+  "settings.historyFailed": "The history request could not be confirmed. Check your connection and connected wallet, then try again. Existing messages are unchanged."
 }
