@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from "react";
-import { useChat, useIdentity, useOrgs } from "./state";
+import { useChat, useIdentity, useOrgs, useSettingsPrefs } from "./state";
 import { useI18n } from "./i18n";
 import { autoUpdateOnLaunch } from "./update";
 import { Avatar, shortAddr } from "./ui";
@@ -105,6 +105,8 @@ function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }
 }
 
 export function App() {
+  const { storageError } = useSettingsPrefs();
+  const { t } = useI18n();
   const { transportId, transportStatus } = useChat();
   const { identity } = useIdentity();
   const { activeOrg } = useOrgs();
@@ -137,7 +139,8 @@ export function App() {
   return (
     <div className="app">
       <Sidebar view={view} setView={openView} onCreateOrg={() => setDialog("createOrg")} />
-      <main className="main">
+      <main className={`main${storageError ? " has-settings-error" : ""}`}>
+        {storageError && <div className="error-banner settings-storage-error" role="alert">{t("settings.storageError")}</div>}
         {(view === "chats" || view === "rooms") && (
           <div className={`split mobile-${mobilePane}`}>
             <ConversationColumn

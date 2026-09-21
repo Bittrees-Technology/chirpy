@@ -1,5 +1,8 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "Settings could not be saved or safely read. Existing browser data was kept. Restore storage access and reload before retrying.": "settings.storageError",
+  "Sync stopped for this session, but the local preference could not be saved. Restore browser storage before reloading.": "status.syncOffUnsaved",
+  "Sync authorizations were revoked, but the local preference could not be saved. Restore browser storage before reloading.": "status.syncRevokedUnsaved",
   "WalletConnect is not configured.": "status.walletConnectMissing",
   "WalletConnect did not return an account.": "status.walletConnectAccountMissing",
   "Revocation was not confirmed. Refresh and retry.": "status.revokeRefresh",

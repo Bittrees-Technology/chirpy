@@ -1,4 +1,5 @@
-import { normalizeReceiptOverrides, receiptOverride, receiptPreferenceKey, type ReceiptOverrides } from "./receiptPreferences";
+import { loadSettings, saveSettings, SettingsStorageError, SETTINGS_STORAGE_ERROR, type SettingsPrefs } from "./settingsStorage";
+import { normalizeReceiptOverrides, receiptOverride, receiptPreferenceKey } from "./receiptPreferences";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   PERSONAL_ORG, parseOrg, type Identity, type OrgConfig, type Policy,
@@ -383,12 +384,6 @@ export const useOrgs = () => {
 // ====================================================================
 // Settings preferences
 // ====================================================================
-interface SettingsPrefs {
-  readReceiptsDefault: boolean;
-  readReceiptOverrides?: ReceiptOverrides;
-  syncAcrossDevices: boolean;
-  blocked: string[];
-}
 interface EncryptedSyncBlob extends EncryptedSyncBlobSnapshot {
   version: 1;
   algorithm: "AES-GCM";
@@ -411,6 +406,7 @@ interface SettingsSyncResult {
 }
 interface SettingsPrefsCtx {
   prefs: SettingsPrefs;
+  storageError: string | null;
   syncState: SettingsSyncState;
   setReadReceiptsDefault: (on: boolean) => void;
   setChatReadReceipts: (conversationId: string, on: boolean | undefined) => void;
@@ -565,10 +561,16 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
   const updatedAtKey = `chat:settingsPrefsUpdatedAt:v1:${scope}`;
   const sessionActiveRef = useRef(true);
   const ensureActive = () => { if (!sessionActiveRef.current) throw new Error("Wallet changed. Re-enable sync for the current wallet."); };
-  const [prefs, setPrefs] = useState<SettingsPrefs>(() =>
-    normalizeSettingsPrefs(LS.get<Partial<SettingsPrefs>>(prefsKey, {})));
+  const initialSettings = useMemo(() => loadSettings(prefsKey), []);
+  const [prefs, setPrefsState] = useState<SettingsPrefs>(initialSettings.prefs);
+  const prefsRef = useRef(initialSettings.prefs);
+  const prefsRawRef = useRef(initialSettings.raw);
+  const [storageError, setStorageError] = useState<string | null>(initialSettings.failed ? SETTINGS_STORAGE_ERROR : null);
+  const storageFailedRef = useRef(initialSettings.failed);
   const existingSyncBlob = useMemo(() => LS.get<EncryptedSyncBlob | null>(blobKey, null), []);
-  const prefsUpdatedAtRef = useRef(LS.get<number>(updatedAtKey, existingSyncBlob?.updatedAt ?? 0));
+  const legacyUpdatedAt = LS.get<number>(updatedAtKey, existingSyncBlob?.updatedAt ?? 0);
+  const prefsUpdatedAtRef = useRef(initialSettings.updatedAt ||
+    (Number.isSafeInteger(legacyUpdatedAt) && legacyUpdatedAt >= 0 && legacyUpdatedAt < Number.MAX_SAFE_INTEGER ? legacyUpdatedAt : 0));
   const syncKeyRef = useRef<CryptoKey | null>(null);
   const syncAddressRef = useRef<string | null>(existingSyncBlob?.address ?? null);
   const authSigRef = useRef<SyncAuthorization | null>(null);
@@ -580,13 +582,39 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
     const revision = prefsRevisionRef.current;
     return () => {
       ensureActive();
+      try {
+        if (storageFailedRef.current || localStorage.getItem(prefsKey) !== prefsRawRef.current) throw new SettingsStorageError();
+      } catch {
+        storageFailedRef.current = true; setStorageError(SETTINGS_STORAGE_ERROR);
+        throw new SettingsStorageError();
+      }
       if (revision !== prefsRevisionRef.current) throw new Error("Settings changed while syncing. Your local choices are saved; enable sync again to retry.");
     };
   };
   const recordLocalEdit = () => {
     prefsRevisionRef.current++;
     prefsUpdatedAtRef.current = Math.max(Date.now(), prefsUpdatedAtRef.current + 1);
-    LS.set(updatedAtKey, prefsUpdatedAtRef.current);
+  };
+  const setPrefs = (next: SettingsPrefs | ((current: SettingsPrefs) => SettingsPrefs)) => {
+    ensureActive();
+    try {
+      if (storageFailedRef.current) throw new SettingsStorageError();
+      const value = typeof next === 'function' ? next(prefsRef.current) : next;
+      const updatedAt = Math.max(Date.now(), Number.isSafeInteger(prefsUpdatedAtRef.current) ? prefsUpdatedAtRef.current : 0);
+      const raw = saveSettings(prefsKey, prefsRawRef.current, value, updatedAt);
+      prefsRawRef.current = raw; prefsUpdatedAtRef.current = updatedAt;
+      const { updatedAt: _savedAt, ...committed } = JSON.parse(raw) as SettingsPrefs & { updatedAt: number };
+      prefsRef.current = committed; setPrefsState(committed); setStorageError(null);
+    } catch (error) {
+      storageFailedRef.current = true; setStorageError(SETTINGS_STORAGE_ERROR);
+      throw error;
+    }
+  };
+  const stopSyncLocally = () => {
+    syncKeyRef.current = null; syncAddressRef.current = null; authSigRef.current = null; authSigAddressRef.current = null;
+    const next = { ...prefsRef.current, syncAcrossDevices: false };
+    try { setPrefs(next); return true; }
+    catch { prefsRef.current = next; setPrefsState(next); return false; }
   };
   const pullOnSessionKeyRef = useRef(false);
   const pushTimerRef = useRef<number | null>(null);
@@ -624,7 +652,6 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       ensureCurrent();
       savedMessagesRef.current = mergedPayload.savedMessages;
       prefsUpdatedAtRef.current = mergedPayload.updatedAt;
-      LS.set(updatedAtKey, mergedPayload.updatedAt);
       LS.set(blobKey, mergedBlob);
       if (repush && authSig) void pushBlob(address, authSig, mergedBlob);
       return { prefs: mergedPayload.settingsPrefs, blob: mergedBlob, merged: true };
@@ -634,15 +661,14 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
     }
   }, []);
 
-  useEffect(() => { LS.set(prefsKey, prefs); }, [prefs]);
   useEffect(() => {
-    if (!prefs.syncAcrossDevices || !syncKeyRef.current || !syncAddressRef.current) return;
+    if (storageFailedRef.current || !prefs.syncAcrossDevices || !syncKeyRef.current || !syncAddressRef.current) return;
     const key = syncKeyRef.current;
     const address = syncAddressRef.current;
     let cancelled = false;
     encryptSettingsPayload(prefs, key, address, savedMessagesRef.current, prefsUpdatedAtRef.current)
       .then((blob) => {
-        if (cancelled) return;
+        if (cancelled || storageFailedRef.current) return;
         LS.set(blobKey, blob);
         setSyncState((s) => ({ ...s, walletAddress: blob.address, encryptedAt: blob.updatedAt, hasSessionKey: true }));
         const authSig = getAuthSig(address);
@@ -650,8 +676,9 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
         if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current);
         pushTimerRef.current = window.setTimeout(() => {
           pushTimerRef.current = null;
+          if (cancelled || storageFailedRef.current) return;
           pushBlob(address, authSig, blob).then(async (result) => {
-            if (cancelled) return;
+            if (cancelled || storageFailedRef.current) return;
             if (result.ok) { setSyncState((s) => ({ ...s, error: undefined })); return; }
             if (!result.stale) throw new Error("Sync write failed");
             const merged = await pullMergePushOnce(key, address, prefs, authSig, false);
@@ -678,6 +705,13 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
   }, [getAuthSig, prefs, pullMergePushOnce]);
 
   useEffect(() => {
+    if (!storageError) return;
+    syncKeyRef.current = null; authSigRef.current = null;
+    if (pushTimerRef.current) { window.clearTimeout(pushTimerRef.current); pushTimerRef.current = null; }
+    setSyncState(state => ({ ...state, hasSessionKey: false, isEncrypting: false }));
+  }, [storageError]);
+
+  useEffect(() => {
     sessionActiveRef.current = true;
     return () => {
       sessionActiveRef.current = false;
@@ -690,6 +724,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
 
   useEffect(() => {
     if (
+      storageFailedRef.current ||
       pullOnSessionKeyRef.current ||
       !prefs.syncAcrossDevices ||
       !syncKeyRef.current ||
@@ -721,20 +756,25 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
 
   const value = useMemo<SettingsPrefsCtx>(() => ({
     prefs,
+    storageError,
     syncState,
-    setReadReceiptsDefault: (readReceiptsDefault) => { recordLocalEdit(); setPrefs((p) => ({ ...p, readReceiptsDefault })); },
+    setReadReceiptsDefault: (readReceiptsDefault) => {
+      recordLocalEdit();
+      try { setPrefs((p) => ({ ...p, readReceiptsDefault })); } catch { /* Visible storage error; committed settings remain selected. */ }
+    },
     setChatReadReceipts: (conversationId, on) => {
       if (!/^[a-zA-Z0-9_-]{1,256}$/.test(conversationId) || (on !== undefined && typeof on !== "boolean")) return;
       recordLocalEdit();
-      setPrefs((current) => {
+      try { setPrefs((current) => {
         const overrides = { ...current.readReceiptOverrides };
         const key = receiptPreferenceKey(conversationId);
         if (on === undefined) delete overrides[key]; else overrides[key] = on;
         return { ...current, readReceiptOverrides: overrides };
-      });
+      }); } catch { /* Visible storage error; do not claim this change was saved. */ }
     },
     enableSyncAcrossDevices: async () => {
       if (mode !== "wallet") return { ok: false, message: "Connect a wallet before enabling encrypted sync." };
+      if (storageFailedRef.current) return { ok: false, message: SETTINGS_STORAGE_ERROR };
       const ensureCurrent = guardPrefsRevision();
       setSyncState((s) => ({ ...s, isEncrypting: true }));
       try {
@@ -776,7 +816,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
         syncAddressRef.current = null;
         authSigRef.current = null;
         authSigAddressRef.current = null;
-        setPrefs((p) => ({ ...p, syncAcrossDevices: false }));
+        stopSyncLocally();
         setSyncState((s) => ({ ...s, hasSessionKey: false, isEncrypting: false }));
         return { ok: false, message };
       }
@@ -789,10 +829,11 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       authSigRef.current = null;
       authSigAddressRef.current = null;
       LS.remove(blobKey);
-      setPrefs((p) => ({ ...p, syncAcrossDevices: false }));
+      const saved = stopSyncLocally();
       setSyncState({ walletAddress: null, encryptedAt: null, hasSessionKey: false, isEncrypting: false });
       try {
         if (authorization) await revokeSyncAuthorization(authorization);
+        if (!saved) return { ok: false, message: "Sync stopped for this session, but the local preference could not be saved. Restore browser storage before reloading." };
         return { ok: true, message: authorization ? "Sync is off and this device authorization was revoked." : "Sync is off locally. Use Revoke all sync devices to revoke earlier sessions." };
       } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Sync stopped locally; revocation was not confirmed." }; }
     },
@@ -804,15 +845,16 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
         await revokeAllSyncAuthorizations(identity.address, (message) => { ensureActive(); return signSyncMessage(identity.address, message); });
         ensureActive();
         syncKeyRef.current = null; syncAddressRef.current = null; authSigRef.current = null; authSigAddressRef.current = null;
-        setPrefs((prefs) => ({ ...prefs, syncAcrossDevices: false }));
+        const saved = stopSyncLocally();
         setSyncState({ walletAddress: null, encryptedAt: null, hasSessionKey: false, isEncrypting: false });
+        if (!saved) return { ok: false, message: "Sync authorizations were revoked, but the local preference could not be saved. Restore browser storage before reloading." };
         return { ok: true, message: "All existing sync device authorizations were revoked. Your encrypted saved data is retained." };
       } catch (error) {
         setSyncState((state) => ({ ...state, isEncrypting: false }));
         return { ok: false, message: error instanceof Error ? error.message : "Revocation was not confirmed. Retry when connected." };
       }
     },
-  }), [identity.address, mode, prefs, pullMergePushOnce, storeAuthSig, syncState]);
+  }), [identity.address, mode, prefs, pullMergePushOnce, storeAuthSig, syncState, storageError]);
 
   return <SettingsPrefsContext.Provider value={value}>{children}</SettingsPrefsContext.Provider>;
 }

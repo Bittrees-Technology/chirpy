@@ -19,7 +19,7 @@ export function Settings(
     setHandle, reset, connectWallet, connectWalletConnect, disconnectWallet,
   } = useIdentity();
   const { orgs, recoverySnapshots, organizationStorageError, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
-  const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices } = useSettingsPrefs();
+  const { prefs, storageError, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices } = useSettingsPrefs();
   const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging, requestHistorySync } = useChat();
   const { lang, setLang, t } = useI18n();
   const gateSummary = (rules: unknown[]) => rules.length === 0 ? t("settings.open") : rules.length === 1 ? t("settings.oneRule") : t("settings.rules", undefined, { count: rules.length });
@@ -259,7 +259,7 @@ export function Settings(
 
       {transportId === 'xmtp' && mode === 'wallet' && transportStatus === 'ready' &&
         <HistoryRecovery key={`${identity.address.toLowerCase()}:${activeOrgId}`} request={requestHistorySync} />}
-      {mode === 'wallet' && <SettingsRecovery key={identity.address.toLowerCase()} wallet={identity.address}
+      {mode === 'wallet' && !storageError && <SettingsRecovery key={identity.address.toLowerCase()} wallet={identity.address}
         preferences={{ blocked: prefs.blocked, readReceiptsDefault: prefs.readReceiptsDefault, readReceiptOverrides: prefs.readReceiptOverrides ?? {} }} />}
 
       <section className="card">
