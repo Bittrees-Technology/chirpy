@@ -383,5 +383,14 @@
   "settings.historyRequest": "Solicitar historial de mensajes",
   "settings.historyRequesting": "Solicitando historial…",
   "settings.historyRequested": "Historial solicitado. Mantén abierta la sesión anterior mientras se sincronizan los mensajes y el consentimiento de las conversaciones. Una solicitud no confirma que haya llegado todo el historial; comprueba tus conversaciones antes de salir de la sesión anterior.",
-  "settings.historyFailed": "No se pudo confirmar la solicitud del historial. Comprueba la conexión y la cartera conectada y vuelve a intentarlo. Los mensajes existentes no han cambiado."
+  "settings.historyFailed": "No se pudo confirmar la solicitud del historial. Comprueba la conexión y la cartera conectada y vuelve a intentarlo. Los mensajes existentes no han cambiado.",
+  "recovery.settingsTitle": "Copia de seguridad de ajustes locales",
+  "recovery.settingsScope": "Exporta las preferencias de confirmación de lectura y las preferencias heredadas de direcciones bloqueadas de esta cartera. No incluye historial, notas, contactos, organizaciones ni claves. La restauración de estos archivos aún no está disponible; conserva los datos de este navegador.",
+  "recovery.passwordHelp": "Elige una frase de contraseña única de al menos 12 caracteres. Guárdala separada del archivo; Chat no puede restablecerla. Antes de exportar, firmarás una comprobación de propiedad de la cartera de un solo uso.",
+  "recovery.password": "Frase de contraseña de recuperación",
+  "recovery.confirmPassword": "Confirmar frase de contraseña",
+  "recovery.preparing": "Verificando la cartera y cifrando…",
+  "recovery.exportSettings": "Exportar ajustes cifrados",
+  "recovery.prepared": "Archivo cifrado preparado. Comprueba tus descargas y guarda la frase de contraseña por separado. No se han cambiado los datos existentes.",
+  "recovery.failed": "No se ha preparado ningún archivo. Comprueba la cartera conectada, aprueba la firma de propiedad y vuelve a intentarlo sin cambiar los ajustes. Las carteras de contrato requieren la red principal de Ethereum."
 }
