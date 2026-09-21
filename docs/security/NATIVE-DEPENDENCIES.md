@@ -28,3 +28,12 @@ cargo tree --manifest-path apps/web/src-tauri/Cargo.toml --locked \
 Cargo exits successfully and reports “nothing to print” when the package is absent from that target's graph. An error, including a missing offline cache entry, is not evidence of absence. The review downloaded missing registry packages for the Windows/Linux graphs before repeating all queries successfully with `--offline`.
 
 Rerun the required Cargo audit and this platform review after lockfile, target or feature changes. Keep the seven warnings visible until the dependency graph actually removes or fixes them. Container findings have a separate [baseline](container-baseline-2026-09-09.json) and remain open.
+
+## 21 September 2026 TLS patch
+
+The current audit found [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285.html),
+published on 14 September after the previous successful checks. Update the locked
+Rustls dependency from 0.23.40 to the patched 0.23.45 and its required rustls-webpki
+patch from 0.103.13 to 0.103.15. Preserve the lockfile format and other versions.
+No advisory is suppressed. The seven previously documented maintenance/safety
+warnings remain separate follow-up work; this patch does not resolve them.
