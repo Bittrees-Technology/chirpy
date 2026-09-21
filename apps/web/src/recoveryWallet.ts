@@ -7,7 +7,7 @@ export async function verifyRecoveryWallet(wallet: string, ensureCurrent: () => 
   if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) throw new Error('Invalid recovery wallet');
   const address = wallet.toLowerCase() as Hex;
   const provider = getActiveProvider();
-  if (!provider) throw new Error('Connect a wallet to export settings');
+  if (!provider) throw new Error('Connect a wallet to export local data');
   const expiresAt = Date.now() + 120_000;
   let invalidated = false;
   let disposed = false;
@@ -54,7 +54,7 @@ export async function verifyRecoveryWallet(wallet: string, ensureCurrent: () => 
       if (await currentChain() !== chain) throw new Error('Recovery wallet chain changed');
     };
     const nonce = toHex(crypto.getRandomValues(new Uint8Array(16)));
-    const message = `Chat local settings export\nWallet: ${address}\nOrigin: ${window.location.origin}\nChain: ${chain}\nNonce: ${nonce}\nExpires: ${new Date(expiresAt).toISOString()}\nProve control for one encrypted settings export. This does not authorize messages, transactions, or account access.`;
+    const message = `Chat local data export\nWallet: ${address}\nOrigin: ${window.location.origin}\nChain: ${chain}\nNonce: ${nonce}\nExpires: ${new Date(expiresAt).toISOString()}\nProve control for one encrypted local data export. This does not authorize messages, transactions, or account access.`;
     const signature = await ask({ method: 'personal_sign', params: [toHex(message), wallet] });
     await assertCurrent();
     if (typeof signature !== 'string' || !/^0x(?:[0-9a-fA-F]{2}){1,32768}$/.test(signature)) throw new Error('Invalid ownership signature');

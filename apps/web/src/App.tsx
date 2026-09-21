@@ -9,6 +9,7 @@ import { Thread } from "./views/Thread";
 import { Settings } from "./views/Settings";
 import { NewDmDialog, NewRoomDialog, CreateOrgDialog, ImportOrgDialog } from "./views/dialogs";
 
+import { LocalLibrary } from "./views/LocalLibrary";
 import { MessageRoutes } from "./views/MessageRoutes";
 import { recipientFromFragment } from "./messageRouting";
 
@@ -20,7 +21,7 @@ export function AppViewProvider({ children }: { children: React.ReactNode }) {
   return <AppViewContext.Provider value={{ view, setView }}>{children}</AppViewContext.Provider>;
 }
 
-type Dialog = null | "newDm" | "newRoom" | "createOrg" | "importOrg";
+type Dialog = null | "contacts" | "notes" | "newDm" | "newRoom" | "createOrg" | "importOrg";
 type MobilePane = "list" | "thread";
 
 function OrgRail({ onCreateOrg }: { onCreateOrg: () => void }) {
@@ -111,9 +112,10 @@ export function App() {
   if (!navigation) throw new Error("App requires AppViewProvider");
   const { view, setView } = navigation;
   const [mobilePane, setMobilePane] = useState<MobilePane>("list");
+  const [contactLabel, setContactLabel] = useState("");
   const [linkedRecipient, setLinkedRecipient] = useState<string | null>(() => recipientFromFragment(window.location.hash));
   const [dialog, setDialog] = useState<Dialog>(() => recipientFromFragment(window.location.hash) ? "newDm" : null);
-  const close = () => { setDialog(null); setLinkedRecipient(null); };
+  const close = () => { setDialog(null); setLinkedRecipient(null); setContactLabel(""); };
   const needsConnect = transportId === "xmtp" && transportStatus !== "ready";
   const openView = (next: View) => {
     setView(next);
@@ -123,7 +125,7 @@ export function App() {
   useEffect(() => {
     const receive = () => {
       const recipient = recipientFromFragment(window.location.hash);
-      if (recipient) { setLinkedRecipient(recipient); setDialog("newDm"); }
+      if (recipient) { setContactLabel(""); setLinkedRecipient(recipient); setDialog("newDm"); }
     };
     window.addEventListener("hashchange", receive);
     return () => window.removeEventListener("hashchange", receive);
@@ -144,6 +146,7 @@ export function App() {
               mode={view === "rooms" ? "rooms" : "chats"}
               needsConnect={needsConnect}
               onNewDm={() => setDialog("newDm")}
+              onLocalData={kind => setDialog(kind)}
               onNewRoom={() => setDialog("newRoom")}
               onOpenSettings={() => openView("settings")}
               onOpenConversation={() => setMobilePane("thread")}
@@ -158,7 +161,8 @@ export function App() {
       </main>
       <MobileNav view={view} setView={openView} />
 
-      {dialog === "newDm" && <NewDmDialog key={linkedRecipient ?? "manual"} initialRecipient={linkedRecipient ?? ""} onClose={close} onCreated={() => { setView("chats"); setMobilePane("thread"); }} />}
+      {dialog === "newDm" && <NewDmDialog key={linkedRecipient ?? "manual"} initialRecipient={linkedRecipient ?? ""} initialLabel={contactLabel} onContacts={() => setDialog("contacts")} onClose={close} onCreated={() => { setView("chats"); setMobilePane("thread"); }} />}
+      {(dialog === "contacts" || dialog === "notes") && <LocalLibrary key={`${identity.address}:${dialog}`} kind={dialog} onClose={close} onPick={contact => { setLinkedRecipient(contact.address); setContactLabel(contact.label); setDialog("newDm"); }} />}
       {dialog === "newRoom" && <NewRoomDialog onClose={close} onCreated={() => setMobilePane("thread")} />}
       {dialog === "createOrg" && <CreateOrgDialog onClose={close} />}
       {dialog === "importOrg" && <ImportOrgDialog onClose={close} />}

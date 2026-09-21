@@ -3,9 +3,10 @@ import { Button, Field } from '../ui';
 import { useI18n } from '../i18n';
 import { encryptRecoveryArchive, validateRecoveryData, type RecoveryData } from '../recoveryArchive';
 import { verifyRecoveryWallet } from '../recoveryWallet';
+import { readLocalData } from '../localData';
 import { download } from './dialogs';
 
-/** Key by connected wallet. This deliberately exports settings, not all application data. */
+/** Key by connected wallet. Exports explicit application data, never protocol databases or keys. */
 export function SettingsRecovery({ wallet, preferences }: { wallet: string; preferences: RecoveryData['preferences'] }) {
   const { t } = useI18n();
   const [password, setPassword] = useState('');
@@ -27,14 +28,17 @@ export function SettingsRecovery({ wallet, preferences }: { wallet: string; pref
       if (!active.current || latest.current !== fingerprint) throw new Error('Wallet or settings changed during export');
     };
     try {
-      // Make a validated copy before any asynchronous work. No localStorage enumeration.
+      // Read explicit wallet-owned fields and validate a copy. No localStorage enumeration.
+      const local = await readLocalData(wallet);
+      ensureCurrent();
       const data = validateRecoveryData({ version: 1, source: 'chirpy', wallet, createdAt: Date.now(),
-        contacts: [], notes: [], preferences });
+        contacts: local.contacts, notes: local.notes, preferences });
       proof = await verifyRecoveryWallet(wallet, ensureCurrent);
       const archive = await encryptRecoveryArchive(data, password);
+      if ((await readLocalData(wallet)).revision !== local.revision) throw new Error('Local data changed during export');
       await proof.assertCurrent();
       ensureCurrent();
-      download('chat-settings-recovery.json', archive);
+      download('chat-local-data-recovery.json', archive);
       setStatus('prepared');
     } catch { if (active.current) setStatus('failed'); }
     finally {

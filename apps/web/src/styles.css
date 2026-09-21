@@ -287,3 +287,11 @@ input, textarea, select { font-family: inherit; }
 
 .history-controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .5rem 1rem; border-bottom: 1px solid var(--line); }
 .history-controls .btn { min-height: 36px; }
+
+.local-shortcuts, .local-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.local-shortcuts { padding: 0 14px; }
+.local-items { list-style: none; padding: 0; margin: 16px 0; }
+.local-items li { padding: 14px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.local-address { font-size: 12px; }
+.local-note-input { min-height: 110px; resize: vertical; }
+.local-note-text { white-space: pre-wrap; margin: 0 0 8px; }
