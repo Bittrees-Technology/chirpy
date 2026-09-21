@@ -1,3 +1,4 @@
+import { APP_NAME } from "./app.config";
 import type { Eip1193Provider } from "@app/transport";
 
 export type WalletProviderKind = "injected" | "walletconnect";
@@ -54,7 +55,7 @@ async function initWalletConnectProvider(): Promise<WalletEventProvider & { acco
     },
     showQrModal: true,
     metadata: {
-      name: "Chirpy",
+      name: APP_NAME,
       description: "Wallet-native chat for any community",
       url: window.location.origin,
       icons: [`${window.location.origin}/icon.png`],

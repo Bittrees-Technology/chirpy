@@ -34,7 +34,7 @@ test('Spanish dialogs create chats, edit labeled gate rules and recover from imp
   expect((await rule.getByRole('combobox', { name: 'Estándar del token' }).boundingBox())!.width).toBeGreaterThan(110);
   await rule.getByRole('button', { name: 'Eliminar regla' }).click();
   await expect(room.getByText('Sin reglas = abierto a todo el mundo.')).toBeVisible();
-  await room.getByRole('checkbox', { name: 'Pausar las publicaciones de miembros en Chirpy' }).check();
+  await room.getByRole('checkbox', { name: 'Pausar las publicaciones de miembros en Chat' }).check();
   await room.getByRole('button', { name: 'Crear sala' }).click();
   await expect(page.locator('.thread-title')).toContainText('sala de prueba');
   await expect(page.locator('.thread-sub')).toContainText('1 miembro · abierta · solo lectura');

@@ -1,7 +1,7 @@
 [package]
 name = "chirpy"
 version = "0.1.0"
-description = "Chirpy — wallet-native chat for any community"
+description = "Chat — wallet-native chat for any community"
 authors = ["Bittrees Technology"]
 edition = "2021"
 rust-version = "1.88"

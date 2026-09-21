@@ -1,6 +1,6 @@
 {
-  "name": "Chirpy",
-  "short_name": "Chirpy",
+  "name": "Chat",
+  "short_name": "Chat",
   "description": "Wallet-native community chat with encrypted DMs and token-gated rooms",
   "id": "/",
   "start_url": "/",

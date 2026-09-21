@@ -102,7 +102,7 @@ jobs:
           projectPath: apps/web
           tauriScript: pnpm tauri
           tagName: ${{ github.ref_name }}
-          releaseName: "Chirpy ${{ github.ref_name }}"
+          releaseName: "Chat ${{ github.ref_name }}"
           releaseBody: "Draft artifacts for signature, installation, updater and platform acceptance. Do not publish until the production readiness checklist is complete."
           releaseDraft: true
           prerelease: false
