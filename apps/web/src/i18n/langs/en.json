@@ -383,5 +383,14 @@
   "settings.historyRequest": "Request message history",
   "settings.historyRequesting": "Requesting history…",
   "settings.historyRequested": "History requested. Keep your old session open while messages and conversation consent sync. A request does not confirm that all history has arrived; check your conversations before leaving the old session.",
-  "settings.historyFailed": "The history request could not be confirmed. Check your connection and connected wallet, then try again. Existing messages are unchanged."
+  "settings.historyFailed": "The history request could not be confirmed. Check your connection and connected wallet, then try again. Existing messages are unchanged.",
+  "recovery.settingsTitle": "Back up local settings",
+  "recovery.settingsScope": "Exports receipt preferences and legacy blocked-address preferences for this wallet. It does not include message history, notes, contacts, organizations or keys. Restoring these files is not available yet; keep this browser’s data.",
+  "recovery.passwordHelp": "Choose a unique passphrase of at least 12 characters. Keep it separately from the file; Chat cannot reset it. You will sign a one-time wallet ownership check before export.",
+  "recovery.password": "Recovery passphrase",
+  "recovery.confirmPassword": "Confirm recovery passphrase",
+  "recovery.preparing": "Verifying wallet and encrypting…",
+  "recovery.exportSettings": "Export encrypted settings",
+  "recovery.prepared": "Encrypted file prepared. Check your downloads and keep the passphrase separately. No existing data was changed.",
+  "recovery.failed": "No recovery file was prepared. Check your connected wallet, approve the ownership signature and try again without changing settings. Contract wallets require Ethereum mainnet."
 }

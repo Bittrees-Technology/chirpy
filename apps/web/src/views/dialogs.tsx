@@ -16,8 +16,13 @@ function download(filename: string, text: string) {
   const blob = new Blob([text], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  try { a.click(); } finally {
+    a.remove();
+    // Give the browser time to consume the download before releasing its URL.
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
 }
 
 // ---------------- New DM ----------------

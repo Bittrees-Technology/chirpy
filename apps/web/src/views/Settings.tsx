@@ -5,6 +5,7 @@ import { Avatar, Button, Field, Modal, Toggle, shortAddr } from "../ui";
 import { download } from "./dialogs";
 import { UpdateCard } from "./UpdateCard";
 import { HistoryRecovery } from "./HistoryRecovery";
+import { SettingsRecovery } from "./SettingsRecovery";
 import { translateStatus } from "../i18n/statusMessages";
 import { useI18n, LANGS, type LangCode } from "../i18n";
 import { isAddress, isEnsName, resolveEns, type EnsRecord } from "../ens";
@@ -258,6 +259,8 @@ export function Settings(
 
       {transportId === 'xmtp' && mode === 'wallet' && transportStatus === 'ready' &&
         <HistoryRecovery key={`${identity.address.toLowerCase()}:${activeOrgId}`} request={requestHistorySync} />}
+      {mode === 'wallet' && <SettingsRecovery key={identity.address.toLowerCase()} wallet={identity.address}
+        preferences={{ blocked: prefs.blocked, readReceiptsDefault: prefs.readReceiptsDefault, readReceiptOverrides: prefs.readReceiptOverrides ?? {} }} />}
 
       <section className="card">
         <h2>{t("settings.resolver")}</h2>
