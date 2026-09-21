@@ -148,7 +148,7 @@
   "settings.roles": "Roles: {roles}",
   "settings.none": "none",
   "settings.revokeLimit": "Your messaging inbox is at XMTP's limit of 10 devices/sessions. To enable messaging on this device, Chat will revoke the existing installations on your inbox.",
-  "settings.revokeEffect": "This signs you out of Chat messaging on every other device and browser you have enabled. Each will need to re-enable messaging with one signature to reconnect. Your conversations and history are not deleted.",
+  "settings.revokeEffect": "This signs you out of messaging on every other device and browser. Local data is not erased, but those installations can no longer provide history until reconnected. Before revoking, keep the old browser data and verify a working history source or backup. Reconnecting alone does not guarantee older messages will return.",
   "update.unsupported": "In-app updates run in the desktop app. The web app updates on reload; iOS updates via the App Store.",
   "update.idle": "Up to date as far as we know — check for a new version.",
   "update.checking": "Checking for updates…",

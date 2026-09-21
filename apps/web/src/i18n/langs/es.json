@@ -148,7 +148,7 @@
   "settings.roles": "Roles: {roles}",
   "settings.none": "ninguno",
   "settings.revokeLimit": "Tu bandeja de mensajería ha alcanzado el límite de XMTP de 10 dispositivos o sesiones. Para activar la mensajería en este dispositivo, Chat revocará las instalaciones existentes de tu bandeja.",
-  "settings.revokeEffect": "Esto cierra la sesión de mensajería de Chat en todos los demás dispositivos y navegadores que hayas activado. Cada uno deberá volver a activar la mensajería con una firma para reconectarse. Tus conversaciones y tu historial no se eliminan.",
+  "settings.revokeEffect": "Esto cierra tu sesión de mensajería en todos los demás dispositivos y navegadores. Los datos locales no se borran, pero esas instalaciones no pueden aportar el historial hasta que se vuelvan a conectar. Antes de revocar, conserva los datos del navegador anterior y verifica una fuente de historial o una copia de seguridad funcional. Volver a conectarte no garantiza que regresen los mensajes anteriores.",
   "update.unsupported": "Las actualizaciones integradas funcionan en la aplicación de escritorio. La web se actualiza al recargar; iOS se actualiza desde App Store.",
   "update.idle": "Comprueba si hay una nueva versión disponible.",
   "update.checking": "Buscando actualizaciones…",
