@@ -3,7 +3,7 @@ import { generatePrivateKey } from 'viem/accounts';
 import { expect, injectSyntheticWallet, test } from "./fixtures/wallet";
 
 test.describe("XMTP two-wallet direct messages @xmtp", () => {
-  test.describe.configure({ retries: 2, timeout: 480_000 });
+  test.describe.configure({ retries: process.env.CI ? 2 : 0, timeout: 480_000 });
 
   test("two synthetic wallets exchange DMs and recover history on a fresh installation", async ({ browser }) => {
     test.skip(process.env.XMTP_E2E !== "1", "XMTP E2E is nightly/opt-in only.");
@@ -54,7 +54,7 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
         await freshPage.locator('.nav-item', { hasText: 'Settings' }).click();
         await freshPage.getByRole('button', { name: 'Request message history', exact: true }).click();
         await expect(freshPage.getByRole('status').filter({ hasText: 'History requested.' })).toBeVisible();
-        await freshPage.getByRole('button', { name: 'Chats', exact: true }).click();
+        await freshPage.locator('.nav-item', { hasText: 'Chats' }).click({ timeout: 30_000 });
         await openConversationWithMessage(freshPage, 'receipt acceptance message');
         await expect(freshPage.locator('.msg-body', { hasText: 'hello from A' })).toBeVisible({ timeout: 120_000 });
         await expect(freshPage.locator('.msg-body', { hasText: 'hi from B' })).toBeVisible({ timeout: 120_000 });
