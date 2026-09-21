@@ -98,3 +98,26 @@ it("allows configured native preflight but still requires signed writes", async 
   expect((await call(await write(), "POST", { origin: "tauri://localhost" })).code).toBe(200);
   expect((await call(await write("blocked", 1), "POST", { origin: "https://evil.test" })).code).toBe(403);
 });
+
+it("adds migration origins without replacing existing native access or changing signed identity", async () => {
+  vi.stubEnv("CHIRPY_SYNC_ALLOWED_ORIGINS", "tauri://localhost");
+  vi.stubEnv("CHIRPY_SYNC_MIGRATION_ORIGINS", "https://chat.example");
+  for (const origin of ["tauri://localhost", "https://chat.example", "https://chirpy.example"]) {
+    expect((await call({}, "OPTIONS", { origin, "access-control-request-method": "POST" })).code).toBe(204);
+  }
+  expect((await call({}, "GET", { origin: "https://chat.example" })).body.service).toBe(service);
+  expect((await call({ address: account.address, action: "write" }, "POST", { origin: "https://chat.example" })).code).toBe(401);
+  expect((await call(await write("wrong", 0, await grant({ service: "https://chat.example/api/usersync" })), "POST", { origin: "https://chat.example" })).code).toBe(401);
+  expect((await call(await write(), "POST", { origin: "https://chat.example.evil.test" })).code).toBe(403);
+  expect(records.size).toBe(0);
+  expect((await call(await write(), "POST", { origin: "https://chat.example" })).code).toBe(200);
+  vi.stubEnv("CHIRPY_SYNC_MIGRATION_ORIGINS", "");
+  expect((await call({}, "GET", { origin: "https://chat.example" })).code).toBe(403);
+  expect((await call({}, "GET", { origin: "tauri://localhost" })).code).toBe(200);
+});
+
+it("rejects malformed migration configuration before accessing storage", async () => {
+  vi.stubEnv("CHIRPY_SYNC_MIGRATION_ORIGINS", "*");
+  expect((await call({}, "GET")).code).toBe(503);
+  expect(fetch).not.toHaveBeenCalled();
+});

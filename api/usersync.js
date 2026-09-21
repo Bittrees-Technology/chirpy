@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     return res.status(status).json(body);
   };
   try {
-    const cors = syncCors(req, res, { service: SERVICE, allowedOrigins: process.env.CHIRPY_SYNC_ALLOWED_ORIGINS || "" });
+    const cors = syncCors(req, res, { service: SERVICE, allowedOrigins: [process.env.CHIRPY_SYNC_ALLOWED_ORIGINS, process.env.CHIRPY_SYNC_MIGRATION_ORIGINS].filter(Boolean).join(",") });
     if (cors) return respond(cors.status, cors.body);
     const decision = checkRateLimit(req, route);
     if (!decision.allowed) { res.setHeader("Retry-After", String(decision.retryAfterSeconds)); return respond(429, { error: "too many requests" }); }

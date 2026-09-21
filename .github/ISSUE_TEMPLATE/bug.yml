@@ -1,5 +1,5 @@
 name: Bug report or support
-description: Report an ordinary bug or ask for help using Chirpy.
+description: Report an ordinary bug or ask for help using Chat.
 title: "[Bug] "
 body:
   - type: markdown
@@ -9,7 +9,7 @@ body:
     id: version
     attributes:
       label: Browser or app version
-      description: Include OS and Chirpy commit/version if known.
+      description: Include OS and Chat commit/version if known.
     validations:
       required: true
   - type: textarea

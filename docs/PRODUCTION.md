@@ -35,3 +35,19 @@ Only mainnet token holdings, explicit ERC-1155 IDs, Safe owners and ENS are supp
 - Complete privacy/terms and moderation/retention decisions, signed native artifact/install/updater acceptance and real-device wallet return.
 
 Record date, release/image digest, environment, reviewer and evidence for each acceptance. Merging source code does not satisfy external checks.
+
+## Chat domain coexistence
+
+During the move to `chat.bittrees.org`, keep the existing signed API identity and
+storage. Set production `VITE_API_ORIGIN=https://chirpy.bittrees.org` so both web
+hosts use the canonical sync service directly. Preserve `CHIRPY_SYNC_SERVICE_URL`.
+Set `CHIRPY_SYNC_MIGRATION_ORIGINS=https://chat.bittrees.org` to add the new exact
+browser origin without replacing existing `CHIRPY_SYNC_ALLOWED_ORIGINS` (including
+native origins). Both lists use the same strict validation; wildcards and malformed
+origins fail closed. CORS never substitutes for signed authorization. Remove the
+migration setting to withdraw that browser origin without altering native access.
+
+Do not apply these production values to preview builds. Keep API routes on the old
+host reachable without redirects. This setting covers encrypted settings sync only;
+mail has its own `CHIRPY_MAIL_ALLOWED_ORIGINS`, consent and activation requirements.
+Adding the domain does not move browser-local data or authorize a public cutover.
