@@ -4,6 +4,7 @@ import { useChat, useIdentity, useOrgs, useSettingsPrefs } from "../state";
 import { Avatar, Button, Field, Modal, Toggle, shortAddr } from "../ui";
 import { download } from "./dialogs";
 import { UpdateCard } from "./UpdateCard";
+import { HistoryRecovery } from "./HistoryRecovery";
 import { translateStatus } from "../i18n/statusMessages";
 import { useI18n, LANGS, type LangCode } from "../i18n";
 import { isAddress, isEnsName, resolveEns, type EnsRecord } from "../ens";
@@ -18,7 +19,7 @@ export function Settings(
   } = useIdentity();
   const { orgs, recoverySnapshots, organizationStorageError, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices } = useSettingsPrefs();
-  const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging } = useChat();
+  const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging, requestHistorySync } = useChat();
   const { lang, setLang, t } = useI18n();
   const gateSummary = (rules: unknown[]) => rules.length === 0 ? t("settings.open") : rules.length === 1 ? t("settings.oneRule") : t("settings.rules", undefined, { count: rules.length });
   const [profileEns, setProfileEns] = useState<EnsRecord | null>(null);
@@ -254,6 +255,9 @@ export function Settings(
           )}
         </div>
       </section>
+
+      {transportId === 'xmtp' && mode === 'wallet' && transportStatus === 'ready' &&
+        <HistoryRecovery key={`${identity.address.toLowerCase()}:${activeOrgId}`} request={requestHistorySync} />}
 
       <section className="card">
         <h2>{t("settings.resolver")}</h2>

@@ -1,0 +1,11 @@
+# XMTP history recovery
+
+Browser SDK 7 stopped automatically sending history requests on newly created installations. Ordinary conversation synchronization is not a substitute for `client.sendSyncRequest()`. See the [SDK release notes](https://github.com/xmtp/xmtp-js/releases/tag/%40xmtp%2Fbrowser-sdk%407.0.0) and [history-sync documentation](https://docs.xmtp.org/chat-apps/list-stream-sync/history-sync).
+
+After connecting the same wallet and enabling messaging, Settings offers **Request message history**. Keep an existing installation online with messaging enabled, including the old Chirpy browser origin. The action checks the connected account, asks the current SDK client for its default archive (messages and consent), and reports only that the request was accepted. The SDK's background worker handles transfer; normal conversation refresh discovers incoming history. Failures stay retryable without disabling messaging or revoking installations. Concurrent requests on the same transport are coalesced.
+
+This action does not copy local preferences, contacts, saved notes, Push data or raw databases. It does not establish that every historical message has arrived. Default forwarding remains gated on actual old/new-origin acceptance. At the installation limit, preserve an existing online source and its data; the separate revoke-all recovery action can remove access needed for history transfer and must not be part of an automatic migration.
+
+Before cutover, verify an existing inbox across both origins with historical DMs and groups, accepted/blocked/unknown consent, offline source/retry, wallet switching, duplicate requests and interruption. Record exact SDK/network versions and message evidence with consenting test identities. Local mocks establish request handling, not successful live protocol history transfer.
+
+Development-network evidence (21 September 2026): the expanded two-wallet browser test recovered both prior DM messages and accepted consent into a separate browser context using the same synthetic wallet, with the source context online. This verifies the supported SDK request path on dev, not production inbox completeness, groups, offline recovery, other clients, or physical devices. The opt-in/nightly suite repeats this test.

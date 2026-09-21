@@ -64,6 +64,8 @@ export interface Transport {
   /** Create the encrypted inbox. `revokeStale` first revokes the inbox's existing
    *  installations (used to recover from XMTP's 10-installation-per-inbox limit). */
   enable?(opts?: { revokeStale?: boolean }): Promise<void>;
+  /** Ask an existing online installation for history; resolution only confirms the request. */
+  requestHistorySync?(): Promise<void>;
   listConversations(): Promise<Conversation[]>;
   listMessages(conversationId: string): Promise<ChatMessage[]>;
   listMessagePage(conversationId: string, before?: string): Promise<MessagePage>;

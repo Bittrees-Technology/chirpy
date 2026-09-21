@@ -148,7 +148,7 @@
   "settings.roles": "Roles: {roles}",
   "settings.none": "ninguno",
   "settings.revokeLimit": "Tu bandeja de mensajería ha alcanzado el límite de XMTP de 10 dispositivos o sesiones. Para activar la mensajería en este dispositivo, Chat revocará las instalaciones existentes de tu bandeja.",
-  "settings.revokeEffect": "Esto cierra la sesión de mensajería de Chat en todos los demás dispositivos y navegadores que hayas activado. Cada uno deberá volver a activar la mensajería con una firma para reconectarse. Tus conversaciones y tu historial no se eliminan.",
+  "settings.revokeEffect": "Esto cierra tu sesión de mensajería en todos los demás dispositivos y navegadores. Los datos locales no se borran, pero esas instalaciones no pueden aportar el historial hasta que se vuelvan a conectar. Antes de revocar, conserva los datos del navegador anterior y verifica una fuente de historial o una copia de seguridad funcional. Volver a conectarte no garantiza que regresen los mensajes anteriores.",
   "update.unsupported": "Las actualizaciones integradas funcionan en la aplicación de escritorio. La web se actualiza al recargar; iOS se actualiza desde App Store.",
   "update.idle": "Comprueba si hay una nueva versión disponible.",
   "update.checking": "Buscando actualizaciones…",
@@ -377,5 +377,11 @@
   "status.syncOriginMissing": "La sincronización no está configurada para esta aplicación. Contacta con tu administrador.",
   "status.syncWriteFailed": "No se pudo guardar la sincronización. Inténtalo de nuevo.",
   "status.syncWriteConflict": "La sincronización cambió mientras se guardaba. Inténtalo de nuevo.",
-  "status.ensFailed": "No se pudo consultar el nombre ENS. Inténtalo de nuevo."
+  "status.ensFailed": "No se pudo consultar el nombre ENS. Inténtalo de nuevo.",
+  "settings.historyRecovery": "Historial de mensajes",
+  "settings.historyRecoveryHelp": "¿Te mudas a este navegador o dispositivo? Mantén Chat abierto y la mensajería activada en tu dispositivo anterior o en chirpy.bittrees.org, con la misma cartera. Después solicita aquí tu historial de mensajes XMTP. Esto no transfiere ajustes locales ni salas Push.",
+  "settings.historyRequest": "Solicitar historial de mensajes",
+  "settings.historyRequesting": "Solicitando historial…",
+  "settings.historyRequested": "Historial solicitado. Mantén abierta la sesión anterior mientras se sincronizan los mensajes y el consentimiento de las conversaciones. Una solicitud no confirma que haya llegado todo el historial; comprueba tus conversaciones antes de salir de la sesión anterior.",
+  "settings.historyFailed": "No se pudo confirmar la solicitud del historial. Comprueba la conexión y la cartera conectada y vuelve a intentarlo. Los mensajes existentes no han cambiado."
 }

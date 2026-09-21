@@ -245,6 +245,7 @@ export class XmtpTransport implements Transport {
   private readonly myAddress: string;
   private readonly readState: ReadState;
   private messageCursors = new Map<string, { conversationId: string; at: bigint }>();
+  private historyRequest: Promise<void> | null = null;
 
   constructor(
     private org: OrgConfig,
@@ -298,6 +299,22 @@ export class XmtpTransport implements Transport {
     const inboxId = this.requireClient().inboxId;
     if (!inboxId) throw new Error("XMTP inbox is not ready yet.");
     return inboxId;
+  }
+
+  async requestHistorySync(): Promise<void> {
+    const client = this.requireClient();
+    if (!this.provider) throw new Error('Connect a wallet to request message history.');
+    if (this.historyRequest) return this.historyRequest;
+    const request = (async () => {
+      const accounts = await this.provider!.request({ method: 'eth_accounts' });
+      if (!Array.isArray(accounts) || typeof accounts[0] !== 'string' || accounts[0].toLowerCase() !== this.myAddress
+        || this.client !== client || this.status !== 'ready') throw new Error('Wallet changed. Request history for the current wallet.');
+      // SDK 7 does not automatically request an archive on new installations.
+      // The default archive includes messages and consent. Never claim it has arrived yet.
+      await client.sendSyncRequest();
+    })();
+    this.historyRequest = request;
+    try { await request; } finally { if (this.historyRequest === request) this.historyRequest = null; }
   }
 
   private async adopt(client: XmtpClient) {
