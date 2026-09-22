@@ -12,6 +12,8 @@ afterEach(()=>{vi.useRealTimers();});
 describe('signed mail provider events',()=>{
   it('requires independent configuration, rejects previews and works while sending is paused',async()=>{
     expect(mailEventConfig(env)).not.toBeNull();
+    const partial={...env,CHIRPY_MAIL_IDENTITY_URL:'https://wallet.example/api/service/delivery'};
+    const stored=vi.fn().mockResolvedValue('applied');expect((await handleMailEvent(request(),partial,stored)).status).toBe(200);expect(stored).toHaveBeenCalledOnce();
     for(const patch of [{CHIRPY_MAIL_WEBHOOK_ENABLED:'0'},{RESEND_WEBHOOK_SECRET:''},{RESEND_WEBHOOK_SECRET:'whsec_YQ=='},{VERCEL_ENV:'preview'}]) {
       const kv=vi.fn();const result=await handleMailEvent(request(),{...env,...patch},kv);expect(result.status).toBe(503);expect(kv).not.toHaveBeenCalled();
     }

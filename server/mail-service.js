@@ -1,3 +1,4 @@
+import { mailIdentityConfig, mailIdentityScope, resolveMailIdentity } from './mail-identity.js';
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { recoverMessageAddress } from 'viem';
 import { normalizeMailAddress, mailSignMessage } from '../packages/core/src/mailAuth.js';
@@ -5,7 +6,7 @@ import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_
 export const hash = value => createHash('sha256').update(value).digest('hex');
 const address = value => typeof value === 'string' && /^0x[a-f0-9]{40}$/.test(value);
 const id = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
-export function mailConfig(env = process.env) {
+export function mailConfig(env = process.env, { deliveryIdentity = true } = {}) {
   if (env.CHIRPY_MAIL_ENABLED !== '1' || (env.VERCEL_ENV && env.VERCEL_ENV !== 'production')) return null;
   try {
     const service = new URL(env.CHIRPY_MAIL_SERVICE_URL);
@@ -13,7 +14,7 @@ export function mailConfig(env = process.env) {
     const from = normalizeMailAddress(env.CHIRPY_MAIL_FROM);
     const senders = String(env.CHIRPY_MAIL_SENDERS || '').split(',').map(v => v.trim().toLowerCase());
     if (service.protocol !== 'https:' || service.pathname !== '/api/mail' || service.search || service.hash || service.username || service.password || kvUrl.protocol !== 'https:' || kvUrl.username || kvUrl.password || !from || !senders.length || !senders.every(address) || !/^[a-f0-9]{64}$/.test(env.CHIRPY_MAIL_DATA_KEY || '') || (env.CHIRPY_MAIL_WORKER_SECRET || '').length < 32 || !env.RESEND_API_KEY || !(env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN)) return null;
-    return { service: service.href, kvUrl: kvUrl.href, kvToken: env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN, from, senders, key: Buffer.from(env.CHIRPY_MAIL_DATA_KEY, 'hex'), providerKey: env.RESEND_API_KEY, workerSecret: env.CHIRPY_MAIL_WORKER_SECRET, prefix: `chirpy:mail:${hash(service.href)}:` };
+    return { identity: deliveryIdentity ? mailIdentityConfig(env) : null, service: service.href, kvUrl: kvUrl.href, kvToken: env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN, from, senders, key: Buffer.from(env.CHIRPY_MAIL_DATA_KEY, 'hex'), providerKey: env.RESEND_API_KEY, workerSecret: env.CHIRPY_MAIL_WORKER_SECRET, prefix: `chirpy:mail:${hash(service.href)}:` };
   } catch { return null; }
 }
 export function mailKv(config, request = fetch) {
@@ -85,11 +86,13 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
       if (!config.senders.includes(c.wallet)) return { status:'denied', id:c.id };
       const bk=bindingKey(config,c.wallet,c.to); const raw=await kv(['GET',bk]); const b=raw?JSON.parse(raw):null;
       if (!validMailBinding(b,c.wallet,c.to)) return { status:'denied', id:c.id };
+      const identityScope=config.identity?mailIdentityScope(b,c.wallet,hash(key),digest):null;
+      if(config.identity&&!await resolveMailIdentity(config.identity,identityScope,c.to,request))return {status:'denied',id:c.id};
       const optoutToken=randomBytes(32).toString('hex');
       const optoutUrl=new URL('/mail/optout/',config.service);optoutUrl.hash=`token=${optoutToken}`;
       const payload={ from:config.from,to:[c.to],subject:c.subject,text:`Sent through Chat by wallet ${c.wallet}.\nThis email was authorized by a wallet signature. Email is not end-to-end encrypted wallet chat. Replies to this service address are not forwarded.\n\n${c.text}\n\nStop future Chat email to this address (confirmation required): ${optoutUrl.href}` };
       const sk=suppressionKey(config,c.to);
-      const record={digest,wallet:c.wallet,id:c.id,bindingKey:bk,bindingVersion:b.version,suppressionKey:sk};
+      const record={identityService:config.identity?.url||null,identityScope,digest,wallet:c.wallet,id:c.id,bindingKey:bk,bindingVersion:b.version,suppressionKey:sk};
       const [status]=await kv(['EVAL',ENQUEUE_MAIL,'8',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to.toLowerCase())}`,`${key}:payload`,sk,mailOptoutKey(config,optoutToken),digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
       return {status,id:c.id};
     },
@@ -109,10 +112,13 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
           if (!config.senders.includes(job.wallet)) outcome='stopped';
           else {
             const payload=decrypt(config,encrypted,key);
-            // Fresh authorization check immediately before handing plaintext to the provider.
+            // A queued Wallet-scoped job must never downgrade to imported-only authority.
+            const identityRequired=!!(config.identity||job.identityScope);
+            const identityAllowed=!identityRequired||(job.identityService===config.identity?.url&&await resolveMailIdentity(config.identity,job.identityScope,payload.to[0],request));
+            // Check local revocation/suppression after the network authorization request.
             const br=await kv(['GET',job.bindingKey]); const binding=br?JSON.parse(br):null;
             const suppressed=await kv(['EXISTS',suppressionKey(config,payload.to[0])]);
-            if (suppressed || !validMailBinding(binding,job.wallet,payload.to[0]) || binding.version!==job.bindingVersion) outcome='stopped';
+            if (!identityAllowed || suppressed || !validMailBinding(binding,job.wallet,payload.to[0]) || binding.version!==job.bindingVersion) outcome='stopped';
             else {
               const response=await request('https://api.resend.com/emails',{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${config.providerKey}`,'Content-Type':'application/json','Idempotency-Key':`chirpy-mail/${hash(config.service)}/${job.wallet}/${job.id}`},body:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});
               if (response.ok) { const result=await response.json(); if (typeof result.id==='string' && result.id.length<=200 && result.id) { outcome='accepted'; providerId=result.id; } }

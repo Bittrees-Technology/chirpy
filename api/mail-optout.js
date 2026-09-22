@@ -4,7 +4,7 @@ export default async function handler(req,res) {
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
   if(req.method!=='POST')return res.status(405).json({error:'Use POST.'});
   // Recipient opt-out stays available when outbound sending is paused.
-  const config=mailConfig({...process.env,CHIRPY_MAIL_ENABLED:'1'});
+  const config=mailConfig({...process.env,CHIRPY_MAIL_ENABLED:'1'},{deliveryIdentity:false});
   if(!config)return res.status(503).json({error:'Email preferences are unavailable.'});
   const origin=req.headers?.origin;
   if(origin && origin!==new URL(config.service).origin)return res.status(403).json({error:'Use the email preference page.'});
