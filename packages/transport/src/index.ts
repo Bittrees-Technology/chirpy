@@ -4,6 +4,7 @@ import { XmtpTransport } from "./xmtp.js";
 import type { Transport } from "./types.js";
 
 export * from "./types.js";
+export * from "./pushRegistry.js";
 export { MockTransport } from "./mock.js";
 export { XmtpTransport } from "./xmtp.js";
 
