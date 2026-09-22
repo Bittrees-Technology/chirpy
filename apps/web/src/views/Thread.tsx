@@ -13,7 +13,7 @@ const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) {
   const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent, markRead, historyLoading, isHistory, hasOlderMessages, navigateHistory } = useChat();
   const { identity } = useIdentity();
-  const { prefs, setChatReadReceipts } = useSettingsPrefs();
+  const { prefs, storageBusy, storageError, recoveryPaused, setChatReadReceipts } = useSettingsPrefs();
   const { t, lang } = useI18n();
   const policySummary = (policy: Policy) => [
     t(policy.mode === "read-only" ? "thread.policyReadOnly" : "thread.policyActive"),
@@ -173,12 +173,13 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         {needsConsent && <Button disabled={consentPending} onClick={() => void changeConsent("allowed")}>{activeConversation.blocked ? t("thread.unblock", "Unblock conversation") : t("thread.accept", "Accept request")}</Button>}
         {!needsConsent && <label>
           {t("thread.receipts", "Send read receipts")}
-          <select aria-label={t("thread.receipts", "Send read receipts")} value={String(receiptOverride(prefs.readReceiptOverrides, activeConversation.id) ?? "inherit")}
+          <select disabled={storageBusy || !!storageError || recoveryPaused} aria-label={t("thread.receipts", "Send read receipts")} value={String(receiptOverride(prefs.readReceiptOverrides, activeConversation.id) ?? "inherit")}
             onChange={(event) => setChatReadReceipts(activeConversation.id, event.target.value === "inherit" ? undefined : event.target.value === "true")}>
             <option value="inherit">{t("thread.receiptsDefault", "Use global setting")} ({prefs.readReceiptsDefault ? t("thread.receiptsOn", "On") : t("thread.receiptsOff", "Off")})</option>
             <option value="true">{t("thread.receiptsOn", "On")}</option>
             <option value="false">{t("thread.receiptsOff", "Off")}</option>
           </select>
+          {storageBusy && <span role="status">{t("settings.saving")}</span>}
         </label>}
         {!activeConversation.blocked && <Button variant="ghost" disabled={consentPending} onClick={() => void changeConsent("denied")}>{activeConversation.pending ? t("thread.reject", "Reject and block") : t("thread.block", "Block conversation")}</Button>}
       </div>}

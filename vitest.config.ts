@@ -40,6 +40,7 @@ export default defineConfig({
         resolve: { alias },
         test: {
           name: "web",
+          setupFiles: [r("./apps/web/test/locksSetup.ts")],
           environment: "jsdom",
           include: ["apps/web/test/**/*.test.ts"],
         },

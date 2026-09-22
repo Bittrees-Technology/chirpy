@@ -299,3 +299,6 @@ input, textarea, select { font-family: inherit; }
 .main.has-settings-error { flex-direction: column; }
 .main.has-settings-error > .split { flex: 1; min-height: 0; }
 .settings-storage-error { margin: 8px; flex-shrink: 0; }
+
+.restore-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; display: block; }
+.card[data-insights-ignore] details { margin: 12px 0; overflow-wrap: anywhere; }

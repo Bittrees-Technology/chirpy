@@ -3,7 +3,7 @@ import { mainnet } from 'viem/chains';
 import { getActiveProvider } from './walletProviders';
 
 /** One operation, not a reusable login, sync grant or stored signing secret. */
-export async function verifyRecoveryWallet(wallet: string, ensureCurrent: () => void) {
+export async function verifyRecoveryWallet(wallet: string, ensureCurrent: () => void, purpose: 'export' | 'restore' = 'export') {
   if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) throw new Error('Invalid recovery wallet');
   const address = wallet.toLowerCase() as Hex;
   const provider = getActiveProvider();
@@ -54,7 +54,7 @@ export async function verifyRecoveryWallet(wallet: string, ensureCurrent: () => 
       if (await currentChain() !== chain) throw new Error('Recovery wallet chain changed');
     };
     const nonce = toHex(crypto.getRandomValues(new Uint8Array(16)));
-    const message = `Chat local data export\nWallet: ${address}\nOrigin: ${window.location.origin}\nChain: ${chain}\nNonce: ${nonce}\nExpires: ${new Date(expiresAt).toISOString()}\nProve control for one encrypted local data export. This does not authorize messages, transactions, or account access.`;
+    const message = `Chat local data ${purpose}\nWallet: ${address}\nOrigin: ${window.location.origin}\nChain: ${chain}\nNonce: ${nonce}\nExpires: ${new Date(expiresAt).toISOString()}\nProve control for one local data ${purpose}. This does not authorize messages, transactions, or account access.`;
     const signature = await ask({ method: 'personal_sign', params: [toHex(message), wallet] });
     await assertCurrent();
     if (typeof signature !== 'string' || !/^0x(?:[0-9a-fA-F]{2}){1,32768}$/.test(signature)) throw new Error('Invalid ownership signature');
@@ -69,6 +69,6 @@ export async function verifyRecoveryWallet(wallet: string, ensureCurrent: () => 
     }
     await assertCurrent();
     if (!valid) throw new Error('Wallet ownership could not be verified');
-    return { assertCurrent, dispose };
+    return { assertCurrent, assertSession: check, dispose };
   } catch (error) { dispose(); throw error; }
 }

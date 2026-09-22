@@ -51,3 +51,31 @@ export function saveSettings(key: string, expectedRaw: string | null, prefs: Set
     return raw;
   } catch { throw new SettingsStorageError(); }
 }
+
+export const walletSettingsKey = (wallet: string) => {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) throw new SettingsStorageError();
+  return `chat:settingsPrefs:v1:wallet:${wallet.toLowerCase()}`;
+};
+export const recoveryMarkerKey = (key: string) => `${key}:recovery-pending`;
+export function assertNoRecoveryPending(key: string) {
+  try { if (localStorage.getItem(recoveryMarkerKey(key)) !== null) throw new SettingsStorageError(); }
+  catch { throw new SettingsStorageError(); }
+}
+export async function withSettingsLock<T>(key: string, operation: () => Promise<T> | T): Promise<T> {
+  if (!navigator.locks) throw new SettingsStorageError();
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 15_000);
+  try { return await navigator.locks.request(`${key}:write`, { signal: abort.signal }, operation); }
+  finally { clearTimeout(timer); }
+}
+export function parseSettingsRaw(raw: string | null) {
+  if (raw === null) return { prefs: defaultSettings(), updatedAt: 0 };
+  if (typeof raw !== 'string' || raw.length > 512 * 1024) throw new SettingsStorageError();
+  return parsePrefs(JSON.parse(raw));
+}
+export function serializeSettings(prefs: SettingsPrefs, updatedAt: number) {
+  const data = parsePrefs({ ...prefs, updatedAt });
+  const raw = JSON.stringify({ ...data.prefs, updatedAt: data.updatedAt });
+  if (raw.length > 512 * 1024) throw new SettingsStorageError();
+  return raw;
+}
