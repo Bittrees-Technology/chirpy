@@ -78,9 +78,12 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
   },
   async status(token,wallet){const {value}=await session(token,wallet);return {wallet:value.wallet,connection:publicConnection(value.connection&&Date.parse(value.connection.expiresAt)>now()?value.connection:null)};},
   async start(token,wallet){
-   const record=await session(token,wallet);if(record.value.connection)throw new ConnectedMailError(409,'Disconnect your current mailbox before connecting another.');
+   const record=await session(token,wallet);
+   // An expired grant is already unusable at Mail and hidden by status. Replace it
+   // atomically with fresh consent state; never replace a live or malformed grant.
+   if(record.value.connection&&!(Date.parse(record.value.connection.expiresAt)<=now()))throw new ConnectedMailError(409,'Disconnect your current mailbox before connecting another.');
    const verifier=randomBytes(32).toString('base64url'),state=random(),challenge=createHash('sha256').update(verifier).digest('base64url');
-   const value={...record.value,pending:{state,verifier,expires:now()+300000}};await cas(record,value);
+   const value={...record.value,connection:null,pending:{state,verifier,expires:now()+300000}};await cas(record,value);
    const url=new URL('/connect/chat',MAIL_ORIGIN);url.hash=new URLSearchParams({challenge,state,wallet:value.wallet}).toString();return {url:url.href};
   },
   async callback(token,input){
