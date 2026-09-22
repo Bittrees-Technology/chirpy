@@ -10,7 +10,7 @@ vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailSt
 let container:HTMLDivElement,root:Root;
 const connection=()=>({mailbox:'fixture@bittrees.org',scopes:['read','send'] as ('read'|'send')[],expiresAt:new Date(Date.now()+3600000).toISOString()});
 const item={id:'a'.repeat(64),from:'Fixture <fixture@bittrees.org>',subject:'Acceptance fixture',date:'Today'};
-const render=()=>act(async()=>root.render(React.createElement(I18nProvider,null,React.createElement(Mailbox,{key:state.identity.address,onOpenSettings:()=>{}}))));
+const render=()=>act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(I18nProvider,null,React.createElement(Mailbox,{key:state.identity.address,onOpenSettings:()=>{}})))));
 const click=async(text:string)=>{const button=[...container.querySelectorAll('button')].find(b=>b.textContent===text);expect(button).toBeDefined();await act(async()=>button!.click());};
 beforeEach(()=>{
  vi.clearAllMocks();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);vi.stubGlobal('localStorage',{getItem:()=>null,setItem:()=>{}});

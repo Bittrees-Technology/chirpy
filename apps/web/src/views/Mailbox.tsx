@@ -32,7 +32,7 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
  useEffect(()=>{
   readReceipt();if(canonical&&mode==='wallet')void refresh();else setPhase('wallet');
   const storage=(event:StorageEvent)=>{if(event.key==='chat:mail-pending:v1:'+wallet)readReceipt();};window.addEventListener('storage',storage);
-  return()=>{epoch.current++;controller.current?.abort();window.removeEventListener('storage',storage);};
+  return()=>{epoch.current++;controller.current?.abort();busyRef.current=false;window.removeEventListener('storage',storage);};
  },[wallet,mode]);
  useEffect(()=>{
   if(!connection)return;const expire=()=>{epoch.current++;controller.current?.abort();busyRef.current=false;setBusy(false);clearPrivate();setConnection(null);setAuthenticated(false);setPhase('signedOut');setError('session');};
