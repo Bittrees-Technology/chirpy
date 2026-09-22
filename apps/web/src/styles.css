@@ -335,3 +335,5 @@ input, textarea, select { font-family: inherit; }
 .mailbox-attachments {border-top:1px solid var(--line);margin-top:1rem;padding-top:.75rem;overflow-wrap:anywhere}
 .mailbox-attachments ul {list-style:none;padding:0;display:grid;gap:.75rem}
 .mailbox-attachments li {display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+
+.mailbox-html{display:block;width:100%;height:420px;border:1px solid var(--line);margin:16px 0;background:#fff}

@@ -599,5 +599,11 @@
   "mailbox.download": "Descargar",
   "mailbox.downloadReady": "Archivo preparado para descargar.",
   "mailbox.attachmentUnsupported": "Demasiado grande o no compatible",
-  "mailbox.noAttachments": "No hay archivos adjuntos"
+  "mailbox.noAttachments": "No hay archivos adjuntos",
+  "mailbox.plainView": "Texto sin formato",
+  "mailbox.formattedView": "Ver formato",
+  "mailbox.formattedTitle": "Vista previa del correo con formato",
+  "mailbox.formattedHint": "Solo formato básico. Las imágenes, enlaces y contenido interactivo están bloqueados.",
+  "mailbox.formattedShortened": "Esta vista previa se ha acortado.",
+  "mailbox.noFormattedBody": "Este correo no tiene un cuerpo con formato."
 }
