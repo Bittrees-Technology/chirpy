@@ -16,6 +16,7 @@ const receiptKey=(wallet:string)=>'chirpy:mail-receipt:'+wallet;
 const render=()=>act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(I18nProvider,null,React.createElement(WalletEmail)))));
 const button=(text:string)=>[...container.querySelectorAll('button')].find(b=>b.textContent===text)!;
 const click=(text:string)=>act(async()=>button(text).click());
+const waitFor=(check:()=>void)=>vi.waitFor(async()=>{await act(async()=>{});check();});
 const input=async(index:number,value:string)=>act(async()=>{
  const field=container.querySelectorAll('input')[index];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}));
 });
@@ -47,7 +48,7 @@ it.each(['mode','provider'])('cancels pending operations and clears drafts on %s
 it('retains a submitted request ID after leaving and reopening the screen without repeating a send',async()=>{
  vi.mocked(submitWalletEmail).mockImplementation(()=>new Promise(()=>{}));await render();await input(0,'fixture@example.com');await input(1,'Fixture');
  await act(async()=>{const field=container.querySelector('textarea')!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(field,'Test body');field.dispatchEvent(new Event('input',{bubbles:true}));});
- await click('Sign and queue email');const [command,signal]=vi.mocked(submitWalletEmail).mock.calls[0];
+ await click('Sign and queue email');await waitFor(()=>expect(submitWalletEmail).toHaveBeenCalledTimes(1));const [command,signal]=vi.mocked(submitWalletEmail).mock.calls[0];
  expect(readWalletEmailRecovery(a,command.service).active).toBe(command.id);
  await act(async()=>root.render(null));expect(signal!.aborted).toBe(true);await render();
  expect(container.querySelectorAll('input')[2].value).toBe(command.id);expect(button('Sign and queue email').disabled).toBe(true);
@@ -60,15 +61,17 @@ const fillDraft=async()=>{
 it('does not open signing when storage fails, and leaves a malformed legacy ID untouched',async()=>{
  await render();await fillDraft();
  const set=vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw Error('full');});
- await click('Sign and queue email');expect(submitWalletEmail).not.toHaveBeenCalled();expect(container.textContent).toContain('could not safely reserve');
+ await click('Sign and queue email');await waitFor(()=>expect(container.textContent).toContain('could not safely reserve'));expect(submitWalletEmail).not.toHaveBeenCalled();
  set.mockRestore();storage.set(receiptKey(a),'legacy-invalid');await click('Check recovery storage');
  expect(button('Sign and queue email').disabled).toBe(true);expect(storage.get(receiptKey(a))).toBe('legacy-invalid');
 });
 it('retains earlier IDs when a new message is started and can check history without changing the active receipt',async()=>{
+ const digest=crypto.subtle.digest.bind(crypto.subtle);
+ vi.spyOn(crypto.subtle,'digest').mockImplementation(async(...args)=>{await new Promise(resolve=>setTimeout(resolve,25));return digest(...args);});
  vi.mocked(submitWalletEmail).mockImplementation(async c=>({id:c.id,status:'accepted'}));
- await render();await fillDraft();await click('Sign and queue email');const first=vi.mocked(submitWalletEmail).mock.calls[0][0];
+ await render();await fillDraft();await click('Sign and queue email');await waitFor(()=>expect(submitWalletEmail).toHaveBeenCalledTimes(1));const first=vi.mocked(submitWalletEmail).mock.calls[0][0];
  await click('New message');expect(readWalletEmailRecovery(a,first.service).active).toBeNull();
- await fillDraft();await click('Sign and queue email');const second=vi.mocked(submitWalletEmail).mock.calls[1][0];expect(second.id).not.toBe(first.id);
+ await fillDraft();await click('Sign and queue email');await waitFor(()=>expect(submitWalletEmail).toHaveBeenCalledTimes(2));const second=vi.mocked(submitWalletEmail).mock.calls[1][0];expect(second.id).not.toBe(first.id);
  const state=readWalletEmailRecovery(a,first.service);expect(state.receipts.map(r=>r.id)).toEqual([first.id,second.id]);
  const history=container.querySelector('details li')!;await act(async()=>history.querySelector('button')!.click());
  expect(vi.mocked(submitWalletEmail).mock.calls.at(-1)![0]).toMatchObject({action:'status',id:first.id});
@@ -86,9 +89,9 @@ it('picks up another tab reservation and never overwrites it by editing the disp
 });
 it('stops an expired retry before opening another signature while keeping its ID for lookup',async()=>{
  vi.mocked(submitWalletEmail).mockRejectedValue(Error('uncertain'));
- await render();await fillDraft();await click('Sign and queue email');
+ await render();await fillDraft();await click('Sign and queue email');await waitFor(()=>expect(submitWalletEmail).toHaveBeenCalledTimes(1));
  const command=vi.mocked(submitWalletEmail).mock.calls[0][0],createdAt=readWalletEmailRecovery(a,command.service).receipts[0].createdAt!;
  vi.spyOn(Date,'now').mockReturnValue(createdAt+23*3600000);
- await click('Retry same request');expect(submitWalletEmail).toHaveBeenCalledTimes(1);expect(container.textContent).toContain('too old to retry safely');
+ await click('Retry same request');await waitFor(()=>expect(container.textContent).toContain('too old to retry safely'));expect(submitWalletEmail).toHaveBeenCalledTimes(1);
  expect(container.querySelectorAll('input')[2].value).toBe(command.id);expect(button('Check request status').disabled).toBe(false);
 });
