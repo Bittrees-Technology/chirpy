@@ -4,6 +4,8 @@ import { Signer } from '../../packages/transport/node_modules/@pushprotocol/rest
 import { getUUID } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/payloads/helpers';
 import { PGPHelper } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/chat/helpers/pgp';
 import { decryptPGPKey, getPublicKey } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/helpers/crypto';
+import { decryptAndVerifyMessage } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/chat/helpers/crypto';
+import { aesEncrypt } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/chat/helpers/aes';
 const owner = `0x${'1'.repeat(40)}`;
 (window as any).runPushCompatibility = async () => {
   const originalStorage = { ...localStorage };
@@ -16,6 +18,15 @@ const owner = `0x${'1'.repeat(40)}`;
   await PGPHelper.verifySignature({ messageContent: decrypted, signatureArmored, publicKeyArmored: keys.publicKeyArmored });
   let tamperedRejected = false;
   try { await PGPHelper.verifySignature({ messageContent: 'Altered', signatureArmored, publicKeyArmored: keys.publicKeyArmored }); } catch { tamperedRejected = true; }
+  const otherKeys = await PGPHelper.generateKeyPair();
+  const roomSecret = 'synthetic-room-secret';
+  (window as any).mockEncryptedSecret = await PGPHelper.pgpEncrypt({ plainText: roomSecret, keys: [keys.publicKeyArmored] });
+  const roomCipher = aesEncrypt({ plainText: 'Private room content', secretKey: roomSecret });
+  const groupMessage: any = { messageContent: roomCipher, encType: 'pgpv1:group', sessionKey: 'synthetic-session-key', link: 'previous-message',
+    signature: await PGPHelper.sign({ message: roomCipher, signingKey: keys.privateKeyArmored }) };
+  const firstRead = await decryptAndVerifyMessage(groupMessage, keys.publicKeyArmored, keys.privateKeyArmored, 'prod' as any);
+  const otherRead = await decryptAndVerifyMessage(groupMessage, keys.publicKeyArmored, otherKeys.privateKeyArmored, 'prod' as any);
+  const isolatedRoomKeys = firstRead.messageContent === 'Private room content' && otherRead.messageContent === 'Unable to Decrypt Message';
   const requests: string[] = []; let current = true; let captured!: PushSigner;
   const provider = { on() {}, removeListener() {}, async request({ method }: { method: string }) { requests.push(method); if (method === 'eth_accounts') return [owner]; if (method === 'eth_chainId') return '0x1'; if (method === 'eth_decrypt') return keys.privateKeyArmored; if (method === 'eth_getEncryptionPublicKey') return 'synthetic-encryption-public-key'; if (method === 'personal_sign' || method === 'eth_signTypedData_v4') return `0x${'a'.repeat(130)}`; throw new Error('Unexpected signing method'); } };
   const session = new PushRoomSession(owner, provider, () => current, async signer => {
@@ -43,7 +54,7 @@ const owner = `0x${'1'.repeat(40)}`;
   session.dispose(); current = false;
   let staleRejected = false;
   try { await captured.signMessage({ message: 'After disposal' }); } catch { staleRejected = true; }
-  return { withoutInjectedReady, withoutInjectedPublicKey, realRuntimeReady, sdkLoaded: typeof PushAPI.initialize === 'function', uuid: getUUID(), decrypted, tamperedRejected, staleRejected,
+  return { isolatedRoomKeys, withoutInjectedReady, withoutInjectedPublicKey, realRuntimeReady, sdkLoaded: typeof PushAPI.initialize === 'function', uuid: getUUID(), decrypted, tamperedRejected, staleRejected,
     legacyRecoveryBound: recovered === keys.privateKeyArmored && wrongProviderCalls === 0, personalSigned: requests.includes('personal_sign'), typedSigned: requests.includes('eth_signTypedData_v4'), storageUnchanged: JSON.stringify(originalStorage) === JSON.stringify({ ...localStorage }) };
 };
 document.body.textContent = 'Push runtime ready';

@@ -17,7 +17,7 @@ overrides:
 
 patchedDependencies:
   '@pushprotocol/restapi@1.7.32':
-    hash: 88757359191d51de4c550ce477c491740ec53cc21150133c94dfe154a22c368a
+    hash: 7121f31db3101003aded8b470bc8f777260452581826874c0a22bed2dcf47464
     path: patches/@pushprotocol__restapi@1.7.32.patch
 
 importers:
@@ -105,7 +105,7 @@ importers:
     dependencies:
       '@pushprotocol/restapi':
         specifier: 1.7.32
-        version: 1.7.32(patch_hash=88757359191d51de4c550ce477c491740ec53cc21150133c94dfe154a22c368a)(@types/react@19.2.17)(react@19.2.7)(typescript@5.9.3)(zod@3.25.76)
+        version: 1.7.32(patch_hash=7121f31db3101003aded8b470bc8f777260452581826874c0a22bed2dcf47464)(@types/react@19.2.17)(react@19.2.7)(typescript@5.9.3)(zod@3.25.76)
       '@xmtp/browser-sdk':
         specifier: ^7.0.0
         version: 7.0.0(viem@2.53.1(typescript@5.9.3)(zod@3.25.76))
@@ -3470,7 +3470,7 @@ snapshots:
     dependencies:
       playwright: 1.61.0
 
-  '@pushprotocol/restapi@1.7.32(patch_hash=88757359191d51de4c550ce477c491740ec53cc21150133c94dfe154a22c368a)(@types/react@19.2.17)(react@19.2.7)(typescript@5.9.3)(zod@3.25.76)':
+  '@pushprotocol/restapi@1.7.32(patch_hash=7121f31db3101003aded8b470bc8f777260452581826874c0a22bed2dcf47464)(@types/react@19.2.17)(react@19.2.7)(typescript@5.9.3)(zod@3.25.76)':
     dependencies:
       '@metamask/eth-sig-util': 5.1.0
       axios: 0.33.0
