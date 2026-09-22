@@ -5,6 +5,7 @@ import { Button, Field } from '../ui';
 import { mailEndpoint, submitWalletEmail } from '../walletEmail';
 import { normalizeMailAddress, type MailCommand } from '../../../../packages/core/src/mailAuth.js';
 import { getProviderRevision, subscribeProvider } from '../walletProviders';
+import { WalletEmailRecovery as WalletEmailRecoveryPanel } from './WalletEmailRecovery';
 import {readWalletEmailRecovery,reserveWalletEmailReceipt,finishWalletEmailReceipt,walletEmailReceiptKey,walletEmailLegacyReceiptKey,WALLET_EMAIL_RECEIPTS_CHANGED,WalletEmailReceiptError,type WalletEmailRecovery} from '../walletEmailReceipts';
 
 export function WalletEmail() {
@@ -111,5 +112,6 @@ function WalletEmailSession() {
         </li>)}</ul>
       </details>}
     </>}
+    {mode==='wallet' && (()=>{try{return <WalletEmailRecoveryPanel wallet={wallet} service={mailEndpoint().service}/>;}catch{return null;}})()}
   </div>;
 }

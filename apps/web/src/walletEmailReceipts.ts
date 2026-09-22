@@ -53,6 +53,29 @@ async function locked<T>(wallet:string,service:string,signal:AbortSignal|undefin
   const scope=AbortSignal.any([AbortSignal.timeout(5000),...(signal?[signal]:[])]);
   return navigator.locks.request(walletEmailReceiptKey(wallet,service),{signal:scope},()=>{scope.throwIfAborted();return fn();});
 }
+export type WalletEmailSnapshot={revision:string;state:WalletEmailRecovery;legacy:string|null};
+/** Include both storage slots in the revision. Never repair malformed input during recovery. */
+export function snapshotWalletEmailRecovery(wallet:string,service:string):WalletEmailSnapshot {
+  try {
+    const key=walletEmailReceiptKey(wallet,service),legacyKey=walletEmailLegacyReceiptKey(wallet);
+    const raw=localStorage.getItem(key),legacy=localStorage.getItem(legacyKey);
+    const state=readWalletEmailRecovery(wallet,service);
+    if(localStorage.getItem(key)!==raw||localStorage.getItem(legacyKey)!==legacy)throw Error();
+    return {revision:JSON.stringify([raw,legacy]),state,legacy};
+  }catch{throw new WalletEmailReceiptError();}
+}
+/** Recovery changes use the same lock as sends and compare the reviewed/exported revision. */
+export async function updateWalletEmailRecovery(wallet:string,service:string,revision:string,
+  update:(current:WalletEmailSnapshot)=>WalletEmailRecovery,assertCurrent:()=>void,signal?:AbortSignal){
+  return locked(wallet,service,signal,()=>{
+    assertCurrent();
+    const current=snapshotWalletEmailRecovery(wallet,service);
+    if(current.revision!==revision)throw new WalletEmailReceiptError('pending');
+    const next=update(current);
+    assertCurrent();
+    save(wallet,service,next);
+  });
+}
 export async function reserveWalletEmailReceipt(command:MailCommand,retry:boolean,signal?:AbortSignal){
   if(command.action!=='send'||!validId(command.id))throw new WalletEmailReceiptError();
   const bytes=new TextEncoder().encode(JSON.stringify([command.service,command.wallet,command.id,command.to,command.subject,command.text]));
