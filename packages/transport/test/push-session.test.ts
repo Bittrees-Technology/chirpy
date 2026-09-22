@@ -125,3 +125,56 @@ describe('wallet-bound Push sessions', () => {
     await expect(signer.signMessage({ message: 'test' })).rejects.toBeInstanceOf(PushSessionChangedError);
   });
 });
+
+describe('Push operation deadlines', () => {
+  it('expires a stalled initializer and cannot install its late client over a fresh session', async () => {
+    vi.useFakeTimers(); const f = fixture(); const pending = deferred<RawPushClient>();
+    try {
+      f.initialize.mockImplementationOnce(async () => pending.promise);
+      const old = f.session.enable(); const rejected = expect(old).rejects.toThrow('Push took too long');
+      await vi.advanceTimersByTimeAsync(120_000); await rejected;
+      expect(f.session.getSnapshot().status).toBe('error');
+      const fresh = await f.session.enable(); pending.resolve(f.raw);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(await f.session.enable()).toBe(fresh); expect(f.session.getSnapshot().status).toBe('ready');
+    } finally { f.session.dispose(); vi.clearAllTimers(); vi.useRealTimers(); }
+  });
+  it('bounds provider checks before initialization or dispatch without issuing a room action', async () => {
+    vi.useFakeTimers(); const f = fixture(); const accounts = deferred<any>();
+    try {
+      f.request.mockImplementationOnce(async () => accounts.promise);
+      const initializing = f.session.enable(); const rejected = expect(initializing).rejects.toThrow('Push took too long');
+      await vi.advanceTimersByTimeAsync(120_000); await rejected;
+      expect(f.initialize).not.toHaveBeenCalled(); accounts.resolve([owner]);
+      await vi.advanceTimersByTimeAsync(0); expect(f.initialize).not.toHaveBeenCalled();
+      const client = await f.session.enable();
+      f.request.mockImplementationOnce(async () => new Promise(() => {}));
+      const read = client.history('room'); const denied = expect(read).rejects.toThrow('Push took too long');
+      await vi.advanceTimersByTimeAsync(30_000); await denied;
+      expect(f.action).not.toHaveBeenCalled();
+    } finally { f.session.dispose(); vi.clearAllTimers(); vi.useRealTimers(); }
+  });
+  it.each(['history', 'send'] as const)('rejects stalled %s, never retries, and discards late completion', async method => {
+    vi.useFakeTimers(); const f = fixture(); const pending = deferred<any>();
+    try {
+      const client = await f.session.enable(); f.action.mockImplementationOnce(async () => pending.promise);
+      const operation = client[method]('room'); const rejected = expect(operation).rejects.toThrow('may have completed');
+      await vi.advanceTimersByTimeAsync(30_000); await rejected;
+      expect(f.action).toHaveBeenCalledOnce(); expect(f.session.getSnapshot().status).toBe('error');
+      await expect(client.send('room')).rejects.toBeInstanceOf(PushSessionChangedError);
+      const fresh = await f.session.enable(); pending.resolve({ secret: 'old response' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(await f.session.enable()).toBe(fresh); expect(f.action).toHaveBeenCalledOnce();
+    } finally { f.session.dispose(); vi.clearAllTimers(); vi.useRealTimers(); }
+  });
+  it('an old deadline cannot invalidate a newer account session', async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      const client = await f.session.enable(); f.action.mockImplementationOnce(async () => new Promise(() => {}));
+      const operation = client.history('room'); const rejected = expect(operation).rejects.toBeInstanceOf(PushSessionChangedError);
+      await vi.advanceTimersByTimeAsync(0); f.emit('accountsChanged');
+      const fresh = await f.session.enable(); await vi.advanceTimersByTimeAsync(30_000); await rejected;
+      expect(await f.session.enable()).toBe(fresh); expect(f.session.getSnapshot().status).toBe('ready');
+    } finally { f.session.dispose(); vi.clearAllTimers(); vi.useRealTimers(); }
+  });
+});

@@ -514,5 +514,6 @@
   "settings.localProfileHelp": "Este nombre se guarda solo en este dispositivo. Cambiarlo no publica un perfil público ni modifica tu registro ENS. Déjalo vacío para mostrar aquí la dirección de tu cartera.",
   "settings.useEnsName": "Usar nombre ENS",
   "settings.profileSaveError": "No se pudo guardar tu nombre. Restablece el acceso al almacenamiento del navegador e inténtalo de nuevo.",
-  "settings.profileLabelError": "Usa un nombre de hasta 80 caracteres sin caracteres de control."
+  "settings.profileLabelError": "Usa un nombre de hasta 80 caracteres sin caracteres de control.",
+  "status.pushTimeout": "Push tardó demasiado. Vuelve a activar las salas. Una acción enviada puede haberse completado; revisa el historial o la membresía antes de reintentar."
 }
