@@ -24,10 +24,15 @@ export function connectedMailConfig(env=process.env,{allowDisabled=false}={}){
 export const CONNECTION_CAS=`
 local raw=redis.call('GET',KEYS[1])
 local clock=redis.call('TIME');local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
-local ttl=tonumber(ARGV[3])-now
-if not raw or raw~=ARGV[1] or ttl<=0 then return 0 end
+local expiry=tonumber(ARGV[3])
+if not raw or raw~=ARGV[1] or not expiry then return 0 end
+if expiry==0 then redis.call('SET',KEYS[1],ARGV[2]);return 1 end
+local ttl=expiry-now
+if ttl<=0 then return 0 end
 redis.call('SET',KEYS[1],ARGV[2],'PX',ttl);return 1
 `;
+const liveGrant=(g,now)=>g&&(g.expiresAt===null||typeof g.expiresAt==='string'&&Number.isFinite(Date.parse(g.expiresAt))&&Date.parse(g.expiresAt)>now);
+export function connectionCookieAge(connection,now=Date.now()){return connection.expiresAt===null?400*86400:Math.max(0,Math.ceil((Date.parse(connection.expiresAt)-now)/1000));}
 export const CONNECTION_RATE=`
 local n=redis.call('INCR',KEYS[1]);if n==1 then redis.call('PEXPIRE',KEYS[1],600000) end;return n
 `;
@@ -48,8 +53,8 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
  const allowed=wallet=>!config.testWallets?.length||config.testWallets.includes(wallet);
  const key=(kind,token)=>config.prefix+kind+':'+hash(token);
  async function put(kind,token,value,ttl){const k=key(kind,token);if(await kv(['SET',k,encrypt(config,value,k),'PX',String(ttl),'NX'])!=='OK')throw new ConnectedMailError(503,'Start a new connection.');}
- async function session(token,wallet){if(!hex(token))throw denied();const k=key('session',token),raw=await kv(['GET',k]);if(!raw)throw denied();const value=decrypt(config,raw,k);if(!address(value.wallet)||!allowed(value.wallet)||value.expires<=now()||(wallet!==undefined&&value.wallet!==wallet))throw denied();return {k,raw,value};}
- async function cas(record,value){if(Number(await kv(['EVAL',CONNECTION_CAS,'1',record.k,record.raw,encrypt(config,value,record.k),String(value.expires)]))!==1)throw new ConnectedMailError(409,'Mail connection changed. Refresh Chat.');}
+ async function session(token,wallet){if(!hex(token))throw denied();const k=key('session',token),raw=await kv(['GET',k]);if(!raw)throw denied();const value=decrypt(config,raw,k);if(!address(value.wallet)||!allowed(value.wallet)||!(value.expires===null&&value.connection?.expiresAt===null||Number.isFinite(value.expires)&&value.expires>now())||(wallet!==undefined&&value.wallet!==wallet))throw denied();return {k,raw,value};}
+ async function cas(record,value){if(Number(await kv(['EVAL',CONNECTION_CAS,'1',record.k,record.raw,encrypt(config,value,record.k),String(value.expires===null?0:value.expires)]))!==1)throw new ConnectedMailError(409,'Mail connection changed. Refresh Chat.');}
  async function mail(action,input,token){
   const response=await request(MAIL_ORIGIN+'/api/integrations/chat/'+action,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json','User-Agent':'Chat-Mail-Relay/1.0',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(input),signal:AbortSignal.timeout(25000)});
   const reader=response.body?.getReader();if(!reader)throw new ConnectedMailError(502,'Mail returned an invalid response.');let size=0;const chunks=[];
@@ -76,12 +81,12 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
    const sessionToken=random(),value={wallet:input.wallet,expires:now()+3600000,connection:null,pending:null};
    await put('session',sessionToken,value,3600000);return {token:sessionToken,wallet:value.wallet,expiresAt:value.expires};
   },
-  async status(token,wallet){const {value}=await session(token,wallet);return {wallet:value.wallet,connection:publicConnection(value.connection&&Date.parse(value.connection.expiresAt)>now()?value.connection:null)};},
+  async status(token,wallet){const {value}=await session(token,wallet);return {wallet:value.wallet,connection:publicConnection(liveGrant(value.connection,now())?value.connection:null)};},
   async start(token,wallet){
    const record=await session(token,wallet);
    // An expired grant is already unusable at Mail and hidden by status. Replace it
    // atomically with fresh consent state; never replace a live or malformed grant.
-   if(record.value.connection&&!(Date.parse(record.value.connection.expiresAt)<=now()))throw new ConnectedMailError(409,'Disconnect your current mailbox before connecting another.');
+   if(record.value.connection&&(record.value.connection.expiresAt===null||!(Date.parse(record.value.connection.expiresAt)<=now())))throw new ConnectedMailError(409,'Disconnect your current mailbox before connecting another.');
    const verifier=randomBytes(32).toString('base64url'),state=random(),challenge=createHash('sha256').update(verifier).digest('base64url');
    const value={...record.value,connection:null,pending:{state,verifier,expires:now()+300000}};await cas(record,value);
    const url=new URL('/connect/chat',MAIL_ORIGIN);url.hash=new URLSearchParams({challenge,state,wallet:value.wallet}).toString();return {url:url.href};
@@ -94,18 +99,18 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
    // Consume before exchange. A failed/uncertain exchange must start a fresh connection.
    const after=await session(token,input.wallet);if(after.value.pending||after.value.connection)throw denied();
    const grant=await mail('exchange',{code:input.code,verifier:pending.verifier,wallet:input.wallet,audience:CHAT_ORIGIN});
-   const expiry=Date.parse(grant?.expiresAt);
-   if(!hex(grant?.token)||Object.keys(grant).some(k=>!['token','grantId','wallet','mailbox','scopes','audience','expiresAt'].includes(k))||!hex(grant?.grantId)||grant.wallet!==input.wallet||grant.audience!==CHAT_ORIGIN||typeof grant.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(grant.mailbox)||!Array.isArray(grant.scopes)||!grant.scopes.length||grant.scopes.length>2||new Set(grant.scopes).size!==grant.scopes.length||grant.scopes.some(s=>!['read','send'].includes(s))||!Number.isFinite(expiry)||expiry<=now()||expiry>now()+3600000){if(hex(grant?.token))await revokeGrant(grant.token);throw new ConnectedMailError(502,'Mail returned an invalid connection.');}
-   try{if(pending.expires<=now())throw denied();await cas(after,{...after.value,connection:grant});}catch(e){await revokeGrant(grant.token);throw e;}
+   const expiry=grant?.expiresAt===null?null:typeof grant?.expiresAt==='string'?Date.parse(grant.expiresAt):NaN;
+   if(!hex(grant?.token)||Object.keys(grant).some(k=>!['token','grantId','wallet','mailbox','scopes','audience','expiresAt'].includes(k))||!hex(grant?.grantId)||grant.wallet!==input.wallet||grant.audience!==CHAT_ORIGIN||typeof grant.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(grant.mailbox)||!Array.isArray(grant.scopes)||!grant.scopes.length||grant.scopes.length>2||new Set(grant.scopes).size!==grant.scopes.length||grant.scopes.some(s=>!['read','send'].includes(s))||expiry!==null&&(!Number.isFinite(expiry)||expiry<=now()||expiry>now()+30*86400000)){if(hex(grant?.token))await revokeGrant(grant.token);throw new ConnectedMailError(502,'Mail returned an invalid connection.');}
+   try{if(pending.expires<=now())throw denied();await cas(after,{...after.value,expires:expiry===null?null:Math.max(after.value.expires,expiry),connection:grant});}catch(e){await revokeGrant(grant.token);throw e;}
    return publicConnection(grant);
   },
   async operation(token,input){
    exactMailInput(input,['wallet','action','input']);const record=await session(token,input.wallet),grant=record.value.connection;
-   if(!address(input.wallet)||!grant||Date.parse(grant.expiresAt)<=now())throw denied();
+   if(!address(input.wallet)||!liveGrant(grant,now()))throw denied();
    const scope=input.action==='send'?'send':['folders','messages','message','threads','thread','attachments','attachment','html'].includes(input.action)?'read':null;
    if(!scope||!grant.scopes.includes(scope))throw new ConnectedMailError(403,'This connection does not allow that action.');
    const result=await mail('operation',input,grant.token);
-   const latest=await session(token,input.wallet);if(latest.value.connection?.grantId!==grant.grantId||Date.parse(grant.expiresAt)<=now())throw denied();
+   const latest=await session(token,input.wallet);if(latest.value.connection?.grantId!==grant.grantId||!liveGrant(grant,now()))throw denied();
    return result;
   },
   async disconnect(token){

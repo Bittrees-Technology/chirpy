@@ -56,9 +56,11 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
   return()=>{epoch.current++;controller.current?.abort();pollingRef.current=false;busyRef.current=false;window.removeEventListener('storage',storage);};
  },[wallet,mode]);
  useEffect(()=>{
-  if(!connection)return;const expire=()=>{epoch.current++;controller.current?.abort();pollingRef.current=false;busyRef.current=false;setBusy(false);clearPrivate();setConnection(null);setAuthenticated(false);setPhase('signedOut');setError('session');};
-  const remaining=Date.parse(connection.expiresAt)-Date.now();if(remaining<=0){expire();return;}
-  const timer=setTimeout(expire,remaining);return()=>clearTimeout(timer);
+  if(!connection||connection.expiresAt===null)return;const expire=()=>{epoch.current++;controller.current?.abort();pollingRef.current=false;busyRef.current=false;setBusy(false);clearPrivate();setConnection(null);setAuthenticated(false);setPhase('signedOut');setError('session');};
+  // Browser timers overflow beyond ~24 days. Recheck fixed expiries in bounded steps.
+  const deadline=Date.parse(connection.expiresAt);let timer:ReturnType<typeof setTimeout>;
+  const check=()=>{const remaining=deadline-Date.now();if(remaining<=0)expire();else timer=setTimeout(check,Math.min(remaining,86400000));};
+  check();return()=>clearTimeout(timer);
  },[connection]);
  const pending=!!receipt||receiptBroken,canRead=!!connection?.scopes.includes('read'),canSend=!!connection?.scopes.includes('send');
  // Poll without locking controls. Foreground actions invalidate/abort polls; late results cannot replace a newer view.

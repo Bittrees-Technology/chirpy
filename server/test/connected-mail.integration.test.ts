@@ -34,6 +34,17 @@ describe.skipIf(!container&&!socket)('real Redis connected Mail lifecycle',{time
   expect(await redis(['EVAL',CONNECTION_CAS,'1',k,'stale','replacement',String(Date.now()+60000)])).toBe(0);
   await redis(['DEL',k]);expect(await redis(['EVAL',CONNECTION_CAS,'1',k,raw,'replacement',String(Date.now()+60000)])).toBe(0);expect(await redis(['GET',k])).toBeNull();
  });
+ it('persists an until-revoked connection without TTL and removes it on disconnect',async()=>{
+  grant.expiresAt=null;const session=await login(),start=await api.start(session.token,wallet),state=new URLSearchParams(new URL(start.url).hash.slice(1)).get('state');
+  await api.callback(session.token,{wallet,state,code:'c'.repeat(64)});
+  const k=[...keys].find(k=>k.includes(':session:'))!;expect(await redis(['PTTL',k])).toBe(-1);
+  expect((await api.status(session.token,wallet)).connection.expiresAt).toBeNull();
+  await api.disconnect(session.token);expect(await redis(['GET',k])).toBeNull();
+ });
+ it('extends a fixed connection TTL to its exact source deadline',async()=>{
+  grant.expiresAt=new Date(Date.now()+7*86400000).toISOString();const session=await login(),start=await api.start(session.token,wallet),state=new URLSearchParams(new URL(start.url).hash.slice(1)).get('state');
+  await api.callback(session.token,{wallet,state,code:'c'.repeat(64)});const k=[...keys].find(k=>k.includes(':session:'))!,ttl=await redis(['PTTL',k]);expect(ttl).toBeGreaterThan(6*86400000);expect(ttl).toBeLessThanOrEqual(7*86400000);
+ });
  it('ciphertext copied to another session fails authentication',async()=>{
   const first=await login(),second=await login(),sessionKeys=[...keys].filter(k=>k.includes(':session:'));
   await redis(['SET',sessionKeys[1],await redis(['GET',sessionKeys[0]]),'PX','60000']);
