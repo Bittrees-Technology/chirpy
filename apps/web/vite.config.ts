@@ -1,12 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { nodePolyfills } from "vite-plugin-node-polyfills";
 import { fileURLToPath, URL } from "node:url";
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), nodePolyfills({ include: ["buffer", "process", "util", "stream", "events"], globals: { Buffer: true, process: true } })],
   define: { "import.meta.env.VITE_NATIVE_PLATFORM": JSON.stringify(process.env.TAURI_ENV_PLATFORM || "") },
   resolve: {
     alias: {
