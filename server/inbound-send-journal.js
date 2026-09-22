@@ -16,7 +16,8 @@ export class InboundSendJournal {
     mkdirSync(directory,{mode:0o700});
     const path=join(directory,'send-journal.sqlite');const fd=openSync(path,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);closeSync(fd);
     const db=new DatabaseSync(path);
-    try{db.exec(`PRAGMA journal_mode=WAL;PRAGMA synchronous=FULL;PRAGMA user_version=1;
+    try{db.exec(`PRAGMA journal_mode=WAL;PRAGMA synchronous=FULL;PRAGMA user_version=2;
+CREATE TABLE launches(event TEXT PRIMARY KEY);
 CREATE TABLE bridge(id INTEGER PRIMARY KEY CHECK(id=1),identity_hash TEXT NOT NULL,active_event TEXT);
 CREATE TABLE attempts(event TEXT PRIMARY KEY,content_hash TEXT NOT NULL,recipient_hash TEXT NOT NULL,text_hash TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN ('armed','published')),created INTEGER NOT NULL,receipt TEXT);
 `);db.prepare('INSERT INTO bridge VALUES(1,?,NULL)').run(identityHash);}finally{db.close();}
@@ -28,9 +29,16 @@ CREATE TABLE attempts(event TEXT PRIMARY KEY,content_hash TEXT NOT NULL,recipien
     this.#db=new DatabaseSync(path,{open:true});this.#identity=identityHash;
     try{
       this.#db.exec('PRAGMA synchronous=FULL;PRAGMA busy_timeout=3000');
-      if(this.#db.prepare('PRAGMA user_version').get().user_version!==1||this.#db.prepare('SELECT identity_hash FROM bridge WHERE id=1').get()?.identity_hash!==identityHash)throw Error('Bridge journal identity mismatch');
+      if(![1,2].includes(this.#db.prepare('PRAGMA user_version').get().user_version)||this.#db.prepare('SELECT identity_hash FROM bridge WHERE id=1').get()?.identity_hash!==identityHash)throw Error('Bridge journal identity mismatch');
       if(this.#db.prepare('PRAGMA quick_check').get().quick_check!=='ok')throw Error('Bridge journal integrity unavailable');
       this.#consistent();
+      // Legacy armed attempts may already have opened the SDK. Never grant a
+      // new launch to them while adding the child-side claim table.
+      this.#transaction(()=>{
+        if(this.#db.prepare('PRAGMA user_version').get().user_version===1){
+          this.#db.exec("CREATE TABLE launches(event TEXT PRIMARY KEY);INSERT INTO launches SELECT event FROM attempts;PRAGMA user_version=2;");
+        }
+      });
     }catch(error){this.#db.close();throw error;}
   }
   #consistent(){
@@ -53,6 +61,15 @@ CREATE TABLE attempts(event TEXT PRIMARY KEY,content_hash TEXT NOT NULL,recipien
       this.#db.prepare("INSERT INTO attempts VALUES(?,?,?,?,'armed',?,NULL)").run(scope.eventId,scope.contentHash,scope.recipientHash,scope.textHash,Date.now());
       this.#db.prepare('UPDATE bridge SET active_event=? WHERE id=1').run(scope.eventId);
       return {status:'armed'};
+    });
+  }
+  claimLaunch(scope,identityHash){
+    if(!validScope(scope)||identityHash!==this.#identity)throw Error('Invalid launch scope or identity');
+    return this.#transaction(()=>{
+      const bridge=this.#consistent(),attempt=this.#db.prepare('SELECT * FROM attempts WHERE event=?').get(scope.eventId);
+      if(!attempt||attempt.content_hash!==scope.contentHash||attempt.recipient_hash!==scope.recipientHash||attempt.text_hash!==scope.textHash)throw Error('Launch scope mismatch');
+      if(attempt.state!=='armed'||bridge.active_event!==scope.eventId)return false;
+      return this.#db.prepare('INSERT OR IGNORE INTO launches VALUES(?)').run(scope.eventId).changes===1;
     });
   }
   // Caller must already have verified the exact published SDK message against

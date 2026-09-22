@@ -16,7 +16,7 @@ function run(config, input, timeoutMs) {
   return new Promise((resolve, reject) => {
     // A separate process group also contains subprocesses used to recheck Mail.
     // No NODE_OPTIONS, signing keys, provider credentials or shell are inherited.
-    const child = spawn(config.node, [config.script, '--config', config.config], {
+    const child = spawn(config.node, [config.script, '--config', config.config, '--parent-pid', String(process.pid)], {
       detached: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'],
       env: { HOME: process.env.HOME || '', PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' },
     });
@@ -57,7 +57,7 @@ function run(config, input, timeoutMs) {
 // Published message, emit {scope,receipt}, and terminate. This boundary does not
 // manufacture that evidence or supply a placeholder successful sender.
 export async function sendInboundInProcess(journal, config, event, recipient, { timeoutMs = 60000 } = {}) {
-  if (process.platform === 'win32' || !validConfig(config) || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) {
+  if (process.platform === 'win32' || process.pid <= 1 || !validConfig(config) || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) {
     throw Error('Isolated sender is not configured');
   }
   if (!validInboundMail(event) || !recipient || Object.keys(recipient).length !== 2 ||
