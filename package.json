@@ -7,7 +7,7 @@
     "build": "pnpm --filter @app/web build",
     "preview": "pnpm --filter @app/web preview",
     "rollout:proof": "node scripts/rollout-proof.mjs",
-    "typecheck": "tsc -p tsconfig.base.json --noEmit",
+    "typecheck": "tsc -p tsconfig.base.json --noEmit && pnpm --filter @app/web typecheck:config",
     "typecheck:api": "tsc -p tsconfig.api.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
