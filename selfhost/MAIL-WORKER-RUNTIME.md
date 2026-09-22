@@ -61,3 +61,15 @@ service restrictions, configure the approved monitoring destination and complete
 backup/recovery and live routing acceptance first. Keep all worker/source enable
 flags off until those checks pass. Never reuse member/gatekeeper state or use this
 runtime check against an existing bridge database.
+
+## Connected-mail duration compatibility
+
+Connected mailbox grants are separate from bridge enrollment. The relay accepts
+fixed source expiry up to 30 days and explicit `expiresAt: null` for Until revoked.
+It never upgrades an existing grant. A persistent connection has no Redis TTL;
+finite grants retain a bounded TTL. Browser cookies use a rolling 400-day maximum
+for Until revoked, refreshed on authenticated status/operations; browser data
+clearing or cookie policies can still require reconnection. Mail checks source
+revocation, logout, roles and MFA on every operation and queue dispatch. Fixed
+expiry timers in the UI recheck daily to avoid the browser's ~24-day timer limit.
+Deploy this compatibility before Mail exposes the longer-duration consent UI.

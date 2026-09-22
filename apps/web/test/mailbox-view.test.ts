@@ -209,3 +209,14 @@ it('never mounts a late formatted preview after cancellation or revoked access',
  vi.mocked(mail.mailHtml).mockImplementation(()=>new Promise(r=>resolve=r));await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());await click('View formatting');await click('Cancel');await act(async()=>resolve({html:'<p>Late private body</p>',bodyAvailable:true,truncated:false}));expect(container.querySelector('iframe')).toBeNull();
  vi.mocked(mail.mailHtml).mockRejectedValue(new mail.MailClientError('denied'));await click('View formatting');expect(container.querySelector('iframe')).toBeNull();expect(container.querySelector('pre')).toBeNull();expect(container.textContent).not.toContain('Plain');
 });
+
+it('keeps thirty-day connections active across browser timer limits and expires at the selected deadline',async()=>{
+ vi.useFakeTimers();vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),scopes:['send'],expiresAt:new Date(Date.now()+30*86400000).toISOString()});await render();
+ await act(async()=>vi.advanceTimersByTimeAsync(25*86400000));expect(container.textContent).toContain('fixture@bittrees.org');expect(container.textContent).not.toContain('session expired');
+ await act(async()=>vi.advanceTimersByTimeAsync(5*86400000+1));expect(container.textContent).toContain('session expired');
+});
+it('until-revoked connections do not schedule a synthetic expiry and can still be disconnected',async()=>{
+ vi.useFakeTimers();vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),scopes:['send'],expiresAt:null});vi.mocked(mail.disconnectMail).mockResolvedValue(true);await render();
+ await act(async()=>vi.advanceTimersByTimeAsync(500*86400000));expect(container.textContent).toContain('fixture@bittrees.org');expect(container.textContent).not.toContain('session expired');
+ await click('Disconnect Mail');expect(container.textContent).not.toContain('fixture@bittrees.org');
+});

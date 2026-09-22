@@ -1,7 +1,7 @@
 import {stringToHex} from 'viem';
 import {parseSiweMessage,createSiweMessage} from 'viem/siwe';
 import {getActiveProvider} from './walletProviders';
-export type MailConnection={mailbox:string;scopes:('read'|'send')[];expiresAt:string};
+export type MailConnection={mailbox:string;scopes:('read'|'send')[];expiresAt:string|null};
 export type MailSummary={id:string;from:string;subject:string;date:string};
 export type MailMessage=MailSummary&{text:string;sourceVersion?:string;replyTo?:string;threadedReply?:boolean};
 export type MailReceipt={id:string;createdAt:number};
@@ -21,7 +21,7 @@ async function request(action:string,input?:unknown,signal?:AbortSignal){
 }
 function connection(v:any):MailConnection|null{
  if(v===null)return null;
- if(!v||typeof v.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(v.mailbox)||!Array.isArray(v.scopes)||!v.scopes.length||v.scopes.length>2||new Set(v.scopes).size!==v.scopes.length||v.scopes.some((s:unknown)=>s!=='read'&&s!=='send')||!Number.isFinite(Date.parse(v.expiresAt)))throw new MailClientError('failed');
+ if(!v||typeof v.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(v.mailbox)||!Array.isArray(v.scopes)||!v.scopes.length||v.scopes.length>2||new Set(v.scopes).size!==v.scopes.length||v.scopes.some((s:unknown)=>s!=='read'&&s!=='send')||(v.expiresAt!==null&&(typeof v.expiresAt!=='string'||!Number.isFinite(Date.parse(v.expiresAt)))))throw new MailClientError('failed');
  return {mailbox:v.mailbox,scopes:v.scopes,expiresAt:v.expiresAt};
 }
 export async function mailStatus(wallet:string,signal?:AbortSignal){

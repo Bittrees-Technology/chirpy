@@ -1,4 +1,4 @@
-import {connectedMailConfig,createConnectedMail,ConnectedMailError,exactMailInput,CHAT_ORIGIN,MAIL_ORIGIN} from './connected-mail.js';
+import {connectedMailConfig,createConnectedMail,ConnectedMailError,exactMailInput,connectionCookieAge,CHAT_ORIGIN,MAIL_ORIGIN} from './connected-mail.js';
 import {checkRateLimit} from './server-utils.js';
 const cookieName=kind=>'__Host-chat_mail_'+kind;
 function cookie(req,kind){const values=String(req.headers?.cookie||'').split(';').map(v=>v.trim()).filter(v=>v.startsWith(cookieName(kind)+'='));return values.length===1?values[0].slice(cookieName(kind).length+1):'';}
@@ -19,7 +19,9 @@ export function createConnectedMailHandler({config=action=>connectedMailConfig(p
    const api=service(c),session=cookie(req,'session');
    if(action==='status'){
     if(typeof req.query?.wallet!=='string')throw new ConnectedMailError(400,'Choose your connected wallet.');
-    return res.status(200).json({enabled:true,...await api.status(session,req.query.wallet)});
+    const status=await api.status(session,req.query.wallet);
+    if(status.connection)res.setHeader('Set-Cookie',setCookie('session',session,connectionCookieAge(status.connection)));
+    return res.status(200).json({enabled:true,...status});
    }
    const type=String(req.headers?.['content-type']||'').split(';')[0].trim().toLowerCase();
    if(type!==(action==='callback'?'application/x-www-form-urlencoded':'application/json'))throw new ConnectedMailError(415,'Invalid request format.');
@@ -40,9 +42,9 @@ export function createConnectedMailHandler({config=action=>connectedMailConfig(p
    }
    if(action==='start'){exactMailInput(input,['wallet']);if(typeof input.wallet!=='string')throw new ConnectedMailError(400,'Choose your connected wallet.');return res.status(200).json(await api.start(session,input.wallet));}
    if(action==='callback'){
-    await api.callback(session,input);res.setHeader('Location',CHAT_ORIGIN+'/?mail=connected');return res.status(303).end();
+    const connection=await api.callback(session,input);res.setHeader('Set-Cookie',setCookie('session',session,connectionCookieAge(connection)));res.setHeader('Location',CHAT_ORIGIN+'/?mail=connected');return res.status(303).end();
    }
-   if(action==='operation')return res.status(200).json(await api.operation(session,input));
+   if(action==='operation'){const result=await api.operation(session,input);const status=await api.status(session,input.wallet);if(status.connection)res.setHeader('Set-Cookie',setCookie('session',session,connectionCookieAge(status.connection)));return res.status(200).json(result);}
    exactMailInput(input,[]);const result=/^[a-f0-9]{64}$/.test(session)?await api.disconnect(session):{ok:true,sourceRevoked:true};
    res.setHeader('Set-Cookie',setCookie('session','',0));return res.status(200).json(result);
   }catch(e){return res.status(e instanceof ConnectedMailError?e.status:503).json({error:e instanceof ConnectedMailError?e.message:'Mail connection is unavailable. If sending, check Sent before retrying.'});}

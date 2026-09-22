@@ -10,7 +10,7 @@ function fixture(){
   const [cmd,k,v]=args;if(cmd==='GET')return records.get(k)??null;if(cmd==='GETDEL'){const raw=records.get(k)??null;records.delete(k);return raw;}
   if(cmd==='SET'){if(args.includes('NX')&&records.has(k))return null;records.set(k,v);return 'OK';}
   if(cmd==='EVAL'&&k===CONNECTION_RATE){const n=Number(records.get(args[3])||0)+1;records.set(args[3],String(n));return n;}
-  if(cmd==='EVAL'&&k===CONNECTION_CAS){if(records.get(args[3])!==args[4]||Number(args[6])<=clock)return 0;records.set(args[3],args[5]);return 1;}
+  if(cmd==='EVAL'&&k===CONNECTION_CAS){if(records.get(args[3])!==args[4]||Number(args[6])!==0&&Number(args[6])<=clock)return 0;records.set(args[3],args[5]);return 1;}
   throw Error('Unexpected command');
  });
  const grant={token:'a'.repeat(64),grantId:'b'.repeat(64),wallet,mailbox:'fixture@bittrees.org',scopes:['read','send'],audience:CHAT_ORIGIN,expiresAt:new Date(clock+1800000).toISOString()};
@@ -180,4 +180,26 @@ it('HTML relay requires read scope and suppresses a response after disconnect',a
   if(scopes[0]==='send')await expect(f.api.operation(p.session.token,input)).rejects.toMatchObject({status:403});
   else{await f.api.operation(p.session.token,input);expect(f.calls.at(-1).body).toEqual(input);let once=true;f.onRequest(async()=>{if(once){once=false;await f.api.disconnect(p.session.token);}});await expect(f.api.operation(p.session.token,input)).rejects.toMatchObject({status:401});}
  }
+});
+
+it('accepts long fixed and until-revoked grants without the old one-hour relay limit',async()=>{
+ for(const duration of [30*86400000,null]){const f=fixture();f.grant.expiresAt=duration===null?null:new Date(Date.now()+duration-1000).toISOString();const p=await f.connected();
+  f.advance(2*86400000);expect((await f.api.status(p.session.token,wallet)).connection.expiresAt).toBe(f.grant.expiresAt);
+  await f.api.operation(p.session.token,{wallet,action:'folders',input:{}});
+  await expect(f.api.start(p.session.token,wallet)).rejects.toMatchObject({status:409});
+  if(duration===null){f.advance(500*86400000);await f.api.operation(p.session.token,{wallet,action:'folders',input:{}});}
+  else{f.advance(30*86400000);await expect(f.api.status(p.session.token,wallet)).rejects.toMatchObject({status:401});}
+  await f.api.disconnect(p.session.token);await expect(f.api.status(p.session.token,wallet)).rejects.toMatchObject({status:401});
+ }
+});
+it('rejects unsupported, missing, numeric and excessive expiry responses',async()=>{
+ for(const expiresAt of [undefined,0,Date.now()+3600000,new Date(Date.now()+31*86400000).toISOString()]){
+  const f=fixture(),p=await f.pending();f.grant.expiresAt=expiresAt;await expect(f.api.callback(p.session.token,p.input)).rejects.toMatchObject({status:502});
+ }
+});
+it('callback and authenticated activity refresh the private browser cookie for until-revoked access',async()=>{
+ const f=fixture();f.grant.expiresAt=null;const p=await f.pending(),call=httpFixture(f),cookie='__Host-chat_mail_session='+p.session.token;
+ const response=await call('callback',new URLSearchParams(p.input as any).toString(),{cookie,origin:'https://mail.bittrees.org','content-type':'application/x-www-form-urlencoded'});
+ expect(response.code).toBe(303);expect(response.headers['Set-Cookie']).toContain('Max-Age=34560000');
+ const operation=await call('operation',{wallet,action:'folders',input:{}},{cookie});expect(operation.code).toBe(200);expect(operation.headers['Set-Cookie']).toContain('Max-Age=34560000');
 });
