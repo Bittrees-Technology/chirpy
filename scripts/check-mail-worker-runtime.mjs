@@ -1,4 +1,5 @@
-// Linux runtime acceptance without registering an identity or sending a message.
+// Linux runtime acceptance; optional explicit disposable dev registration drill.
+// Default checks create no SDK client. Neither path sends a message.
 import {mkdtempSync,mkdirSync,copyFileSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
@@ -43,6 +44,7 @@ try{
     if(result.error||result.status!==(mode==='--once'?0:2)||JSON.parse(result.stdout).enabled!==false)throw Error('Disabled worker contract failed');
   }
   console.log('Isolated worker dependency and disabled command checks passed.');
+  if(process.env.XMTP_MAIL_PROVISION_DRILL==='1')run(process.execPath,[join(repo,'scripts/test-mail-provisioning.mjs'),'--register-dev',app]);
 }finally{
   // Exact mkdtemp folder only; no parent traversal and no deployed state.
   rmSync(root,{recursive:true,force:true});

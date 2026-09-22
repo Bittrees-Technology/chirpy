@@ -56,7 +56,7 @@ verified bridge runtime target; other platforms require their own acceptance.
 
 Install the verified runtime at the private path expected by the inactive service
 templates, or update those templates to the reviewed deployment paths. Provision
-the dedicated installation/journal, verify Mail source-checker access under the
+the dedicated installation/journal using [the provisioning guide](MAIL-SENDER-PROVISIONING.md), verify Mail source-checker access under the
 service restrictions, configure the approved monitoring destination and complete
 backup/recovery and live routing acceptance first. Keep all worker/source enable
 flags off until those checks pass. Never reuse member/gatekeeper state or use this

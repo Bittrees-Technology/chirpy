@@ -20,6 +20,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Verify fresh mail sender provisioning on XMTP dev
+        run: node scripts/check-mail-worker-runtime.mjs
+        env:
+          XMTP_MAIL_PROVISION_DRILL: '1'
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm e2e:xmtp
