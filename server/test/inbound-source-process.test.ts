@@ -26,7 +26,7 @@ it('executes an actual bounded child, passes exact stdin and does not inherit se
  const c=fixture("import json,sys,os\nr=json.load(sys.stdin)\nassert 'CHAT_TEST_PRIVATE' not in os.environ\nassert sys.argv[1:]==['--config','/private/source.json','--state','/private/outbox.sqlite']\nprint(json.dumps(dict(**r,authorized=False)))\n");
  const old=process.env.CHAT_TEST_PRIVATE;process.env.CHAT_TEST_PRIVATE='do-not-inherit';
  try{expect(await checkInboundSource(c,inboundEvent())).toBe(false);}finally{if(old===undefined)delete process.env.CHAT_TEST_PRIVATE;else process.env.CHAT_TEST_PRIVATE=old;}
-});
+},20000); // Allow cold system-Python startup; the actual checker still enforces its 15s deadline.
 it('rejects unavailable processes, private errors and oversized output',async()=>{
  for(const c of [{...config,python:'/missing/python'},fixture("import sys\nprint('private secret',file=sys.stderr)\nsys.exit(1)"),fixture("print('x'*4097)"),fixture("import sys\nprint('x'*4097,file=sys.stderr)")])await expect(runSourceCheck(c,{eventId:'a'})).rejects.toThrow('Source authority unavailable');
 });
