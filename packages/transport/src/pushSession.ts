@@ -175,7 +175,10 @@ export class PushRoomSession {
         try {
           const result = await Reflect.apply(action, receiver, args);
           await check(); return result;
-        } catch (error) { await check(); throw error; }
+        } catch {
+          await check();
+          throw new Error('Push could not complete this room action. Refresh history or membership before retrying.');
+        }
       };
       const group = (name: string) => method(['chat', 'group', name]);
       const client: PushRoomClient = {

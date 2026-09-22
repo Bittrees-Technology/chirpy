@@ -101,6 +101,11 @@ describe('wallet-bound Push sessions', () => {
     await expect(recovery.request({ method: 'eth_decrypt', params: ['cipher', owner] })).rejects.toBeInstanceOf(PushSessionChangedError);
     f.session.dispose();
   });
+  it('keeps SDK request details out of failed room action messages', async () => {
+    const f = fixture(); const client = await f.session.enable(); f.action.mockRejectedValueOnce(new Error('synthetic-private-request'));
+    await expect(client.send('room')).rejects.toThrow('Push could not complete this room action');
+    expect(f.action).toHaveBeenCalledOnce(); f.session.dispose();
+  });
   it('keeps initializer diagnostics out of public error state and rejection messages', async () => {
     const f = fixture(); f.initialize.mockRejectedValueOnce(new Error('synthetic-sensitive-request-details'));
     await expect(f.session.enable()).rejects.toThrow('Rooms could not be enabled');
