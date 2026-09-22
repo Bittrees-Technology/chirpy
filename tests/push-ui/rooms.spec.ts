@@ -130,3 +130,49 @@ test('refuses a write when the provider silently changes account without an even
   await expect(page.locator('.thread-title')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send').length)).toBe(0);
 });
+
+test('shows bounded member data and removes it immediately when private membership is revoked', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.evaluate(address => { (window as any).__pushFixture.members = [{ address, role: 'MEMBER', userInfo: { profile: { name: 'Do not expose this profile' } } }]; }, other);
+  await page.getByText('View Push members', { exact: true }).click();
+  await page.getByRole('button', { name: 'Load or refresh members' }).click();
+  await expect(page.locator('.push-members code')).toHaveText(other);
+  await expect(page.getByText('Do not expose this profile', { exact: true })).toHaveCount(0);
+  await page.evaluate(() => { (window as any).__pushFixture.membership.participant = false; });
+  await page.getByRole('button', { name: 'Refresh messages', exact: true }).click();
+  await expect(page.locator('.push-members')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toContainText('Join this private room');
+});
+test('discards a delayed member list when switching sources', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.evaluate(address => { const s = (window as any).__pushFixture; s.members = [{ address, role: 'MEMBER' }]; s.hold.members = true; }, other);
+  await page.getByText('View Push members', { exact: true }).click(); await page.getByRole('button', { name: 'Load or refresh members' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__pushFixture.pending.members?.length ?? 0)).toBe(1);
+  await page.getByLabel('Include existing rooms').selectOption('research');
+  await page.evaluate(() => (window as any).__pushFixture.release('members'));
+  await expect(page.locator('.push-members')).toHaveCount(0); await expect(page.locator('.thread-title')).toHaveCount(0);
+});
+
+test('paginates members on mobile and restricts pending lists to administrators', async ({ page }, testInfo) => {
+  await openRoom(page);
+  const members = Array.from({ length: 20 }, (_, index) => ({ address: '0x' + (index + 3).toString(16).padStart(40, '0'), role: 'MEMBER' }));
+  await page.evaluate(({ members, other }) => {
+    const s = (window as any).__pushFixture; s.membership.role = 'admin';
+    s.memberPages = { 'false:1': members, 'false:2': [{ address: other, role: 'ADMIN' }], 'true:1': [{ address: other, role: 'MEMBER' }] };
+  }, { members, other });
+  await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByText('View Push members', { exact: true }).click(); await page.getByRole('button', { name: 'Load or refresh members' }).click();
+  await expect(page.locator('.push-members code')).toHaveCount(20);
+  await page.locator('.push-members').getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.locator('.push-members code')).toHaveText(other);
+  await expect(page.locator('.push-members').getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
+  await page.getByRole('combobox', { name: 'Member list', exact: true }).selectOption('pending');
+  await expect(page.locator('.push-members')).toContainText('Page 1');
+  await page.screenshot({ path: testInfo.outputPath('push-members-mobile.png') });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.evaluate(() => { (window as any).__pushFixture.membership.role = 'member'; });
+  await page.getByRole('button', { name: 'Refresh messages', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Member list', exact: true })).toHaveCount(0);
+  await expect(page.locator('.push-members code')).toHaveCount(0);
+});

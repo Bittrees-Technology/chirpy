@@ -12,6 +12,8 @@ export interface PushRoomDetails {
   canJoin: boolean;
   canModerate: boolean;
 }
+export interface PushMember { address: string; role: 'ADMIN' | 'MEMBER' }
+export interface PushMemberPage { members: PushMember[]; page: number; hasMore: boolean; pending: boolean }
 export interface PushConversation extends Conversation { push: PushRoomDetails }
 export interface PushRoomsSnapshot {
   rooms: PushConversation[];
@@ -172,6 +174,28 @@ export class PushRooms {
     if (this.#cursors.size >= 200) this.#cursors.delete(this.#cursors.keys().next().value!);
     this.#cursors.set(token, { room: id, reference: page.nextReference, epoch, path, depth: depth + 1 });
     return { messages: page.messages, olderCursor: token };
+  }
+  async members(id: string, page = 1, pending = false): Promise<PushMemberPage> {
+    if (!Number.isSafeInteger(page) || page < 1 || page > 1_000_000 || typeof pending !== 'boolean') throw new Error('Choose a valid member page.');
+    const access = await this.refreshRoom(id);
+    if (!access.publicRoom && access.membership !== 'member') throw new Error('Join this private room before viewing its members.');
+    if (pending && !access.canModerate) throw new Error('Only a current Push room administrator can view pending members.');
+    const { room, client, epoch } = await this.#client(id); this.#ensureAccess(id, access, epoch);
+    const raw = object(await client.participants(room.chatId, { page, limit: 20, filter: { pending } }));
+    this.#ensureAccess(id, access, epoch);
+    if (!Array.isArray(raw.members) || raw.members.length > 20) throw new Error('Push returned an unsupported member list.');
+    const seen = new Set<string>();
+    const members = raw.members.map(value => {
+      const member = object(value);
+      const match = typeof member.address === 'string' && /^(?:eip155:(?:[0-9]+:)?)?(0x[a-fA-F0-9]{40})$/.exec(member.address);
+      if (!match || (member.role !== 'ADMIN' && member.role !== 'MEMBER')) throw new Error('Push returned an unsupported member list.');
+      const address = match[1].toLowerCase();
+      if (seen.has(address)) throw new Error('Push returned a duplicated member. Refresh the member list.');
+      seen.add(address);
+      // Do not copy SDK userInfo, encrypted keys or unselected profile fields.
+      return { address, role: member.role } as PushMember;
+    });
+    return { members, page, hasMore: members.length === 20, pending };
   }
   async send(id: string, body: string): Promise<void> {
     if (!body.trim() || body.length > 16_000 || new TextEncoder().encode(body).byteLength > 64 * 1024) throw new Error('Write a message of at most 16,000 characters.');

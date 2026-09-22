@@ -5,7 +5,7 @@ import {
   PERSONAL_ORG, parseOrg, type Identity, type OrgConfig, type Policy,
 } from "@app/core";
 import {
-  createTransport, parsePushConversationId, type PushSource, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
+  createTransport, parsePushConversationId, type PushMemberPage, type PushSource, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
 } from "@app/transport";
 import { usePushRooms } from "./usePushRooms";
 import { createRefreshQueue } from "./refreshQueue";
@@ -932,6 +932,7 @@ interface ChatCtx {
   refreshPushRooms: () => Promise<void>;
   leavePushRoom: () => Promise<void>;
   managePushMember: (action: 'add' | 'remove', address: string, role: 'ADMIN' | 'MEMBER') => Promise<void>;
+  loadPushMembers: (page: number, pending: boolean) => Promise<PushMemberPage>;
   historyError: string | null;
   transportId: string;
   transportStatus: string;
@@ -1205,6 +1206,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (!id || !parsePushConversationId(id) || !rooms) throw new Error('Select a connected Push room.');
     await rooms.moderate(id, action, address, role);
   }, [getPushAdapter]);
+  const loadPushMembers = useCallback(async (page: number, pending: boolean) => {
+    const id = activeIdRef.current; const rooms = getPushAdapter();
+    if (!id || !parsePushConversationId(id) || !rooms) throw new Error('Select a connected Push room.');
+    const result = await rooms.members(id, page, pending);
+    if (getPushAdapter() !== rooms || activeIdRef.current !== id) throw new Error('Room connection changed. Refresh members.');
+    return result;
+  }, [getPushAdapter]);
   useEffect(() => {
     if (!activeId || !parsePushConversationId(activeId) || push.snapshot.status !== 'ready') return;
     const queue = createRefreshQueue(async () => {
@@ -1223,11 +1231,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ChatCtx>(() => ({
     pushSource: push.source, setPushSource: push.changeSource, pushStatus: push.snapshot.status, pushLoading: push.snapshot.loading,
-    pushError: push.error ?? push.snapshot.error ?? null, enablePushRooms, refreshPushRooms: push.refresh, leavePushRoom, managePushMember, historyError,
+    pushError: push.error ?? push.snapshot.error ?? null, enablePushRooms, refreshPushRooms: push.refresh, leavePushRoom, managePushMember, loadPushMembers, historyError,
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages,
     historyLoading, isHistory: history.before !== undefined, hasOlderMessages: olderCursor !== undefined, navigateHistory,
     enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, historyError, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

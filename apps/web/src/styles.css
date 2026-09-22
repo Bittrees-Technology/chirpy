@@ -311,3 +311,6 @@ input, textarea, select { font-family: inherit; }
   body > .bt-insights-consent { bottom: calc(128px + env(safe-area-inset-bottom)); max-height: calc(100dvh - 148px - env(safe-area-inset-bottom)); overflow-y: auto; }
   body > .bt-insights-preferences { position: static; flex-shrink: 0; align-self: flex-start; margin: 6px 16px calc(6px + env(safe-area-inset-bottom)); }
 }
+
+.push-members { max-height: 240px; overflow: auto; }
+.push-members li { overflow-wrap: anywhere; }

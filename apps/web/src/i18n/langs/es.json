@@ -501,5 +501,13 @@
   "push.addMember": "Añadir rol",
   "push.removeMember": "Quitar rol",
   "push.applyMemberChange": "Aplicar cambio de miembro",
-  "push.memberUpdated": "Push procesó el cambio de membresía."
+  "push.memberUpdated": "Push procesó el cambio de membresía.",
+  "push.viewMembers": "Ver miembros de Push",
+  "push.memberView": "Lista de miembros",
+  "push.approvedMembers": "Miembros aprobados",
+  "push.pendingMembers": "Miembros pendientes",
+  "push.refreshMembers": "Cargar o actualizar miembros",
+  "push.loadingMembers": "Cargando miembros…",
+  "push.memberPage": "Página {page} · Hasta 20 miembros por página; no es el total de miembros.",
+  "push.noMembersPage": "No se devolvieron miembros en esta página."
 }

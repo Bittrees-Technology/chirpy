@@ -1,3 +1,4 @@
+import { PushMembers } from "./PushMembers";
 import { MessageBody } from "./MessageBody";
 import { receiptOverride } from "../receiptPreferences";
 import React, { useEffect, useRef, useState } from "react";
@@ -183,6 +184,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           }}>{t("push.leave")}</Button>}
         </>}
       </div>}
+      {pushRoom && pushStatus === "ready" && (pushRoom.publicRoom || pushRoom.membership === "member") && <PushMembers
+        key={`${conversationKey}:${selfAddress}:${pushRoom.membership}:${pushRoom.canModerate}:${pushRoom.publicRoom}`}
+        canModerate={pushRoom.canModerate} />}
       {pushRoom?.canModerate && pushStatus === "ready" && <details className="join-banner">
         <summary>{t("push.manageMembers")}</summary>
         <form onSubmit={(event) => {

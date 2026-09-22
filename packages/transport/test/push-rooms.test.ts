@@ -107,6 +107,32 @@ describe('source-scoped Push room adapter', () => {
     vi.mocked(f.client.history).mockResolvedValueOnce([message(third, null)]);
     expect((await f.rooms.history(id, older.olderCursor)).messages[0].id).toBe(third);
   });
+  it('bounds member pages and returns only addresses and roles', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.participants).mockResolvedValue({ members: [{ address: `eip155:${owner}`, role: 'MEMBER', userInfo: { encryptedPrivateKey: 'do-not-copy', profile: { name: 'private profile' } } }] });
+    expect(await f.rooms.members(id)).toEqual({ members: [{ address: owner, role: 'MEMBER' }], page: 1, pending: false, hasMore: false });
+    expect(f.client.participants).toHaveBeenCalledWith(group, { page: 1, limit: 20, filter: { pending: false } });
+    await expect(f.rooms.members(id, 0)).rejects.toThrow('valid member page');
+    vi.mocked(f.client.participants).mockResolvedValue({ members: Array(21).fill({ address: owner, role: 'MEMBER' }) });
+    await expect(f.rooms.members(id)).rejects.toThrow('unsupported member list');
+    vi.mocked(f.client.participants).mockResolvedValue({ members: Array(2).fill({ address: owner, role: 'MEMBER' }) });
+    await expect(f.rooms.members(id)).rejects.toThrow('duplicated member');
+  });
+  it('requires membership for private member lists and admin authority for pending lists', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    await expect(f.rooms.members(id, 1, true)).rejects.toThrow('administrator');
+    vi.mocked(f.client.participantStatus).mockResolvedValue({ participant: false, pending: false, role: 'member' });
+    await expect(f.rooms.members(id)).rejects.toThrow('Join this private room');
+    expect(f.client.participants).not.toHaveBeenCalled();
+  });
+  it('discards late private member lists after membership is revoked', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const response = deferred<unknown>(); vi.mocked(f.client.participants).mockReturnValueOnce(response.promise);
+    const pending = f.rooms.members(id); await vi.waitFor(() => expect(f.client.participants).toHaveBeenCalledOnce());
+    vi.mocked(f.client.participantStatus).mockResolvedValue({ participant: false, pending: false, role: 'member' });
+    await f.rooms.refreshRoom(id); response.resolve({ members: [{ address: owner, role: 'MEMBER' }] });
+    await expect(pending).rejects.toThrow('permissions changed');
+  });
   it('does not reveal late private history after a newer membership denial', async () => {
     const f = setup(); await f.rooms.discover(); await f.rooms.enable();
     const response = deferred<unknown>(); vi.mocked(f.client.history).mockReturnValueOnce(response.promise);

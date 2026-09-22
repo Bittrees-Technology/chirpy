@@ -501,5 +501,13 @@
   "push.addMember": "Add role",
   "push.removeMember": "Remove role",
   "push.applyMemberChange": "Apply member change",
-  "push.memberUpdated": "Push processed the membership change."
+  "push.memberUpdated": "Push processed the membership change.",
+  "push.viewMembers": "View Push members",
+  "push.memberView": "Member list",
+  "push.approvedMembers": "Approved members",
+  "push.pendingMembers": "Pending members",
+  "push.refreshMembers": "Load or refresh members",
+  "push.loadingMembers": "Loading members…",
+  "push.memberPage": "Page {page} · Up to 20 members per page; this is not a total member count.",
+  "push.noMembersPage": "No members returned on this page."
 }

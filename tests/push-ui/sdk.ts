@@ -22,7 +22,7 @@ export const PushAPI = {
         permissions: async (room: string) => { call('permissions', room); return clone(state().permissions); },
         participants: {
           status: async (room: string) => { call('status', room); return clone(state().membership); },
-          list: async () => ({ members: [] }),
+          list: async (room: string, options: any) => { call('members', room, options); const result = clone({ members: state().memberPages?.[`${options.filter.pending}:${options.page}`] ?? state().members ?? [] }); await wait('members'); return result; },
         },
         join: async (room: string) => { call('join', room); state().membership = { participant: true, pending: true, role: 'member' }; return {}; },
         leave: async (room: string) => { call('leave', room); state().membership = { participant: false, pending: false, role: 'member' }; return {}; },

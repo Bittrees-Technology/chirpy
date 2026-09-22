@@ -31,9 +31,9 @@ it('keeps pending members read-only and hides XMTP actions even when messages ar
 });
 it('removes posting and moderation controls when current permissions are revoked', async () => {
   state.chat.pushStatus = 'ready'; Object.assign(state.chat.activeConversation.push, { membership: 'member', canSend: true, canModerate: true });
-  await render(); expect(container.querySelector('.composer-input')).not.toBeNull(); expect(container.querySelector('details')).not.toBeNull();
+  await render(); expect(container.querySelector('.composer-input')).not.toBeNull(); expect(container.querySelector('[aria-label="Member wallet"]')).not.toBeNull();
   Object.assign(state.chat.activeConversation.push, { canSend: false, canModerate: false });
-  await render(); expect(container.querySelector('.composer-input')).toBeNull(); expect(container.querySelector('details')).toBeNull();
+  await render(); expect(container.querySelector('.composer-input')).toBeNull(); expect(container.querySelector('[aria-label="Member wallet"]')).toBeNull();
 });
 it('shows history failures and does not present them as successfully loaded empty rooms', async () => {
   state.chat.historyError = 'Join this private room before reading its history.';
