@@ -16,6 +16,7 @@ on:
       - "vitest.config.ts"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "patches/**"
       - ".github/workflows/apple-validation.yml"
       - "scripts/test-ios-simulator.py"
   push:
@@ -27,6 +28,7 @@ on:
       - "vitest.config.ts"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "patches/**"
       - ".github/workflows/apple-validation.yml"
       - "scripts/test-ios-simulator.py"
   workflow_dispatch:
