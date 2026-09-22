@@ -115,6 +115,7 @@ input, textarea, select { font-family: inherit; }
   background: transparent; color: var(--muted); font-size: 30px; line-height: 1;
 }
 .thread-back:hover { background: var(--bg-2); color: var(--text); }
+.thread-head-meta { min-width: 0; overflow-wrap: anywhere; }
 .thread-title { font-weight: 600; }
 .thread-sub { color: var(--muted); font-size: 12px; }
 .thread-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -338,5 +339,7 @@ input, textarea, select { font-family: inherit; }
 
 .mailbox-html{display:block;width:100%;height:420px;border:1px solid var(--line);margin:16px 0;background:#fff}
 
-.profile-wallet { display: block; font-size: 11px; font-weight: normal; color: var(--muted); overflow-wrap: anywhere; }
+.profile-wallet { display: block; white-space: normal; font-size: 11px; font-weight: normal; color: var(--muted); overflow-wrap: anywhere; }
 .card[data-insights-ignore] code { overflow-wrap: anywhere; }
+
+.public-profile { overflow-wrap: anywhere; }

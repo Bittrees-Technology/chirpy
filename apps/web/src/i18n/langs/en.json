@@ -633,7 +633,7 @@
   "mailRecovery.failed": "Recovery could not finish. Check your wallet, passphrase, file and available storage. A changed request list requires a fresh review or backup. If storage failed during a change, reopen the list to check its result; keep your backup.",
   "mailRecovery.passwordHelp": "Use a unique passphrase of 12–1024 characters. Keep it separately from the file; Chat cannot reset it. Each backup or restore step asks you to confirm wallet ownership.",
   "publicProfile.title": "Public profile",
-  "publicProfile.notice": "Choose the name other Chat members see beside your wallet. Publishing is optional and public; anyone who knows the wallet can read it. Names are not unique or proof of a real-world identity. Email addresses and verified bindings are never published by this setting.",
+  "publicProfile.notice": "Choose the name other Chat members see beside your wallet. Publishing is optional and public; anyone who knows the wallet can read it. Names are not unique or proof of a real-world identity. This does not copy your connected email address or verified bindings into the profile.",
   "publicProfile.current": "Current choice",
   "publicProfile.unset": "No Chat profile choice yet; existing ENS and local labels may appear.",
   "publicProfile.addressOnly": "Wallet address only",

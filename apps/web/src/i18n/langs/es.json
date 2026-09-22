@@ -633,7 +633,7 @@
   "mailRecovery.failed": "No se pudo completar la recuperación. Comprueba la cartera, la frase de contraseña, el archivo y el espacio disponible. Si la lista cambió, vuelve a revisarla o guardar una copia. Si el almacenamiento falló durante un cambio, abre de nuevo la lista para comprobar el resultado; conserva tu copia.",
   "mailRecovery.passwordHelp": "Usa una frase de contraseña única de 12 a 1024 caracteres. Guárdala por separado del archivo; Chat no puede restablecerla. Cada paso de copia o restauración te pide confirmar el control de la cartera.",
   "publicProfile.title": "Perfil público",
-  "publicProfile.notice": "Elige el nombre que otros miembros de Chat ven junto a tu cartera. Publicarlo es opcional y público; cualquiera que conozca la cartera puede leerlo. Los nombres no son únicos ni prueban una identidad real. Esta opción nunca publica direcciones de correo ni vínculos verificados.",
+  "publicProfile.notice": "Elige el nombre que otros miembros de Chat ven junto a tu cartera. Publicarlo es opcional y público; cualquiera que conozca la cartera puede leerlo. Los nombres no son únicos ni prueban una identidad real. Esto no copia tu dirección de correo conectada ni tus vínculos verificados al perfil.",
   "publicProfile.current": "Opción actual",
   "publicProfile.unset": "Aún no hay una opción de perfil en Chat; pueden aparecer ENS y etiquetas locales existentes.",
   "publicProfile.addressOnly": "Solo la dirección de la cartera",

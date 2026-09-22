@@ -28,7 +28,7 @@ function ProfileEditor({wallet}:{wallet:string}){
   }catch{if(active.current&&!controller.signal.aborted){setProfile(null);setConsent(false);setStatus('uncertain');}}
   finally{if(operation.current===controller)operation.current=null;if(active.current&&!controller.signal.aborted)setWorking(false);}
  };
- return <section className="card" data-insights-ignore="true" aria-label={t('publicProfile.title')}>
+ return <section className="card public-profile" data-insights-ignore="true" aria-label={t('publicProfile.title')}>
   <h2>{t('publicProfile.title')}</h2><p>{t('publicProfile.notice')}</p>
   <p><code>{wallet}</code></p>
   {profile&&<p>{t('publicProfile.current')}: {profile.revision===0?t('publicProfile.unset'):profile.label??t('publicProfile.addressOnly')}</p>}

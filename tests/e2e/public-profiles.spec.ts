@@ -18,14 +18,15 @@ test('publishes an explicitly approved name to another member and withdraws it w
   });
   const a=await owner.newPage(),b=await recipient.newPage();
   for(const page of [a,b]){await page.goto('/');await page.getByRole('button',{name:'Decline',exact:true}).click();await page.locator('.nav-item',{hasText:'Settings'}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();}
-  const editor=a.getByRole('region',{name:'Public profile',exact:true});await editor.getByLabel('What to display in Chat').selectOption('name');await editor.getByLabel('Public display name',{exact:true}).fill('Member <not markup>');
+  const editor=a.getByRole('region',{name:'Public profile',exact:true});await editor.getByLabel('What to display in Chat').selectOption('name');await editor.getByLabel('Public display name',{exact:true}).fill('Member <not markup> '+ 'x'.repeat(60));
   await expect(editor.getByRole('button',{name:'Sign and publish name'})).toBeDisabled();expect(writes).toBe(0);
   await editor.getByLabel('I want this name and my wallet address to be public.').check();await editor.getByRole('button',{name:'Sign and publish name'}).click();await expect(editor.getByRole('status')).toContainText('Public name saved');expect(writes).toBe(1);
   await b.locator('.nav-item',{hasText:'Chats'}).click();await b.getByRole('button',{name:'+ Chat',exact:true}).click();await b.getByLabel('Recipient',{exact:false}).fill(wallet);await b.getByRole('button',{name:'Start chat',exact:true}).click();
-  await expect(b.locator('.thread-title')).toHaveText('Member <not markup>');await expect(b.locator('.list-item-title').filter({hasText:'Member <not markup>'})).toContainText(wallet);expect(await b.locator('.thread-title not').count()).toBe(0);
+  await expect(b.locator('.thread-title')).toHaveText('Member <not markup> '+ 'x'.repeat(60));await expect(b.locator('.list-item-title').filter({hasText:'Member <not markup> '+ 'x'.repeat(60)})).toContainText(wallet);expect(await b.locator('.thread-title not').count()).toBe(0);
+  await b.setViewportSize({width:390,height:844});expect(await b.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await b.screenshot({path:testInfo.outputPath('public-profile-recipient-mobile.png')});
   await a.setViewportSize({width:390,height:844});await editor.screenshot({path:testInfo.outputPath('public-profile-mobile.png')});await editor.getByLabel('What to display in Chat').selectOption('address');await editor.getByLabel('Show my wallet address and withdraw any name I published through Chat.').check();await editor.getByRole('button',{name:'Sign and use wallet address'}).click();await expect(editor.getByRole('status')).toContainText('Chat name withdrawn');
   // A foreground return invalidates the recipient's cached view and fetches the withdrawal.
-  await b.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(b.locator('.thread-title')).not.toHaveText('Member <not markup>');await expect(b.locator('.thread-title')).toHaveText(wallet.slice(0,6)+'…'+wallet.slice(-4));
+  await b.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(b.locator('.thread-title')).not.toHaveText('Member <not markup> '+ 'x'.repeat(60));await expect(b.locator('.thread-title')).toHaveText(wallet.slice(0,6)+'…'+wallet.slice(-4));
   expect(records.get(wallet)).toMatchObject({revision:2,label:null});expect(signed.map(c=>c.wallet)).toEqual([wallet,wallet]);expect(writes).toBe(2);
   expect(await a.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  }finally{await owner.close().catch(()=>{});await recipient.close().catch(()=>{});}
