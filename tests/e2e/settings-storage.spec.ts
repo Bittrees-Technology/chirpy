@@ -35,7 +35,7 @@ test('does not replace malformed settings with defaults on mount or edit', async
   await page.addInitScript(({ key }) => localStorage.setItem(key, '{original broken record'), { key });
   await connect(page);
   await expect(page.getByRole('alert').filter({ hasText: 'Settings could not be saved' })).toBeVisible();
-  await page.getByRole('switch', { name: 'Read receipts default' }).click();
+  await expect(page.getByRole('switch', { name: 'Read receipts default' })).toBeDisabled();
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe('{original broken record');
   await expect(page.getByRole('switch', { name: 'Read receipts default' })).toHaveAttribute('aria-checked', 'false');
   await expect(page.getByRole('button', { name: 'Export encrypted local data' })).toHaveCount(0);

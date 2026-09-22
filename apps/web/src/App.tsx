@@ -105,7 +105,7 @@ function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }
 }
 
 export function App() {
-  const { storageError } = useSettingsPrefs();
+  const { storageError, recoveryPaused } = useSettingsPrefs();
   const { t } = useI18n();
   const { transportId, transportStatus } = useChat();
   const { identity } = useIdentity();
@@ -139,8 +139,9 @@ export function App() {
   return (
     <div className="app">
       <Sidebar view={view} setView={openView} onCreateOrg={() => setDialog("createOrg")} />
-      <main className={`main${storageError ? " has-settings-error" : ""}`}>
+      <main className={`main${(storageError || recoveryPaused) ? " has-settings-error" : ""}`}>
         {storageError && <div className="error-banner settings-storage-error" role="alert">{t("settings.storageError")}</div>}
+        {recoveryPaused && !storageError && <div className="settings-storage-error" role="status">{t("restore.paused")}</div>}
         {(view === "chats" || view === "rooms") && (
           <div className={`split mobile-${mobilePane}`}>
             <ConversationColumn

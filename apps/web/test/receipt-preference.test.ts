@@ -34,6 +34,12 @@ it("passes the actual current Settings preference to the transport", async () =>
     await act(async () => chat.select("dm"));
     await act(async () => chat.markRead("seen"));
     expect(mock.markRead).toHaveBeenLastCalledWith("dm", { sendReceipt: true, throughMessageId: "seen" });
+    await act(async () => settings.pauseSyncForRecovery());
+    await act(async () => chat.markRead("seen"));
+    expect(mock.markRead).toHaveBeenLastCalledWith("dm", { sendReceipt: false, throughMessageId: "seen" });
+    await act(async () => settings.refreshAfterRecovery());
+    await act(async () => chat.markRead("seen"));
+    expect(mock.markRead).toHaveBeenLastCalledWith("dm", { sendReceipt: true, throughMessageId: "seen" });
     await act(async () => settings.setChatReadReceipts("dm", undefined));
     await act(async () => chat.markRead("seen"));
     expect(mock.markRead).toHaveBeenLastCalledWith("dm", { sendReceipt: false, throughMessageId: "seen" });

@@ -1,3 +1,4 @@
+import { assertNoRecoveryPending, walletSettingsKey, withSettingsLock } from './settingsStorage';
 import { validateRecoveryData, type RecoveryData } from './recoveryArchive';
 
 export type Contact = RecoveryData['contacts'][number];
@@ -123,12 +124,18 @@ export const readLocalData = (wallet: string) => transact(wallet);
 export async function changeLocalData(wallet: string, change: LocalChange, ensureCurrent: () => void) {
   // Copy before waiting for a database lock: callers cannot change the intended operation later.
   const snapshot = structuredClone(change);
-  const data = await transact(wallet, snapshot, ensureCurrent);
+  const data = await withSettingsLock(walletSettingsKey(wallet), () => {
+    assertNoRecoveryPending(walletSettingsKey(wallet));
+    return transact(wallet, snapshot, ensureCurrent);
+  });
+  notifyLocalData();
+  return data;
+}
+export function notifyLocalData() {
   window.dispatchEvent(new Event(EVENT));
   try {
     const channel = new BroadcastChannel(EVENT); channel.postMessage('changed'); channel.close();
   } catch { /* Visibility/focus refresh remains available when BroadcastChannel is unavailable. */ }
-  return data;
 }
 export function subscribeLocalData(refresh: () => void) {
   const visible = () => { if (document.visibilityState === 'visible') refresh(); };
@@ -140,4 +147,36 @@ export function subscribeLocalData(refresh: () => void) {
     window.removeEventListener(EVENT, refresh); window.removeEventListener('focus', refresh);
     document.removeEventListener('visibilitychange', visible); channel?.close();
   };
+}
+
+/** Internal transaction helper for a bounded, wallet-owned recovery journal and data record. */
+export async function localRecords<T>(keys: string[], write: boolean,
+  operation: (values: unknown[]) => { result: T; put?: unknown[]; remove?: string[] },
+  ensureCurrent: () => void = () => {}) {
+  ensureCurrent();
+  const db = await openDatabase();
+  try {
+    ensureCurrent();
+    return await new Promise<T>((resolve, reject) => {
+      const tx = db.transaction(STORE, write ? 'readwrite' : 'readonly');
+      const store = tx.objectStore(STORE); const values: unknown[] = []; let remaining = keys.length;
+      let result: T; let failure: unknown;
+      const timer = setTimeout(() => { try { tx.abort(); } catch {} }, 10_000);
+      keys.forEach((key, index) => {
+        const request = store.get(key);
+        request.onsuccess = () => {
+          values[index] = request.result;
+          if (--remaining) return;
+          try {
+            ensureCurrent();
+            const next = operation(values); result = next.result;
+            next.put?.forEach(value => store.put(value)); next.remove?.forEach(key => store.delete(key));
+          } catch (error) { failure = error; tx.abort(); }
+        };
+      });
+      tx.oncomplete = () => { clearTimeout(timer); resolve(result); };
+      tx.onabort = () => { clearTimeout(timer); reject(failure ?? tx.error ?? new Error('Recovery transaction aborted')); };
+      tx.onerror = () => {};
+    });
+  } finally { db.close(); }
 }

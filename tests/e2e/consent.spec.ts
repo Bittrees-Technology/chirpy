@@ -18,6 +18,8 @@ test('incoming request can be accepted, blocked and unblocked without leaking bl
   const receipts = page.getByRole('combobox', { name: 'Send read receipts' });
   await expect(receipts).toHaveValue('inherit');
   await receipts.selectOption('true');
+  await expect(receipts).toBeEnabled();
+  await expect(receipts).toHaveValue('true');
   await page.reload();
   await page.getByRole('button', { name: /request peer/ }).click();
   await expect(receipts).toHaveValue('true');

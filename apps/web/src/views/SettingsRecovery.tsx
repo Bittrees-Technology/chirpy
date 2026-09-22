@@ -1,3 +1,4 @@
+import { assertNoRecoveryPending, walletSettingsKey } from '../settingsStorage';
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Field } from '../ui';
 import { useI18n } from '../i18n';
@@ -29,6 +30,7 @@ export function SettingsRecovery({ wallet, preferences }: { wallet: string; pref
     };
     try {
       // Read explicit wallet-owned fields and validate a copy. No localStorage enumeration.
+      assertNoRecoveryPending(walletSettingsKey(wallet));
       const local = await readLocalData(wallet);
       ensureCurrent();
       const data = validateRecoveryData({ version: 1, source: 'chirpy', wallet, createdAt: Date.now(),
@@ -38,6 +40,7 @@ export function SettingsRecovery({ wallet, preferences }: { wallet: string; pref
       if ((await readLocalData(wallet)).revision !== local.revision) throw new Error('Local data changed during export');
       await proof.assertCurrent();
       ensureCurrent();
+      assertNoRecoveryPending(walletSettingsKey(wallet));
       download('chat-local-data-recovery.json', archive);
       setStatus('prepared');
     } catch { if (active.current) setStatus('failed'); }

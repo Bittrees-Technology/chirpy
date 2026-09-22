@@ -93,3 +93,13 @@ it('times out a wallet that never answers instead of holding the export open for
   await vi.advanceTimersByTimeAsync(120_000); await rejected;
   expect(listeners.size).toBe(0);
 });
+
+it('binds restore proof to its purpose and exposes a synchronous session guard for transactions', async () => {
+  const proof = await verifyRecoveryWallet(owner.address, () => {}, 'restore');
+  expect(signed[0]).toContain('Chat local data restore');
+  expect(signed[0]).not.toContain('Chat local data export');
+  proof.assertSession();
+  listeners.get('accountsChanged')?.([owner.address]);
+  expect(proof.assertSession).toThrow('changed or expired');
+  proof.dispose();
+});

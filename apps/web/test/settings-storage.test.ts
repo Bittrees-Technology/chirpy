@@ -48,3 +48,11 @@ it('rejects unsupported writes without truncating them', () => {
   expect(() => saveSettings(key, null, { ...defaultSettings(), blocked: Array(1001).fill('0x1111111111111111111111111111111111111111') }, 3)).toThrow();
   expect(storage.has(key)).toBe(false);
 });
+
+it('refuses writes requiring coordination when Web Locks are unavailable', async () => {
+  const { withSettingsLock } = await import('../src/settingsStorage');
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
+  const operation = vi.fn();
+  await expect(withSettingsLock(key, operation)).rejects.toThrow(SettingsStorageError);
+  expect(operation).not.toHaveBeenCalled();
+});
