@@ -188,7 +188,7 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     const sent:any[]=[];const provider=async(_url,options)=>{sent.push(JSON.parse(options.body));await new Promise(r=>setTimeout(r,30));return {ok:true,json:async()=>({id:'provider-1'})};};
     const service=createMailService(config,redis,provider);await service.execute(c);
     await Promise.all([service.drain(),service.drain()]);
-    expect(sent).toHaveLength(1);expect(sent[0].to).toEqual([c.to]);expect(sent[0].text).toContain(wallet);expect(sent[0].text).toContain(c.text);
+    expect(sent).toHaveLength(1);expect(sent[0].headers).toEqual({'X-Chat-Bridge':'wallet-to-email'});expect(sent[0].to).toEqual([c.to]);expect(sent[0].text).toContain(wallet);expect(sent[0].text).toContain(c.text);
     expect(await redis(['GET',`${key}:payload`])).toBeNull();expect((await status()).status).toBe('accepted');
     expect((await service.execute({...c,action:'status'})).status).toBe('accepted');
     expect((await service.execute({...c,action:'status',wallet:`0x${'4'.repeat(40)}`})).status).toBe('unknown');
@@ -217,7 +217,7 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     const provider=async(_url,o)=>{const id=o.headers['Idempotency-Key'];attempts.push({id,body:o.body});if(!seen.has(id))seen.set(id,'provider-id');return {ok:true,json:async()=>({id:seen.get(id)})};};
     const failing=async(args)=>{if(args[0]==='EVAL'&&args[1]===FINISH_MAIL&&failAck){failAck=false;throw Error('ack lost');}return redis(args);};
     const service=createMailService(config,failing,provider);await service.execute(c);await expect(service.drain()).rejects.toThrow('ack lost');
-    await readyAgain();await service.drain();expect(attempts).toHaveLength(2);expect(attempts[0]).toEqual(attempts[1]);expect(seen.size).toBe(1);expect((await status()).status).toBe('accepted');
+    await readyAgain();await service.drain();expect(attempts).toHaveLength(2);expect(attempts[0]).toEqual(attempts[1]);expect(JSON.parse(attempts[0].body).headers).toEqual({'X-Chat-Bridge':'wallet-to-email'});expect(seen.size).toBe(1);expect((await status()).status).toBe('accepted');
   });
   it('bounds retries, enforces deadline and fails closed on wrong encryption keys',async()=>{
     let calls=0;const service=createMailService(config,redis,async()=>{calls++;return {ok:false,status:500};});await service.execute(c);
