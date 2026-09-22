@@ -332,7 +332,7 @@
   "routing.compose": "Nuevo mensaje",
   "routing.recipientHint": "Dirección de cartera, nombre.eth o correo electrónico",
   "routing.walletNotice": "Los chats de cartera usan Chat. Abrir un chat no envía un mensaje.",
-  "routing.emailNotice": "Las direcciones de correo abren tu aplicación de correo. Allí eliges la cuenta remitente. Las respuestas permanecen en esa aplicación; Chat no sincroniza tu buzón. Se requiere una aplicación de correo configurada.",
+  "routing.emailNotice": "Las direcciones de correo en un nuevo chat abren tu aplicación de correo externa. Elige allí la cuenta remitente. Para leer y enviar desde tu buzón de Bittrees conectado dentro de Chat, usa la pestaña Email.",
   "routing.openEmail": "Abrir aplicación de correo",
   "routing.nav": "Canales",
   "routing.title": "Canales de mensajería",
@@ -570,5 +570,7 @@
   "mailbox.folder.Trash": "Papelera",
   "mailbox.canonicalTitle": "Abre Email en Chat",
   "mailbox.canonicalHint": "Conecta tu buzón en chat.bittrees.org. Las conexiones de correo pertenecen a ese sitio web.",
-  "mailbox.openChat": "Abrir Chat"
+  "mailbox.openChat": "Abrir Chat",
+  "mailbox.previewLimit": "Esta es una vista previa de texto. Los mensajes largos pueden estar recortados; no se muestran el formato ni los adjuntos.",
+  "mailbox.openMailbox": "Abrir Mail"
 }

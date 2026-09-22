@@ -58,9 +58,9 @@ idempotency ledger preserves the exact ID and rejects conflicting/uncertain reus
 
 ## Remaining acceptance
 
-The server relay is implemented behind a disabled flag. Chat's inbox, read,
-compose/reply and connection controls are still required. The tested Mail consent
-screen and queue alone do not complete email integration. Verify the server-to-Mail
+The server relay and Chat inbox/read/compose/reply controls are implemented.
+Production access remains restricted to explicitly configured acceptance wallets.
+The consent screen and automated tests alone do not complete email integration. Verify the server-to-Mail
 edge path, runtime key/configuration, browser cookie/callback behavior, consenting
 live read/send/receive/revoke, contract wallet and native handoffs. Verified
 wallet↔email routing, lifecycle/retention policy, monitoring and release gates remain
@@ -73,6 +73,7 @@ messages, plain-text reading, composition and reply drafts. It checks the visibl
 idle reading view every 45 seconds; it does not refresh while composing. Reply
 creates a message to the displayed sender with a Re: subject; RFC reply threading,
 attachments, older-message pagination and HTML rendering are not implemented.
+The reader explicitly labels its bounded plain-text preview and links to Mail.
 
 Connect Mail validates the exact scoped SIWE message before asking the selected
 wallet to sign, then navigates to Mail for separate read/send consent. The callback

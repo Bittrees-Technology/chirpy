@@ -332,7 +332,7 @@
   "routing.compose": "New message",
   "routing.recipientHint": "Wallet address, name.eth, or email address",
   "routing.walletNotice": "Wallet chats use Chat. Opening a chat does not send a message.",
-  "routing.emailNotice": "Email addresses open your email app. You choose the sending email account there. Email replies stay in that app; Chat does not sync your mailbox. A configured email app is required.",
+  "routing.emailNotice": "Email addresses in a new chat open your external email app. Choose the sending account there. To read and send through your connected Bittrees mailbox inside Chat, use the Email tab.",
   "routing.openEmail": "Open email app",
   "routing.nav": "Channels",
   "routing.title": "Messaging channels",
@@ -570,5 +570,7 @@
   "mailbox.folder.Trash": "Trash",
   "mailbox.canonicalTitle": "Open Email on Chat",
   "mailbox.canonicalHint": "Connect your mailbox at chat.bittrees.org. Email connections belong to that website.",
-  "mailbox.openChat": "Open Chat"
+  "mailbox.openChat": "Open Chat",
+  "mailbox.previewLimit": "This is a plain-text preview. Long messages may be shortened; formatting and attachments are not shown.",
+  "mailbox.openMailbox": "Open Mail"
 }
