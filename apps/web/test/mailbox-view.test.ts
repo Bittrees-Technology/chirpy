@@ -91,3 +91,52 @@ it('replies use the source Reply-To and original version, while a new email clea
  await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());await click('Reply');await click('New email');
  expect(container.querySelector<HTMLInputElement>('input[type=email]')?.value).toBe('');expect(container.querySelector('h2')?.textContent).toBe('New email');
 });
+
+it('keeps controls usable during a slow poll, avoids overlapping polls, and prioritizes message reads',async()=>{
+ vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});await render();
+ let resolvePage!:(value:Awaited<ReturnType<typeof mail.mailPage>>)=>void;
+ vi.mocked(mail.mailPage).mockImplementationOnce(()=>new Promise(r=>resolvePage=r));
+ await act(async()=>vi.advanceTimersByTimeAsync(45000));
+ const signal=vi.mocked(mail.mailPage).mock.lastCall![3]!;
+ expect([...container.querySelectorAll('button')].filter(b=>['New email','Disconnect Mail','Refresh'].includes(b.textContent!)).every(b=>!b.disabled)).toBe(true);
+ expect(container.querySelector<HTMLButtonElement>('.mailbox-row')!.disabled).toBe(false);
+ await act(async()=>vi.advanceTimersByTimeAsync(90000));expect(mail.mailPage).toHaveBeenCalledTimes(2);
+ let resolveMessage!:(value:mail.MailMessage)=>void;vi.mocked(mail.mailMessage).mockImplementationOnce(()=>new Promise(r=>resolveMessage=r));
+ await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());expect(signal.aborted).toBe(true);
+ await act(async()=>resolvePage({messages:[],nextCursor:null}));
+ expect(container.querySelector<HTMLButtonElement>('.mailbox-row')!.disabled).toBe(true);
+ await act(async()=>resolveMessage({...item,text:'Selected after polling'}));
+ expect(container.textContent).toContain('Selected after polling');expect(container.textContent).toContain(item.subject);
+});
+it('starting a draft aborts a background read and late results cannot disturb the draft',async()=>{
+ vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});await render();
+ let resolve!:(value:Awaited<ReturnType<typeof mail.mailPage>>)=>void;vi.mocked(mail.mailPage).mockImplementationOnce(()=>new Promise(r=>resolve=r));
+ await act(async()=>vi.advanceTimersByTimeAsync(45000));const signal=vi.mocked(mail.mailPage).mock.lastCall![3]!;
+ await click('New email');expect(signal.aborted).toBe(true);
+ await act(async()=>{const textarea=container.querySelector('textarea')!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textarea,'Keep this draft');textarea.dispatchEvent(new Event('input',{bubbles:true}));});
+ await act(async()=>resolve({messages:[{...item,subject:'Obsolete poll'}],nextCursor:'c'.repeat(64)}));
+ expect(container.querySelector('textarea')?.value).toBe('Keep this draft');expect(container.textContent).not.toContain('Obsolete poll');
+ await act(async()=>vi.advanceTimersByTimeAsync(90000));expect(mail.mailPage).toHaveBeenCalledTimes(2);expect(mail.sendMail).not.toHaveBeenCalled();
+});
+it('changing folders invalidates a pending poll and preserves the selected folder results',async()=>{
+ vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});await render();
+ let reject!:(error:unknown)=>void;vi.mocked(mail.mailPage).mockImplementationOnce(()=>new Promise((_r,j)=>reject=j));
+ await act(async()=>vi.advanceTimersByTimeAsync(45000));const signal=vi.mocked(mail.mailPage).mock.lastCall![3]!;
+ vi.mocked(mail.mailPage).mockResolvedValue({messages:[{...item,subject:'Sent selection'}],nextCursor:null});
+ await act(async()=>{const select=container.querySelector('select')!;select.value='Sent';select.dispatchEvent(new Event('change',{bubbles:true}));});
+ expect(signal.aborted).toBe(true);
+ await act(async()=>reject(new mail.MailClientError('denied')));
+ expect(container.querySelector('select')?.value).toBe('Sent');expect(container.textContent).toContain('Sent selection');expect(container.textContent).not.toContain('does not have permission');
+});
+it('disconnect and expiry abort background reads and cannot restore private content',async()=>{
+ vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});
+ vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),expiresAt:new Date(Date.now()+60000).toISOString()});await render();
+ let resolve!:(value:Awaited<ReturnType<typeof mail.mailPage>>)=>void;vi.mocked(mail.mailPage).mockImplementationOnce(()=>new Promise(r=>resolve=r));
+ await act(async()=>vi.advanceTimersByTimeAsync(45000));const signal=vi.mocked(mail.mailPage).mock.lastCall![3]!;
+ await act(async()=>vi.advanceTimersByTimeAsync(15001));expect(signal.aborted).toBe(true);
+ await act(async()=>resolve({messages:[item],nextCursor:null}));expect(container.textContent).not.toContain(item.subject);expect(container.textContent).toContain('session expired');
+ vi.mocked(mail.mailStatus).mockResolvedValue(connection());await click('Refresh');
+ vi.mocked(mail.mailPage).mockImplementationOnce(()=>new Promise(r=>resolve=r));await act(async()=>vi.advanceTimersByTimeAsync(45000));const disconnectSignal=vi.mocked(mail.mailPage).mock.lastCall![3]!;
+ vi.mocked(mail.disconnectMail).mockResolvedValue(true);await click('Disconnect Mail');expect(disconnectSignal.aborted).toBe(true);
+ await act(async()=>resolve({messages:[item],nextCursor:null}));expect(container.textContent).not.toContain(item.subject);expect(container.textContent).toContain('Mail disconnected');
+});

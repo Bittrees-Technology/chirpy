@@ -70,7 +70,11 @@ separate tracked requirements in the local execution plan.
 
 The Email navigation opens a wallet-owned inbox with folders, pages of up to 25
 messages, plain-text reading, composition and reply drafts. It checks the visible,
-idle reading view every 45 seconds; it does not refresh while composing. Reply
+idle reading view every 45 seconds; it does not refresh while composing. Background
+reads leave controls usable and never overlap. Opening a message, switching folders,
+composing or disconnecting aborts and invalidates the pending poll. Late results and
+errors cannot replace the newer view; current permission failures and expiry still
+clear private content. Reply
 uses the source-validated Reply-To address (or From when absent), a Re: subject,
 and a snapshot of the selected original. Mail requires both read and send access,
 rejects changed originals, and derives bounded In-Reply-To and References headers
