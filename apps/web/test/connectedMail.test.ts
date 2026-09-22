@@ -1,6 +1,6 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {createSiweMessage} from 'viem/siwe';
-import {mailAttachments,downloadMailAttachment,connectMail,mailStatus,mailMessages,mailPage,mailThreadPage,mailThread,mailMessage,mailReceipt,sendMail,replyAddress,MailClientError} from '../src/connectedMail';
+import {mailHtml,mailAttachments,downloadMailAttachment,connectMail,mailStatus,mailMessages,mailPage,mailThreadPage,mailThread,mailMessage,mailReceipt,sendMail,replyAddress,MailClientError} from '../src/connectedMail';
 const mocks=vi.hoisted(()=>({provider:null as any}));
 vi.mock('../src/walletProviders',()=>({getActiveProvider:()=>mocks.provider}));
 const wallet='0x'+'1'.repeat(40);let storage:Map<string,string>;let requests:any[],fetcher:ReturnType<typeof vi.fn>;
@@ -123,4 +123,10 @@ it('rejects unsafe or oversized attachment metadata before downloading',async()=
   await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,{...fileItem,...change})).rejects.toMatchObject({code:'failed'});
  }
  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('validates the selected HTML source and bounded preview flags',async()=>{
+ const id='a'.repeat(64),version='b'.repeat(64),valid={id,sourceVersion:version,html:'<p>Test</p>',bodyAvailable:true,truncated:false};
+ fetcher.mockResolvedValue(Response.json(valid));expect(await mailHtml(wallet,'Sent',id,version)).toEqual({html:valid.html,bodyAvailable:true,truncated:false});
+ for(const change of [{id:'c'.repeat(64)},{sourceVersion:'c'.repeat(64)},{html:'😀'.repeat(4001)},{bodyAvailable:false},{truncated:'false'}]){fetcher.mockResolvedValue(Response.json({...valid,...change}));await expect(mailHtml(wallet,'Sent',id,version)).rejects.toMatchObject({code:'failed'});}
 });

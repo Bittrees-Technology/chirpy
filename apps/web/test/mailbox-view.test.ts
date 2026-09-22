@@ -6,7 +6,7 @@ import {I18nProvider} from '../src/i18n';
 import * as mail from '../src/connectedMail';
 const state=vi.hoisted(()=>({identity:{address:'0x'+'1'.repeat(40)},mode:'wallet'}));
 vi.mock('../src/state',()=>({useIdentity:()=>state}));
-vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailAttachments:vi.fn(),downloadMailAttachment:vi.fn(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailThreadPage:vi.fn(),mailThread:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),sendMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
+vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailHtml:vi.fn(),mailAttachments:vi.fn(),downloadMailAttachment:vi.fn(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailThreadPage:vi.fn(),mailThread:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),sendMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
 let container:HTMLDivElement,root:Root;
 const connection=()=>({mailbox:'fixture@bittrees.org',scopes:['read','send'] as ('read'|'send')[],expiresAt:new Date(Date.now()+3600000).toISOString()});
 const item={id:'a'.repeat(64),from:'Fixture <fixture@bittrees.org>',subject:'Acceptance fixture',date:'Today'};
@@ -195,4 +195,17 @@ it('cancels an attachment transfer without creating a file from a late response'
  const file={id:'1.2',filename:'private.bin',contentType:'application/octet-stream',bytes:3,downloadable:true};
  vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Body',sourceVersion:'b'.repeat(64),replyTo:'',threadedReply:false});vi.mocked(mail.mailAttachments).mockResolvedValue([file]);vi.mocked(mail.downloadMailAttachment).mockImplementation(()=>new Promise(r=>resolve=r));
  await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());await click('Show attachments');await click('Download');await click('Cancel');await act(async()=>resolve({filename:file.filename,bytes:new Uint8Array([1,2,3])}));expect(create).not.toHaveBeenCalled();
+});
+
+it('loads formatting only on request, strips unsafe content and isolates the preview',async()=>{
+ vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Plain body',sourceVersion:'b'.repeat(64),replyTo:'',threadedReply:false});
+ vi.mocked(mail.mailHtml).mockResolvedValue({html:'<h2>Formatted fixture</h2><img src="https://evil.test/pixel"><script>alert(1)</script><a href="https://evil.test">Link</a>',bodyAvailable:true,truncated:true});
+ await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());expect(mail.mailHtml).not.toHaveBeenCalled();expect(container.querySelector('iframe')).toBeNull();
+ await click('View formatting');const frame=container.querySelector('iframe')!;expect(frame).not.toBeNull();expect(frame.getAttribute('sandbox')).toBe('');expect(frame.getAttribute('referrerpolicy')).toBe('no-referrer');expect(frame.srcdoc).toContain('Formatted fixture');expect(frame.srcdoc).not.toContain('evil.test');expect(frame.srcdoc).not.toContain('<script>');expect(container.textContent).toContain('This preview has been shortened.');expect(container.querySelector('pre')).toBeNull();
+ await click('Plain text');expect(container.querySelector('iframe')).toBeNull();expect(container.querySelector('pre')?.textContent).toBe('Plain body');
+});
+it('never mounts a late formatted preview after cancellation or revoked access',async()=>{
+ vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Plain',sourceVersion:'b'.repeat(64),replyTo:'',threadedReply:false});let resolve!:(v:any)=>void;
+ vi.mocked(mail.mailHtml).mockImplementation(()=>new Promise(r=>resolve=r));await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());await click('View formatting');await click('Cancel');await act(async()=>resolve({html:'<p>Late private body</p>',bodyAvailable:true,truncated:false}));expect(container.querySelector('iframe')).toBeNull();
+ vi.mocked(mail.mailHtml).mockRejectedValue(new mail.MailClientError('denied'));await click('View formatting');expect(container.querySelector('iframe')).toBeNull();expect(container.querySelector('pre')).toBeNull();expect(container.textContent).not.toContain('Plain');
 });

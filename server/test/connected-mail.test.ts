@@ -173,3 +173,11 @@ it('attachment relay requires read scope and discards a chunk after disconnect',
   if(scopes[0]==='read'){let once=true;f.onRequest(async()=>{if(once){once=false;await f.api.disconnect(p.session.token);}});await expect(f.api.operation(p.session.token,{wallet,action:'attachment',input:{...selector,part:'1.2',offset:0}})).rejects.toMatchObject({status:401});}
  }
 });
+
+it('HTML relay requires read scope and suppresses a response after disconnect',async()=>{
+ for(const scopes of [['send'],['read']]){
+  const f=fixture();f.grant.scopes=scopes;const p=await f.connected(),input={wallet,action:'html',input:{folder:'Sent',id:'d'.repeat(64),version:'e'.repeat(64)}};
+  if(scopes[0]==='send')await expect(f.api.operation(p.session.token,input)).rejects.toMatchObject({status:403});
+  else{await f.api.operation(p.session.token,input);expect(f.calls.at(-1).body).toEqual(input);let once=true;f.onRequest(async()=>{if(once){once=false;await f.api.disconnect(p.session.token);}});await expect(f.api.operation(p.session.token,input)).rejects.toMatchObject({status:401});}
+ }
+});
