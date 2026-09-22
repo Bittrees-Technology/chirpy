@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {useIdentity} from '../state';
 import {useI18n} from '../i18n';
 import {Button,Field} from '../ui';
-import {MailClientError,mailStatus,connectMail,disconnectMail,mailFolders,mailMessages,mailMessage,sendMail,mailReceipt,clearMailReceipt,validMailDraft,replyAddress,type MailConnection,type MailSummary,type MailMessage,type MailDraft,type MailReceipt} from '../connectedMail';
+import {MailClientError,mailStatus,connectMail,disconnectMail,mailFolders,mailPage,mailMessage,sendMail,mailReceipt,clearMailReceipt,validMailDraft,replyAddress,type MailConnection,type MailSummary,type MailMessage,type MailDraft,type MailReceipt} from '../connectedMail';
 const emptyDraft=():MailDraft=>({to:'',subject:'',text:''});
 export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
  const {identity,mode}=useIdentity(),wallet=identity.address.toLowerCase(),{t}=useI18n();
@@ -11,8 +11,9 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
  const [folders,setFolders]=useState<string[]>([]),[folder,setFolder]=useState('INBOX'),[messages,setMessages]=useState<MailSummary[]>([]),[message,setMessage]=useState<MailMessage|null>(null);
  const [composing,setComposing]=useState(false),[draft,setDraft]=useState(emptyDraft),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [receipt,setReceipt]=useState<MailReceipt|null>(null),[receiptBroken,setReceiptBroken]=useState(false),[checkedSent,setCheckedSent]=useState(false);
+ const [cursors,setCursors]=useState<string[]>([]),[nextCursor,setNextCursor]=useState<string|null>(null);
  const epoch=useRef(0),busyRef=useRef(false),controller=useRef<AbortController|null>(null);
- const clearPrivate=()=>{setMessages([]);setMessage(null);setFolders([]);};
+ const clearPrivate=()=>{setMessages([]);setMessage(null);setFolders([]);setCursors([]);setNextCursor(null);};
  const readReceipt=()=>{try{setReceipt(mailReceipt(wallet));setReceiptBroken(false);}catch{setReceiptBroken(true);}};
  const run=async(fn:(signal:AbortSignal,current:()=>boolean)=>Promise<void>)=>{
   if(busyRef.current)return;busyRef.current=true;setBusy(true);setError('');setNotice('');
@@ -23,7 +24,7 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
    if(code==='unavailable'){clearPrivate();setConnection(null);setPhase('unavailable');}
   }}finally{if(epoch.current===generation){busyRef.current=false;setBusy(false);readReceipt();}}
  };
- const load=async(target:string,signal:AbortSignal,current:()=>boolean)=>{setMessage(null);setMessages([]);const list=await mailMessages(wallet,target,signal);if(current()){setMessages(list);setFolder(target);}};
+ const load=async(target:string,signal:AbortSignal,current:()=>boolean,trail:string[]=[])=>{setMessage(null);const page=await mailPage(wallet,target,trail.at(-1)??null,signal);if(current()){setMessages(page.messages);setNextCursor(page.nextCursor);setCursors(trail);setFolder(target);}};
  const refresh=()=>run(async(signal,current)=>{
   clearPrivate();setConnection(null);setPhase('checking');
   const result=await mailStatus(wallet,signal);if(!current())return;setAuthenticated(true);setConnection(result);setPhase('ready');
@@ -42,12 +43,12 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
  const pending=!!receipt||receiptBroken,canRead=!!connection?.scopes.includes('read'),canSend=!!connection?.scopes.includes('send');
  // Refresh only the visible, idle reading view; never replay a send or disturb a draft.
  useEffect(()=>{
-  if(!canRead||composing)return;
+  if(!canRead||composing||cursors.length)return;
   const timer=setInterval(()=>{if(document.visibilityState!=='visible'||busyRef.current)return;
-   void run(async(signal,current)=>{const list=await mailMessages(wallet,folder,signal);if(current()){setMessages(list);if(message&&!list.some(m=>m.id===message.id))setMessage(null);}});
+   void run(async(signal,current)=>{const page=await mailPage(wallet,folder,null,signal);if(current()){setMessages(page.messages);setNextCursor(page.nextCursor);if(message&&!page.messages.some(m=>m.id===message.id))setMessage(null);}});
   },45000);
   return()=>clearInterval(timer);
- },[canRead,composing,wallet,folder,message]);
+ },[canRead,composing,wallet,folder,message,cursors.length]);
  const selectMessage=(id:string)=>void run(async(signal,current)=>{setMessage(null);setComposing(false);const value=await mailMessage(wallet,folder,id,signal);if(current())setMessage(value);});
  const compose=()=>{setMessage(null);setComposing(true);};
  const reply=()=>{if(!message)return;setDraft({to:replyAddress(message.from),subject:(/^re:/i.test(message.subject)?message.subject:'Re: '+message.subject).slice(0,200),text:''});compose();};
@@ -71,7 +72,8 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
    {(authenticated||phase==='denied')&&<Button onClick={()=>void run(async(signal,current)=>{await disconnectMail(signal);if(current()){setAuthenticated(false);setPhase('signedOut');}})}>{t('mailbox.resetConnection')}</Button>}
   </div>:connection?<div className="mailbox-content">
    {canRead?<aside className="mailbox-list"><Field label={t('mailbox.folder')}><select className="input" value={folder} disabled={busy} onChange={e=>{const target=e.target.value;void run(async(signal,current)=>{setComposing(false);await load(target,signal,current);});}}>{folders.map(f=><option key={f} value={f}>{t('mailbox.folder.'+f,f)}</option>)}</select></Field>
-    <p className="mailbox-list-hint">{t('mailbox.recent')}</p>
+    <p className="mailbox-list-hint">{t(cursors.length?'mailbox.olderHint':'mailbox.recent')}</p>
+    <div className="mailbox-actions">{cursors.length>0&&<Button disabled={busy} onClick={()=>void run(async(signal,current)=>{setComposing(false);await load(folder,signal,current,cursors.slice(0,-1));})}>{t('mailbox.newer')}</Button>}{nextCursor&&<Button disabled={busy} onClick={()=>void run(async(signal,current)=>{setComposing(false);await load(folder,signal,current,[...cursors,nextCursor]);})}>{t('mailbox.older')}</Button>}</div>
     {!messages.length&&!busy&&<p>{t('mailbox.empty')}</p>}
     {messages.map(m=><button className={'mailbox-row'+(message?.id===m.id?' selected':'')} disabled={busy} key={m.id} onClick={()=>selectMessage(m.id)}><strong>{m.subject||t('mailbox.noSubject')}</strong><span>{m.from}</span><time>{m.date}</time></button>)}
    </aside>:<aside className="mailbox-list"><p>{t('mailbox.sendOnly')}</p></aside>}
