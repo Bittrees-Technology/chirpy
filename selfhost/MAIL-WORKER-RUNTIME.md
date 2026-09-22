@@ -62,6 +62,10 @@ backup/recovery and live routing acceptance first. Keep all worker/source enable
 flags off until those checks pass. Never reuse member/gatekeeper state or use this
 runtime check against an existing bridge database.
 
+The disabled Acer installation and its outstanding activation requirements are
+recorded in [the deployment record](MAIL-WORKER-DEPLOYMENT.md). Installing code and
+loading inactive unit definitions does not satisfy delivery acceptance.
+
 ## Connected-mail duration compatibility
 
 Connected mailbox grants are separate from bridge enrollment. The relay accepts
