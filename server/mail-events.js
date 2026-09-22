@@ -19,16 +19,17 @@ export function mailEventConfig(env=process.env) {
   if(!config) return null;
   try {return {...config,webhook:new Webhook(secret)};} catch {return null;}
 }
-export async function readMailEventBody(request) {
+export async function readMailEventBody(request,limit=65536) {
+  if(!Number.isSafeInteger(limit)||limit<1||limit>65536)throw Error('body limit');
   const length=request.headers.get('content-length');
-  if(length!==null && (!/^\d+$/.test(length) || Number(length)>65536)) throw Error('body limit');
+  if(length!==null && (!/^\d+$/.test(length) || Number(length)>limit)) throw Error('body limit');
   if(!request.body) throw Error('body required');
   const reader=request.body.getReader();const chunks=[];let size=0,timedOut=false;
   const timer=setTimeout(()=>{timedOut=true;void reader.cancel().catch(()=>{});},5000);
   try {
     for(;;) {
       const {done,value}=await reader.read();if(done)break;
-      size+=value.byteLength;if(size>65536){void reader.cancel().catch(()=>{});throw Error('body limit');}
+      size+=value.byteLength;if(size>limit){void reader.cancel().catch(()=>{});throw Error('body limit');}
       chunks.push(Buffer.from(value));
     }
     if(timedOut)throw Error('body timeout');
