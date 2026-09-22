@@ -74,6 +74,9 @@
     },
     "api/mail.js": {
       "maxDuration": 30
+    },
+    "api/mail/[action].js": {
+      "maxDuration": 60
     }
   }
 }
