@@ -204,7 +204,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           <button className="btn btn-ghost" type="submit" disabled={moderating || !/^0x[a-fA-F0-9]{40}$/.test(memberAddress.trim())}>{t("push.applyMemberChange")}</button>
         </form>
       </details>}
-      {historyError && <div className="error-banner" role="alert">{historyError}</div>}
+      {historyError && <div className="error-banner" role="alert">{translateStatus(t, historyError)}</div>}
       {configurationError && <div className="error-banner" role="alert">{t("thread.invalidRoom", "Room configuration is invalid or unsupported. Ask an administrator to repair it.")}</div>}
 
       {!isRoom && peerAddress?.toLowerCase() !== selfAddress && <div className="join-banner dm-controls">

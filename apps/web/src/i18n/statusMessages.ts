@@ -1,5 +1,6 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "Push took too long. Enable rooms again. A submitted action may have completed; check history or membership before retrying.": "status.pushTimeout",
   "Your display name could not be saved. Restore browser storage access and try again.": "settings.profileSaveError",
   "Use a display name of at most 80 characters without control characters.": "settings.profileLabelError",
   "Settings could not be saved or safely read. Existing browser data was kept. Restore storage access and reload before retrying.": "settings.storageError",

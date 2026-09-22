@@ -42,6 +42,7 @@ async function initializeSdk(signer: PushSigner): Promise<RawPushClient> {
 export class PushSessionChangedError extends Error {
   constructor() { super('The wallet connection changed or could not be verified. Enable rooms again. An action already sent to Push may have completed; check history or membership before retrying.'); }
 }
+export const PUSH_TIMEOUT_MESSAGE = 'Push took too long. Enable rooms again. A submitted action may have completed; check history or membership before retrying.';
 const events = ['accountsChanged', 'chainChanged', 'disconnect', 'session_delete'];
 function chainNumber(value: unknown): number {
   if (typeof value !== 'string' || !/^0x[0-9a-f]+$/i.test(value)) throw new PushSessionChangedError();
@@ -97,6 +98,22 @@ export class PushRoomSession {
       throw new PushSessionChangedError();
     }
   }
+  // A deadline releases the caller and invalidates this generation. It cannot cancel
+  // SDK requests already dispatched; late results must pass the generation guard.
+  #bounded<T>(revision: number, task: Promise<T>, milliseconds: number): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        if (revision !== this.#snapshot.revision || this.#disposed) {
+          reject(new PushSessionChangedError()); return;
+        }
+        this.invalidate();
+        this.#publish('error', PUSH_TIMEOUT_MESSAGE);
+        reject(new Error(PUSH_TIMEOUT_MESSAGE));
+      }, milliseconds);
+    });
+    return Promise.race([task, deadline]).finally(() => clearTimeout(timer));
+  }
   async #check(revision: number, expectedChain?: number): Promise<number> {
     this.#ensure(revision);
     try {
@@ -120,9 +137,9 @@ export class PushRoomSession {
     // Even an existing facade must check the actual wallet before reporting ready.
     if (this.#client) {
       const client = this.#client;
-      return this.#check(revision, this.#chain).then(() => { this.#ensure(revision); return client; });
+      return this.#bounded(revision, this.#check(revision, this.#chain).then(() => { this.#ensure(revision); return client; }), 10_000);
     }
-    const operation = Promise.resolve().then(async () => {
+    const operation = this.#bounded(revision, Promise.resolve().then(async () => {
       const chain = await this.#check(revision);
       const wallet = createWalletClient({ account: this.#owner, transport: custom(this.provider) });
       const checkAccount = (account: unknown) => {
@@ -165,7 +182,7 @@ export class PushRoomSession {
         throw new Error('Push did not recover room keys for this wallet.');
       }
       const slot = { raw: raw as RawPushClient | null }; this.#slot = slot;
-      const method = (path: string[]): Method => async (...args) => {
+      const method = (path: string[]): Method => (...args) => this.#bounded(revision, (async () => {
         await check(); this.#ensure(revision);
         if (!slot.raw) throw new PushSessionChangedError();
         let receiver: any = slot.raw;
@@ -179,7 +196,7 @@ export class PushRoomSession {
           await check();
           throw new Error('Push could not complete this room action. Refresh history or membership before retrying.');
         }
-      };
+      })(), 30_000);
       const group = (name: string) => method(['chat', 'group', name]);
       const client: PushRoomClient = {
         history: method(['chat', 'history']), send: method(['chat', 'send']), info: group('info'),
@@ -197,7 +214,7 @@ export class PushRoomSession {
       }
       this.#ensure(revision);
       throw new Error('Rooms could not be enabled. Check your wallet and try again.');
-    }).finally(() => { if (this.#pending === operation) this.#pending = null; });
+    }), 120_000).finally(() => { if (this.#pending === operation) this.#pending = null; });
     this.#pending = operation; this.#publish('enabling'); return operation;
   }
 }

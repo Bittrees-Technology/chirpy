@@ -47,6 +47,7 @@ export class PushRooms {
   #disposed = false;
   #epoch = 0;
   #registryRequest = 0;
+  #catalogError: string | undefined;
   #roomRequests = new Map<string, number>();
   #abort: AbortController | null = null;
   #stop: () => void;
@@ -65,8 +66,10 @@ export class PushRooms {
   subscribe = (listener: () => void) => { this.#listeners.add(listener); return () => { this.#listeners.delete(listener); }; };
   #publish(extra: Partial<Pick<PushRoomsSnapshot, 'loading' | 'error'>> = {}) {
     if (this.#disposed) return;
+    if (Object.prototype.hasOwnProperty.call(extra, 'error')) this.#catalogError = extra.error;
     this.#snapshot = {
-      ...this.#snapshot, ...extra, revision: this.#snapshot.revision + 1,
+      ...this.#snapshot, ...extra,
+      error: this.session?.getSnapshot().error ?? this.#catalogError, revision: this.#snapshot.revision + 1,
       status: this.session?.getSnapshot().status ?? 'idle',
       rooms: (this.#catalog?.rooms ?? []).map(room => {
         const state = this.#details.get(room.id);

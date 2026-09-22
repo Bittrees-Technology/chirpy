@@ -4,6 +4,7 @@ import { useChat, useIdentity } from "../state";
 import { Avatar, Empty, fmtTime } from "../ui";
 import { nameFor, useEnsProfiles } from "../useEns";
 import { useI18n } from "../i18n";
+import { translateStatus } from "../i18n/statusMessages";
 
 export function ConversationColumn(
   { title, mode, onNewDm, onNewRoom, needsConnect, onOpenSettings, onOpenConversation, onLocalData }:
@@ -100,7 +101,7 @@ export function ConversationColumn(
             <span role="status">{t(`push.status.${pushStatus}`)}</span>
             {pushStatus !== "ready" && <button className="btn btn-ghost btn-sm" disabled={pushStatus === "enabling"} onClick={() => { void enablePushRooms().catch(() => {}); }}>{t("push.connect")}</button>}
             <button className="btn btn-ghost btn-sm" disabled={pushLoading} onClick={() => { void refreshPushRooms().catch(() => {}); }}>{t("push.refreshRooms")}</button>
-            {pushError && <div role="alert" className="error-banner">{pushError}</div>}
+            {pushError && <div role="alert" className="error-banner">{translateStatus(t, pushError)}</div>}
           </>}
         </div>}
         {!isRooms && (
