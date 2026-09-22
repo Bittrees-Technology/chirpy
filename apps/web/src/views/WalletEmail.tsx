@@ -1,15 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useIdentity } from '../state';
 import { useI18n } from '../i18n';
 import { Button, Field } from '../ui';
 import { mailEndpoint, submitWalletEmail } from '../walletEmail';
 import { normalizeMailAddress, type MailCommand } from '../../../../packages/core/src/mailAuth.js';
+import { getProviderRevision, subscribeProvider } from '../walletProviders';
 
 export function WalletEmail() {
+  const {identity,mode}=useIdentity();
+  const revision=useSyncExternalStore(subscribeProvider,getProviderRevision);
+  return <WalletEmailSession key={`${identity.address.toLowerCase()}:${mode}:${revision}`} />;
+}
+
+function WalletEmailSession() {
   const {identity,mode}=useIdentity(); const {t}=useI18n();
   const [enabled,setEnabled]=useState(false);
   const [to,setTo]=useState(''); const [subject,setSubject]=useState(''); const [text,setText]=useState('');
   const [pending,setPending]=useState<MailCommand|null>(null);
+  const operation=useRef<AbortController|null>(null);
+  useEffect(()=>()=>operation.current?.abort(),[]);
   const receiptKey=`chirpy:mail-receipt:${identity.address.toLowerCase()}`;
   const [receipt,setReceipt]=useState(()=>{try{return localStorage.getItem(receiptKey)||'';}catch{return '';}}); const [status,setStatus]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState(false);
   useEffect(()=>{try{if(receipt)localStorage.setItem(receiptKey,receipt);else localStorage.removeItem(receiptKey);}catch{/* The visible ID remains available for manual recovery. */}},[receipt,receiptKey]);
@@ -21,7 +30,8 @@ export function WalletEmail() {
   },[]);
   const valid=!!normalizeMailAddress(to.trim()) && !!subject.trim() && subject.length<=120 && !/[\x00-\x1f\x7f]/.test(subject) && !!text.trim() && new TextEncoder().encode(text).length<=16384;
   const run=async(action:'send'|'status')=>{
-    if(busy || mode!=='wallet') return;
+    if(operation.current || mode!=='wallet') return;
+    const controller=new AbortController();operation.current=controller;
     setBusy(true);setError(false);
     try {
       const base={service:mailEndpoint().service,wallet:identity.address.toLowerCase(),expiresAt:Date.now()+300000};
@@ -32,9 +42,10 @@ export function WalletEmail() {
         setPending(command);setReceipt(command.id);
       }
       setStatus('authorizing');
-      const result=await submitWalletEmail(command);setStatus(result.status);
-    } catch {setError(true);setStatus('uncertain');}
-    finally {setBusy(false);}
+      const result=await submitWalletEmail(command,controller.signal);
+      if(!controller.signal.aborted)setStatus(result.status);
+    } catch {if(!controller.signal.aborted){setError(true);setStatus('uncertain');}}
+    finally {operation.current=null;if(!controller.signal.aborted)setBusy(false);}
   };
   const terminal=['accepted','stopped','denied','unknown','limited'].includes(status);
   return <div className="card">
