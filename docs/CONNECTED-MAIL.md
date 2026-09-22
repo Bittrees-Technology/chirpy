@@ -65,3 +65,28 @@ edge path, runtime key/configuration, browser cookie/callback behavior, consenti
 live read/send/receive/revoke, contract wallet and native handoffs. Verified
 wallet↔email routing, lifecycle/retention policy, monitoring and release gates remain
 separate tracked requirements in the local execution plan.
+
+## Chat Email view
+
+The Email navigation opens a wallet-owned inbox with folders, the latest 25
+messages, plain-text reading, composition and reply drafts. It checks the visible,
+idle reading view every 45 seconds; it does not refresh while composing. Reply
+creates a message to the displayed sender with a Re: subject; RFC reply threading,
+attachments, older-message pagination and HTML rendering are not implemented.
+
+Connect Mail validates the exact scoped SIWE message before asking the selected
+wallet to sign, then navigates to Mail for separate read/send consent. The callback
+opens Email. Connection status displays only mailbox, scopes and expiry. Disconnect
+clears local content and the server session, and tells the user if source revocation
+could not be confirmed. Expiry, revoked access and wallet changes discard private
+results. Chirpy and native origins link to canonical Chat for this browser flow;
+this does not verify native mailbox integration or legacy-origin migration.
+
+Draft content stays in memory and clears on leaving Email. A pending send stores
+only a random receipt ID and timestamp in wallet-keyed local storage before dispatch.
+Web Locks coordinate receipt allocation across tabs; unavailable storage or locks
+blocks sending. Errors, cancellation and account changes preserve that receipt.
+There is no automatic resend. Users must check Sent and explicitly acknowledge
+possible delayed delivery before clearing the warning. Receipt IDs pass unchanged
+to the source connector idempotency ledger. This is not cross-device draft or send
+coordination. Live integrated acceptance remains required before launch/forwarding.

@@ -43,7 +43,7 @@ export function createConnectedMailHandler({config=action=>connectedMailConfig(p
     await api.callback(session,input);res.setHeader('Location',CHAT_ORIGIN+'/?mail=connected');return res.status(303).end();
    }
    if(action==='operation')return res.status(200).json(await api.operation(session,input));
-   exactMailInput(input,[]);const result=await api.disconnect(session);
+   exactMailInput(input,[]);const result=/^[a-f0-9]{64}$/.test(session)?await api.disconnect(session):{ok:true,sourceRevoked:true};
    res.setHeader('Set-Cookie',setCookie('session','',0));return res.status(200).json(result);
   }catch(e){return res.status(e instanceof ConnectedMailError?e.status:503).json({error:e instanceof ConnectedMailError?e.message:'Mail connection is unavailable. If sending, check Sent before retrying.'});}
  };

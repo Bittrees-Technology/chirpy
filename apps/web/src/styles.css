@@ -316,3 +316,16 @@ input, textarea, select { font-family: inherit; }
 .push-members li { overflow-wrap: anywhere; }
 
 .push-identity { font-size: 12px; overflow-wrap: anywhere; max-width: 100%; }
+
+/* Connected Mail reuses Chat's list/reading hierarchy and theme. */
+.mailbox{width:100%;min-width:0;overflow:auto;padding:24px;font-size:16px}
+.mailbox-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.mailbox-header h1{margin:0;font-size:24px}.mailbox-header p{margin:8px 0;overflow-wrap:anywhere}
+.mailbox-actions{display:flex;gap:8px;flex-wrap:wrap}.mailbox-notice{color:var(--muted);line-height:1.6;max-width:80ch}
+.mailbox-alert{color:var(--danger);line-height:1.6}.mailbox-pending{border:1px solid var(--accent);padding:16px;margin:16px 0;max-width:80ch}.mailbox-pending label{display:block;margin:12px 0}.mailbox-pending input{margin-right:8px}
+.mailbox-content{display:grid;grid-template-columns:minmax(240px,320px) minmax(0,1fr);border-top:1px solid var(--line);margin-top:20px;min-height:60vh}
+.mailbox-list{padding:16px 16px 16px 0;border-right:1px solid var(--line);min-width:0}.mailbox-list-hint{font-size:14px;color:var(--muted)}
+.mailbox-row{display:flex;flex-direction:column;gap:6px;width:100%;padding:14px 12px;text-align:left;border:0;border-bottom:1px solid var(--line-light);background:var(--bg);color:var(--text);font-size:14px;overflow-wrap:anywhere}
+.mailbox-row:hover,.mailbox-row.selected{background:var(--bg-2)}.mailbox-row time{color:var(--muted)}.mailbox-row strong{font-size:16px}.mailbox-detail{padding:20px;min-width:0}.mailbox-detail h2,.mailbox-detail p{overflow-wrap:anywhere}.mailbox-detail form{max-width:70ch}.mailbox-body{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.65;max-width:80ch;margin:24px 0}.mailbox-empty{padding:24px 0;max-width:65ch}.mailbox-empty p{line-height:1.6}.mailbox button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:1000px){.mailbox-content{grid-template-columns:minmax(200px,260px) minmax(0,1fr)}}
+@media(max-width:700px){.mailbox{padding:16px}.mailbox-content{grid-template-columns:1fr}.mailbox-list{border-right:0;padding:16px 0;max-height:38vh;overflow:auto;border-bottom:1px solid var(--line)}.mailbox-detail{padding:16px 0}.mailbox-actions{width:100%}}
