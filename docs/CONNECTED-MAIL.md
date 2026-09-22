@@ -101,3 +101,6 @@ There is no automatic resend. Users must check Sent and explicitly acknowledge
 possible delayed delivery before clearing the warning. Receipt IDs pass unchanged
 to the source connector idempotency ledger. This is not cross-device draft or send
 coordination. Live integrated acceptance remains required before launch/forwarding.
+
+
+Attachment downloads use the existing explicit read grant. Chat requests an attachment index only when the user selects Show attachments, then fetches a selected file in 12 KiB chunks bound to the actual folder, message ID, source version and MIME part. Every chunk passes current source authority checks; late results are discarded after expiry, disconnect, wallet change or cancellation. The client verifies stable metadata and a whole-file SHA-256 before creating an explicit application/octet-stream download. No content is auto-opened or fetched remotely. Limits are 20 attachments, 256 KiB per downloadable file and 512 KiB per source message; oversized or attached multipart messages remain explicitly unsupported. HTML previews and outgoing attachments remain unfinished.

@@ -6,7 +6,7 @@ import {I18nProvider} from '../src/i18n';
 import * as mail from '../src/connectedMail';
 const state=vi.hoisted(()=>({identity:{address:'0x'+'1'.repeat(40)},mode:'wallet'}));
 vi.mock('../src/state',()=>({useIdentity:()=>state}));
-vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailThreadPage:vi.fn(),mailThread:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),sendMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
+vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailAttachments:vi.fn(),downloadMailAttachment:vi.fn(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailThreadPage:vi.fn(),mailThread:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),sendMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
 let container:HTMLDivElement,root:Root;
 const connection=()=>({mailbox:'fixture@bittrees.org',scopes:['read','send'] as ('read'|'send')[],expiresAt:new Date(Date.now()+3600000).toISOString()});
 const item={id:'a'.repeat(64),from:'Fixture <fixture@bittrees.org>',subject:'Acceptance fixture',date:'Today'};
@@ -175,4 +175,24 @@ it('late conversation results cannot appear after wallet changes',async()=>{
  await conversations();let resolve!:(v:mail.MailThreadPage)=>void;vi.mocked(mail.mailThread).mockImplementationOnce(()=>new Promise(r=>resolve=r));await openConversation();
  state.identity={address:'0x'+'2'.repeat(40)};vi.mocked(mail.mailStatus).mockResolvedValue(null);await render();
  await act(async()=>resolve({id:threadId,version:threadVersion,count:1,messages:[member],nextCursor:null}));expect(container.textContent).not.toContain(item.subject);expect(mail.mailMessage).not.toHaveBeenCalled();
+});
+
+it('downloads only an explicitly selected attachment with the source member folder and version',async()=>{
+ vi.useFakeTimers();const create=vi.fn(()=> 'blob:fixture'),revoke=vi.fn();vi.stubGlobal('URL',Object.assign(class extends URL {},{createObjectURL:create,revokeObjectURL:revoke}));
+ const anchor=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
+ const version='b'.repeat(64),file={id:'1.2',filename:'fixture.bin',contentType:'application/octet-stream',bytes:3,downloadable:true};
+ vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),scopes:['read']});vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Body',sourceVersion:version,replyTo:'fixture@bittrees.org',threadedReply:true});
+ vi.mocked(mail.mailAttachments).mockResolvedValue([file]);vi.mocked(mail.downloadMailAttachment).mockResolvedValue({filename:file.filename,bytes:new Uint8Array([1,2,3])});
+ try{
+  await render();await act(async()=>container.querySelector<HTMLSelectElement>('select')!.value='Sent');await act(async()=>container.querySelector('select')!.dispatchEvent(new Event('change',{bubbles:true})));
+  await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());expect(mail.mailAttachments).not.toHaveBeenCalled();await click('Show attachments');expect(mail.downloadMailAttachment).not.toHaveBeenCalled();
+  expect(container.textContent).toContain(file.filename);await click('Download');expect(mail.downloadMailAttachment).toHaveBeenCalledWith(state.identity.address,'Sent',item.id,version,file,expect.any(AbortSignal));expect(anchor).toHaveBeenCalledTimes(1);expect(create).toHaveBeenCalledTimes(1);expect(create.mock.calls[0][0].type).toBe('application/octet-stream');
+  await act(async()=>vi.advanceTimersByTimeAsync(30000));expect(revoke).toHaveBeenCalledWith('blob:fixture');
+ }finally{anchor.mockRestore();}
+});
+it('cancels an attachment transfer without creating a file from a late response',async()=>{
+ const create=vi.fn();vi.stubGlobal('URL',Object.assign(class extends URL {},{createObjectURL:create}));let resolve!:(v:any)=>void;
+ const file={id:'1.2',filename:'private.bin',contentType:'application/octet-stream',bytes:3,downloadable:true};
+ vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Body',sourceVersion:'b'.repeat(64),replyTo:'',threadedReply:false});vi.mocked(mail.mailAttachments).mockResolvedValue([file]);vi.mocked(mail.downloadMailAttachment).mockImplementation(()=>new Promise(r=>resolve=r));
+ await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());await click('Show attachments');await click('Download');await click('Cancel');await act(async()=>resolve({filename:file.filename,bytes:new Uint8Array([1,2,3])}));expect(create).not.toHaveBeenCalled();
 });

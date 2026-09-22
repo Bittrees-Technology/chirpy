@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {useIdentity} from '../state';
 import {useI18n} from '../i18n';
 import {Button,Field} from '../ui';
-import {MailClientError,mailStatus,connectMail,disconnectMail,mailFolders,mailPage,mailThreadPage,mailThread,mailMessage,sendMail,mailReceipt,clearMailReceipt,validMailDraft,replyAddress,type MailThreadSummary,type MailThreadPage,type MailConnection,type MailSummary,type MailMessage,type MailDraft,type MailReceipt} from '../connectedMail';
+import {MailClientError,mailAttachments,downloadMailAttachment,type MailAttachment,mailStatus,connectMail,disconnectMail,mailFolders,mailPage,mailThreadPage,mailThread,mailMessage,sendMail,mailReceipt,clearMailReceipt,validMailDraft,replyAddress,type MailThreadSummary,type MailThreadPage,type MailConnection,type MailSummary,type MailMessage,type MailDraft,type MailReceipt} from '../connectedMail';
 const emptyDraft=():MailDraft=>({to:'',subject:'',text:''});
 export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
  const {identity,mode}=useIdentity(),wallet=identity.address.toLowerCase(),{t}=useI18n();
@@ -13,9 +13,11 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
  const [receipt,setReceipt]=useState<MailReceipt|null>(null),[receiptBroken,setReceiptBroken]=useState(false),[checkedSent,setCheckedSent]=useState(false);
  const [mailView,setMailView]=useState<'messages'|'conversations'>('messages'),[threads,setThreads]=useState<MailThreadSummary[]>([]);
  const [conversation,setConversation]=useState<(MailThreadPage&{trail:string[]})|null>(null),[messageFolder,setMessageFolder]=useState('INBOX');
+ const [attachments,setAttachments]=useState<{key:string;items:MailAttachment[]}|null>(null);
+ const attachmentKey=message?messageFolder+':'+message.id+':'+message.sourceVersion:'';
  const [cursors,setCursors]=useState<string[]>([]),[nextCursor,setNextCursor]=useState<string|null>(null);
  const epoch=useRef(0),busyRef=useRef(false),pollingRef=useRef(false),controller=useRef<AbortController|null>(null);
- const clearPrivate=()=>{setThreads([]);setConversation(null);setMessages([]);setMessage(null);setFolders([]);setCursors([]);setNextCursor(null);};
+ const clearPrivate=()=>{setAttachments(null);setThreads([]);setConversation(null);setMessages([]);setMessage(null);setFolders([]);setCursors([]);setNextCursor(null);};
  const readReceipt=()=>{try{setReceipt(mailReceipt(wallet));setReceiptBroken(false);}catch{setReceiptBroken(true);}};
  const cancelPoll=()=>{if(pollingRef.current){epoch.current++;controller.current?.abort();pollingRef.current=false;}};
  const run=async(fn:(signal:AbortSignal,current:()=>boolean)=>Promise<void>,background=false)=>{
@@ -35,7 +37,7 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
   else{const page=await mailPage(wallet,target,trail.at(-1)??null,signal);if(current()){setMessages(page.messages);setNextCursor(page.nextCursor);}}
   if(current()){setCursors(trail);setFolder(target);setMailView(view);}
  };
- const readMessage=async(sourceFolder:string,id:string,signal:AbortSignal,current:()=>boolean)=>{setMessage(null);const value=await mailMessage(wallet,sourceFolder,id,signal);if(current()){setMessage(value);setMessageFolder(sourceFolder);}};
+ const readMessage=async(sourceFolder:string,id:string,signal:AbortSignal,current:()=>boolean)=>{setAttachments(null);setMessage(null);const value=await mailMessage(wallet,sourceFolder,id,signal);if(current()){setMessage(value);setMessageFolder(sourceFolder);}};
  const loadConversation=async(id:string,signal:AbortSignal,current:()=>boolean,trail:string[]=[])=>{
   setMessage(null);const page=await mailThread(wallet,folder,id,trail.at(-1)??null,signal);if(!current())return;
   if(page.nextCursor&&trail.includes(page.nextCursor)||trail.length&&conversation?.version!==page.version)throw new MailClientError('pageChanged');
@@ -107,7 +109,7 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
      <Field label={t('mailbox.subject')}><input className="input" value={draft.subject} maxLength={200} disabled={busy||pending} onChange={e=>setDraft({...draft,subject:e.target.value})}/></Field>
      <Field label={t('mailbox.message')}><textarea className="input" rows={12} value={draft.text} required disabled={busy||pending} onChange={e=>setDraft({...draft,text:e.target.value})}/></Field>
      <p>{t('mailbox.draftHint')}</p><Button type="submit" variant="primary" disabled={busy||pending||!canSend||!validMailDraft(draft)}>{t('mailbox.send')}</Button>
-    </form>:message?<article><h2>{message.subject||t('mailbox.noSubject')}</h2><p>{message.from}</p><time>{message.date}</time><p className="mailbox-notice">{t('mailbox.previewLimit')} <a href="https://mail.bittrees.org/" target="_blank" rel="noreferrer">{t('mailbox.openMailbox')}</a></p><pre className="mailbox-body">{message.text}</pre>{message.sourceVersion&&!message.threadedReply&&<p className="mailbox-notice">{t('mailbox.unthreadedReply')}</p>}<Button disabled={busy||!canSend||pending||!(message.replyTo??replyAddress(message.from))} onClick={reply}>{t('mailbox.reply')}</Button></article>:<div className="mailbox-empty"><h2>{t('mailbox.select')}</h2><p>{t(canRead?'mailbox.selectHint':'mailbox.sendOnly')}</p></div>}
+    </form>:message?<article><h2>{message.subject||t('mailbox.noSubject')}</h2><p>{message.from}</p><time>{message.date}</time><p className="mailbox-notice">{t('mailbox.previewLimit')} <a href="https://mail.bittrees.org/" target="_blank" rel="noreferrer">{t('mailbox.openMailbox')}</a></p><pre className="mailbox-body">{message.text}</pre>{message.sourceVersion&&<section className="mailbox-attachments" aria-label={t('mailbox.attachments')}><h3>{t('mailbox.attachments')}</h3><p className="mailbox-notice">{t('mailbox.attachmentHint')}</p>{attachments?.key!==attachmentKey?<Button disabled={busy||!canRead} onClick={()=>void run(async(signal,current)=>{const items=await mailAttachments(wallet,messageFolder,message.id,message.sourceVersion!,signal);if(current())setAttachments({key:attachmentKey,items});})}>{t('mailbox.showAttachments')}</Button>:attachments.items.length?<ul>{attachments.items.map(item=><li key={item.id}><span>{item.filename}{item.bytes!==null?' · '+item.bytes+' B':''}</span> {item.downloadable?<Button disabled={busy||!canRead} onClick={()=>void run(async(signal,current)=>{const result=await downloadMailAttachment(wallet,messageFolder,message.id,message.sourceVersion!,item,signal);if(!current())return;const url=URL.createObjectURL(new Blob([result.bytes],{type:'application/octet-stream'}));const anchor=document.createElement('a');anchor.href=url;anchor.download=result.filename;document.body.append(anchor);try{anchor.click();setNotice('downloadReady');}finally{anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}})}>{t('mailbox.download')}</Button>:<span>{t('mailbox.attachmentUnsupported')}</span>}</li>)}</ul>:<p>{t('mailbox.noAttachments')}</p>}</section>}{message.sourceVersion&&!message.threadedReply&&<p className="mailbox-notice">{t('mailbox.unthreadedReply')}</p>}<Button disabled={busy||!canSend||pending||!(message.replyTo??replyAddress(message.from))} onClick={reply}>{t('mailbox.reply')}</Button></article>:<div className="mailbox-empty"><h2>{t('mailbox.select')}</h2><p>{t(canRead?'mailbox.selectHint':'mailbox.sendOnly')}</p></div>}
    </div>
   </div>:null}
  </section>;
