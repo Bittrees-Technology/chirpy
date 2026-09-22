@@ -248,3 +248,19 @@ test('hides cached private history when a member-list request discovers revoked 
   await expect(page.getByText('Preserved Push history', { exact: true })).toHaveCount(0);
   await expect(page.getByText('No messages yet', { exact: true })).toHaveCount(0);
 });
+test('a stalled send expires, keeps its draft and cannot complete into the fresh session', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.clock.install();
+  await page.evaluate(() => { (window as any).__pushFixture.hold.send = true; });
+  await page.getByRole('textbox', { name: 'Write a message' }).fill('Timed out draft');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__pushFixture.pending.send?.length ?? 0)).toBe(1);
+  await page.clock.fastForward(30_001);
+  await expect(page.locator('.thread-title')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toContainText('Push took too long');
+  await page.locator('.list-item', { hasText: 'shareholders' }).click(); await enable(page);
+  await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('Timed out draft');
+  await page.evaluate(() => (window as any).__pushFixture.release('send'));
+  await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('Timed out draft');
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send').length)).toBe(1);
+});
