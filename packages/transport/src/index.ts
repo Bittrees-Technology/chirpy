@@ -5,6 +5,8 @@ import type { Transport } from "./types.js";
 
 export * from "./types.js";
 export * from "./pushRegistry.js";
+export { PushRoomSession, PushSessionChangedError } from "./pushSession.js";
+export type { PushRoomClient, PushSessionSnapshot, PushWalletProvider } from "./pushSession.js";
 export { MockTransport } from "./mock.js";
 export { XmtpTransport } from "./xmtp.js";
 

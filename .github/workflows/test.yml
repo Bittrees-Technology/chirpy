@@ -40,6 +40,8 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm e2e
+      - name: Push SDK browser compatibility and session hardening
+        run: pnpm e2e:push-runtime
 
   gate-container:
     runs-on: ubuntu-latest
