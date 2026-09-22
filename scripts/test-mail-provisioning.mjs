@@ -1,6 +1,6 @@
 // Explicit disposable XMTP dev drill. Never accepts a production network or
 // existing identity/database. No email, member wallet or message is involved.
-import {mkdtempSync,readFileSync,rmSync,realpathSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync,realpathSync,renameSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -10,6 +10,8 @@ if(process.platform!=='linux'||Number(process.versions.node.split('.')[0])!==24|
 const app=realpathSync(resolve(process.argv[3]));
 const {provisionInboundSender}=await import(pathToFileURL(join(app,'server/inbound-provisioning.js')).href);
 const {InboundSendJournal}=await import(pathToFileURL(join(app,'server/inbound-send-journal.js')).href);
+const {captureInboundSnapshot,verifyInboundSnapshot,SNAPSHOT_MANIFEST}=await import(pathToFileURL(join(app,'server/inbound-snapshot.js')).href);
+const {RECOVERY_QUARANTINE}=await import(pathToFileURL(join(app,'server/inbound-state-lock.js')).href);
 const {inboundSenderIdentity}=await import(pathToFileURL(join(app,'server/inbound-xmtp-sender.js')).href);
 const root=realpathSync(mkdtempSync(join(tmpdir(),'chat-mail-provision-dev-')));
 let complete=false;
@@ -20,6 +22,17 @@ try{
  if(config.enabled!==false||config.network!=='dev'||Object.hasOwn(config,'privateKey'))throw Error('Unexpected installed configuration');
  const journal=new InboundSendJournal(config.directory,inboundSenderIdentity(config));
  if(journal.inspect().blocked)throw Error('Unexpected journal guard');journal.close();
+ const backup=join(root,'backup'),snapshot=captureInboundSnapshot(config.directory,backup);
+ verifyInboundSnapshot(backup,snapshot.manifestSha256);
+ // Dev-only disaster simulation: the exact newly generated, unused source is
+ // removed before its backup moves to the original identity-bound path. Never
+ // perform this reset on production or on a sender with any publication attempt.
+ if(config.directory!==join(root,'sender')||config.network!=='dev')throw Error('Not an owned dev fixture');
+ rmSync(config.directory,{recursive:true,force:true});renameSync(backup,config.directory);
+ verifyInboundSnapshot(config.directory,snapshot.manifestSha256);
+ rmSync(join(config.directory,RECOVERY_QUARANTINE));rmSync(join(config.directory,SNAPSHOT_MANIFEST));
+ const restored=new InboundSendJournal(config.directory,inboundSenderIdentity(config));
+ if(restored.inspect().blocked)throw Error('Restored journal mismatch');restored.close();
  // A separate process proves the closed installed database can reopen without
  // the wallet signer, re-registration, device sync or publication methods.
  const reopened=spawnSync(process.execPath,['--input-type=module','-e',`
@@ -38,7 +51,7 @@ try{
  let refused=false;try{await provisionInboundSender(request);}catch{refused=true;}
  if(!refused)throw Error('Existing identity was reused');
  complete=true;
- console.log('Fresh XMTP dev registration, installed database reopen, matching journal and no-resume guard passed. No messages sent.');
+ console.log('Fresh XMTP dev registration, quarantined backup verification, restored database reopen, matching journal and no-resume guard passed. No messages sent.');
 }finally{
  // This is disposable, newly generated dev-only state. Production setup never
  // deletes its reservation, identity, journal or failed state automatically.
