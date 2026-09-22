@@ -75,7 +75,7 @@ function Sidebar(
         <div className="sidebar-foot">
           <Avatar id={identity.address} label={identity.handle} size={30} />
           <div className="foot-meta">
-            <div className="foot-name">{identity.handle}</div>
+            <div className="foot-name">{identity.handle?.trim() || shortAddr(identity.address)}</div>
             <div className="foot-addr">{shortAddr(identity.address)}</div>
           </div>
         </div>

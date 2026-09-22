@@ -12,6 +12,7 @@ import { createRefreshQueue } from "./refreshQueue";
 import { MAX_SAVED_ORGANIZATIONS, ORGANIZATIONS_KEY, loadOrganizationStore } from "./orgStorage";
 import { APP_NAME, DEFAULT_TRANSPORT } from "./app.config";
 import { resolveEns, type EnsRecord } from "./ens";
+import { walletLabel, saveWalletLabel } from "./walletProfile";
 import {
   clearActiveProvider,
   connectWalletConnect as connectWalletConnectProvider,
@@ -65,6 +66,7 @@ interface IdentityCtx {
   ensProfile: EnsRecord | null;
   walletError: string | null;
   setHandle: (h: string) => void;
+  resetHandle: () => void;
   reset: () => void;
   connectWallet: () => Promise<void>;
   connectWalletConnect: () => Promise<void>;
@@ -78,7 +80,7 @@ const WALLET_PROVIDER_KIND_KEY = "chat:walletProviderKind:v1";
 const normalizeAddress = (address: string) => address.trim();
 const identityFromWallet = (address: string, profile?: EnsRecord | null): Identity => ({
   address: normalizeAddress(address),
-  handle: profile?.displayName ?? profile?.name ?? undefined,
+  handle: walletLabel(address) ?? profile?.displayName ?? profile?.name ?? undefined,
 });
 
 export function IdentityProvider({ children }: { children: React.ReactNode }) {
@@ -231,9 +233,21 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     ensProfile,
     walletError,
     setHandle: (h) => {
-      const handle = h.trim() || "you";
-      if (mode === "wallet") setWalletIdentity((p) => (p ? { ...p, handle } : p));
-      else setStubIdentity((p) => ({ ...p, handle }));
+      if (mode === "wallet") {
+        try {
+          saveWalletLabel(identity.address, h);
+          setWalletIdentity((p) => (p ? { ...p, handle: h } : p));
+          setWalletError(null);
+        } catch (error) { setWalletError((error as Error).message); }
+      } else setStubIdentity((p) => ({ ...p, handle: h }));
+    },
+    resetHandle: () => {
+      if (mode !== "wallet") return;
+      try {
+        saveWalletLabel(identity.address, undefined);
+        setWalletIdentity(identityFromWallet(identity.address, ensProfile));
+        setWalletError(null);
+      } catch (error) { setWalletError((error as Error).message); }
     },
     reset: () => setStubIdentity({ address: randAddr(), handle: "you" }),
     connectWallet: async () => {
