@@ -105,6 +105,29 @@ Revocation stops queued work and later attempts; an in-flight email cannot be
 recalled. The composer locks request content during retries and keeps the request
 ID available for signed status checks after reload.
 
+Before opening a send signature, the browser reserves the request ID in a
+wallet-and-service-scoped recovery record under a Web Lock and verifies the write.
+Missing locks, unreadable/malformed records, failed writes and a competing active
+reservation prevent submission. Retries require the same active ID and content
+fingerprint; only signature expiry may change. The record contains IDs and
+fingerprints, not raw recipients, subjects or bodies. Fingerprints are not anonymous
+data. Existing `chirpy:mail-receipt:<wallet>` values are read without deletion or
+replacement. Editing a manual status lookup does not overwrite recovery storage.
+
+Starting a new message clears only the matching active selection, preserving old
+IDs for separate signed lookups in **Saved request IDs**. A stale tab cannot clear
+a newer reservation. Storage changes update other open forms, and late status
+responses cannot replace the result for a newly selected request. Cancelling a
+browser request does not recall an already submitted email.
+
+The recovery record is bounded to 100 IDs and does not silently evict earlier
+requests. At capacity, new sends stop. Export/retention controls and cross-origin
+transfer of these recovery IDs remain required before unrestricted production
+use. Web Locks coordinate updated tabs on the same origin; they cannot coordinate
+an old client that does not use this protocol, another origin or another device.
+Keep forwarding disabled until supported browser/storage/device acceptance and
+the broader launch requirements pass.
+
 The email plainly identifies the authorizing wallet and the Chirpy service. It is
 text-only, with a 120-character subject and 16 KiB body. No attachments, HTML,
 remote previews, payments or administrative commands. Email replies are **not**

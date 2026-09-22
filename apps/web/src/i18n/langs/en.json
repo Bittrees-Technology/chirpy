@@ -605,5 +605,9 @@
   "mailbox.formattedTitle": "Formatted email preview",
   "mailbox.formattedHint": "Basic formatting only. Images, links and interactive content are blocked.",
   "mailbox.formattedShortened": "This preview has been shortened.",
-  "mailbox.noFormattedBody": "This email has no formatted body."
+  "mailbox.noFormattedBody": "This email has no formatted body.",
+  "mail.storageError": "Chat could not safely reserve this request. Check saved requests and browser storage before sending. Earlier IDs have not been cleared.",
+  "mail.storageRetry": "Check recovery storage",
+  "mail.savedRequests": "Saved request IDs",
+  "mail.savedRequestsHint": "These IDs stay on this device when you start another message. Check an earlier result before resending. If 100 IDs are saved, new sends pause rather than remove recovery history."
 }
