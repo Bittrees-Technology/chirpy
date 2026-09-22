@@ -80,3 +80,27 @@ This implements the durable guard only. The live queue worker, SDK message
 verification, controlled provisioning, source-process invocation and approved
 uncertainty reconciliation remain required. No SDK key/client, network connection,
 source timer or forwarding capability is created by this module.
+
+## Private source-check process adapter
+
+`server/inbound-source-process.js` invokes the co-located Mail
+`mail_chat_source_check.py` through an explicitly configured absolute Python path.
+Set all four private worker settings: `CHAT_MAIL_SOURCE_PYTHON`,
+`CHAT_MAIL_SOURCE_CHECK_SCRIPT`, `CHAT_MAIL_SOURCE_CONFIG`, and
+`CHAT_MAIL_SOURCE_STATE`. There is no PATH search, shell expansion, message-supplied
+command, remote URL or permissive fallback. Python ignores Python-specific
+inherited environment and user site packages; the child receives only HOME, a
+fixed system PATH and locale, not bridge keys or provider credentials.
+
+The adapter sends only eventId and canonical contentHash on stdin. It caps stdout
+and stderr at4KiB each, kills a hung checker after15seconds and rejects failed
+processes, malformed JSON or invalid UTF8 without returning private output.
+A denial must match the exact requested scope. A positive response must match
+that scope and original source deadline and have a checkedAt no older than5seconds
+or more than1second in the future. Expired source events do not start a process.
+Positive responses are never cached. Call this before each publication attempt;
+an exception is unavailable authority, not permission or proof of non-delivery.
+
+The future queue worker must keep this preflight outside any new send when the
+bridge journal already contains an unresolved attempt. This adapter does not
+start the worker, install Mail files, register a wallet or enable forwarding.
