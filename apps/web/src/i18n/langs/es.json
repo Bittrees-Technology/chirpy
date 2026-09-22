@@ -605,5 +605,10 @@
   "mailbox.formattedTitle": "Vista previa del correo con formato",
   "mailbox.formattedHint": "Solo formato básico. Las imágenes, enlaces y contenido interactivo están bloqueados.",
   "mailbox.formattedShortened": "Esta vista previa se ha acortado.",
-  "mailbox.noFormattedBody": "Este correo no tiene un cuerpo con formato."
+  "mailbox.noFormattedBody": "Este correo no tiene un cuerpo con formato.",
+  "mail.storageError": "Chat no pudo reservar esta solicitud de forma segura. Revisa las solicitudes guardadas y el almacenamiento del navegador antes de enviar. No se han borrado los ID anteriores.",
+  "mail.storageRetry": "Comprobar almacenamiento de recuperación",
+  "mail.savedRequests": "ID de solicitudes guardadas",
+  "mail.savedRequestsHint": "Estos ID permanecen en este dispositivo al iniciar otro mensaje. Comprueba el resultado anterior antes de reenviar. Si se guardan 100 ID, los nuevos envíos se pausan sin borrar el historial de recuperación.",
+  "mail.retryExpired": "Esta solicitud es demasiado antigua para reintentarla de forma segura o ha cambiado el reloj del dispositivo. Comprueba su estado antes de redactar otro mensaje."
 }
