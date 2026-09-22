@@ -572,5 +572,7 @@
   "mailbox.canonicalHint": "Connect your mailbox at chat.bittrees.org. Email connections belong to that website.",
   "mailbox.openChat": "Open Chat",
   "mailbox.previewLimit": "This is a plain-text preview. Long messages may be shortened; formatting and attachments are not shown.",
-  "mailbox.openMailbox": "Open Mail"
+  "mailbox.openMailbox": "Open Mail",
+  "mailbox.deniedTitle": "Review your Mail connection",
+  "mailbox.deniedHint": "Access was revoked or changed. Clear this connection attempt, then reconnect and review permissions in Mail."
 }

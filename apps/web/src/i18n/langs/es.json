@@ -572,5 +572,7 @@
   "mailbox.canonicalHint": "Conecta tu buzón en chat.bittrees.org. Las conexiones de correo pertenecen a ese sitio web.",
   "mailbox.openChat": "Abrir Chat",
   "mailbox.previewLimit": "Esta es una vista previa de texto. Los mensajes largos pueden estar recortados; no se muestran el formato ni los adjuntos.",
-  "mailbox.openMailbox": "Abrir Mail"
+  "mailbox.openMailbox": "Abrir Mail",
+  "mailbox.deniedTitle": "Revisa tu conexión de Mail",
+  "mailbox.deniedHint": "El acceso fue revocado o cambió. Borra este intento de conexión, vuelve a conectar y revisa los permisos en Mail."
 }
