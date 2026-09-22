@@ -72,7 +72,9 @@ initial database key for owner custody. Move it to the approved offline custody
 location and verify its backup/recovery before any activation; do not leave signing
 material readable by the runtime service account. Do not duplicate runnable SDK
 installations or restore an older journal alongside newer SDK state. The final
-journal and SDK database form one recovery unit. Uncertain message publication
+journal and SDK database form one recovery unit. Use the
+[backup and recovery guide](MAIL-SENDER-RECOVERY.md) for exclusive capture,
+quarantine and independently trusted integrity records. Uncertain message publication
 requires positive publication evidence; normal sync is not a safe recovery probe.
 
 Review the final sender configuration, separate worker/source credentials, mailbox

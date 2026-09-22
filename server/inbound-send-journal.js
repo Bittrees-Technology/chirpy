@@ -1,11 +1,12 @@
 // Self-hosted only. Never import this module into a browser or Vercel handler.
 import { DatabaseSync } from 'node:sqlite';
+import {RECOVERY_QUARANTINE} from './inbound-state-lock.js';
 import { mkdirSync,lstatSync,openSync,closeSync,constants } from 'node:fs';
 import { join,isAbsolute } from 'node:path';
 const hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const scopeFields=['eventId','contentHash','recipientHash','textHash'];
 function validScope(scope){return scope&&Object.keys(scope).length===4&&scopeFields.every(k=>Object.hasOwn(scope,k)&&hex(scope[k]));}
-function privateDirectory(directory){if(!isAbsolute(directory))throw Error('Absolute bridge directory required');const s=lstatSync(directory);if(!s.isDirectory()||s.isSymbolicLink()||(s.mode&0o077))throw Error('Private bridge directory required');}
+function privateDirectory(directory){try{lstatSync(join(directory,RECOVERY_QUARANTINE));throw Error('Recovery copy is quarantined');}catch(error){if(error.code!=='ENOENT')throw error;}if(!isAbsolute(directory))throw Error('Absolute bridge directory required');const s=lstatSync(directory);if(!s.isDirectory()||s.isSymbolicLink()||(s.mode&0o077))throw Error('Private bridge directory required');}
 function existingFile(path){const s=lstatSync(path);if(!s.isFile()||s.isSymbolicLink()||(s.mode&0o077))throw Error('Private bridge journal required');}
 export class InboundSendJournal {
   #db;#identity;

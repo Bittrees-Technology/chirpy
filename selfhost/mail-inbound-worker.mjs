@@ -1,5 +1,6 @@
 // Install under a supervisor; no timer or service is activated by this entrypoint.
 import {fileURLToPath} from 'node:url';
+import {acquireInboundState} from '../server/inbound-state-lock.js';
 import {inboundMailConfig} from '../server/inbound-mail.js';
 import {readInboundSenderConfig} from '../server/inbound-sender-config.js';
 import {inboundSenderIdentity} from '../server/inbound-xmtp-sender.js';
@@ -17,6 +18,8 @@ async function main(){
   const childConfig=readInboundSenderConfig(path);
   if(childConfig?.enabled!==true)return disabled();
   if(childConfig.identity?.url!==config.identity.url)throw Error('Inbound worker configuration mismatch');
+  const ownership=acquireInboundState(childConfig.directory);
+  try{
   const journal=new InboundSendJournal(childConfig.directory,inboundSenderIdentity(childConfig));
   try{
     if(process.argv[2]==='--status'){
@@ -36,7 +39,8 @@ async function main(){
     if(blocked||result.status==='uncertain')process.exitCode=2;
     return {enabled:true,...result,blocked};
   }finally{journal.close();}
+  }finally{ownership.release();}
 }
 main().then(result=>process.stdout.write(JSON.stringify(result)+'\n')).catch(()=>{
-  process.stderr.write('Inbound worker unavailable. Preserve the journal and retry the same queue state.\n');process.exitCode=1;
+  process.stderr.write('Inbound worker unavailable. Preserve the journal, queue state and any operation lock. Reconcile interrupted ownership before retrying.\n');process.exitCode=1;
 });
