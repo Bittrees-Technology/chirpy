@@ -71,8 +71,14 @@ separate tracked requirements in the local execution plan.
 The Email navigation opens a wallet-owned inbox with folders, pages of up to 25
 messages, plain-text reading, composition and reply drafts. It checks the visible,
 idle reading view every 45 seconds; it does not refresh while composing. Reply
-creates a message to the displayed sender with a Re: subject; RFC reply threading,
-attachments and HTML rendering are not implemented. Older/newer page navigation uses source-bound cursors; Refresh returns to newest. Polling pauses on older pages. Moved or removed page anchors require Refresh; folders above 10,000 entries return an explicit limit rather than hiding older mail.
+uses the source-validated Reply-To address (or From when absent), a Re: subject,
+and a snapshot of the selected original. Mail requires both read and send access,
+rejects changed originals, and derives bounded In-Reply-To and References headers
+from the original rather than trusting client-supplied headers. Missing or unsupported
+message identifiers show an unthreaded-reply warning. Multiple reply recipients are
+not expanded automatically. New email clears any previous reply context.
+Conversation grouping, attachments and HTML rendering are not implemented.
+Older/newer page navigation uses source-bound cursors; Refresh returns to newest. Polling pauses on older pages. Moved or removed page anchors require Refresh; folders above 10,000 entries return an explicit limit rather than hiding older mail.
 The reader explicitly labels its bounded plain-text preview and links to Mail.
 
 Connect Mail validates the exact scoped SIWE message before asking the selected

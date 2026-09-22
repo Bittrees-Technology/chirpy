@@ -3,7 +3,7 @@ import {parseSiweMessage,createSiweMessage} from 'viem/siwe';
 import {getActiveProvider} from './walletProviders';
 export type MailConnection={mailbox:string;scopes:('read'|'send')[];expiresAt:string};
 export type MailSummary={id:string;from:string;subject:string;date:string};
-export type MailMessage=MailSummary&{text:string};
+export type MailMessage=MailSummary&{text:string;sourceVersion?:string;replyTo?:string;threadedReply?:boolean};
 export type MailReceipt={id:string;createdAt:number};
 export class MailClientError extends Error {constructor(public code:'session'|'unavailable'|'denied'|'wallet'|'failed'|'storage'|'pageChanged'|'pageLimit',public status?:number){super(code);}}
 const isWallet=(v:unknown):v is string=>typeof v==='string'&&/^0x[a-f0-9]{40}$/.test(v);
@@ -61,9 +61,9 @@ export async function mailPage(wallet:string,folder:string,cursor:string|null=nu
  return {messages,nextCursor:(data.nextCursor??null) as string|null};
 }
 export async function mailMessages(wallet:string,folder:string,signal?:AbortSignal){return (await mailPage(wallet,folder,null,signal)).messages;}
-export async function mailMessage(wallet:string,folder:string,id:string,signal?:AbortSignal){if(!validMailFolder(folder)||!messageId(id))throw new MailClientError('failed');const data=await operation(wallet,'message',{folder,id},signal),m=summary(data.message);if(m.id!==id||typeof data.message.text!=='string'||new TextEncoder().encode(data.message.text).length>16000)throw new MailClientError('failed');return {...m,text:data.message.text} as MailMessage;}
-export type MailDraft={to:string;subject:string;text:string};
-export function validMailDraft(d:MailDraft){return d.to.length<=254&&/^[^\s<>@,;\x00-\x1f\x7f]+@[^\s<>@,;\x00-\x1f\x7f]+\.[^\s<>@,;\x00-\x1f\x7f]+$/.test(d.to)&&d.subject.length<=200&&!/[\x00-\x1f\x7f]/.test(d.subject)&&!!d.text.trim()&&!d.text.includes('\0')&&new TextEncoder().encode(JSON.stringify(d)).length<=19000;}
+export async function mailMessage(wallet:string,folder:string,id:string,signal?:AbortSignal){if(!validMailFolder(folder)||!messageId(id))throw new MailClientError('failed');const data=await operation(wallet,'message',{folder,id},signal),m=summary(data.message);if(m.id!==id||typeof data.message.text!=='string'||new TextEncoder().encode(data.message.text).length>16000)throw new MailClientError('failed');const v=data.message;if(v.sourceVersion!==undefined&&(!messageId(v.sourceVersion)||typeof v.replyTo!=='string'||v.replyTo!==''&&!validMailDraft({to:v.replyTo,subject:'',text:'x'})||typeof v.threadedReply!=='boolean'))throw new MailClientError('failed');return {...m,text:v.text,...(v.sourceVersion?{sourceVersion:v.sourceVersion,replyTo:v.replyTo,threadedReply:v.threadedReply}:{})} as MailMessage;}
+export type MailDraft={to:string;subject:string;text:string;reply?:{folder:string;id:string;version:string}};
+export function validMailDraft(d:MailDraft){return (!d.reply||validMailFolder(d.reply.folder)&&messageId(d.reply.id)&&messageId(d.reply.version)&&Object.keys(d.reply).length===3)&&d.to.length<=254&&/^[^\s<>@,;\x00-\x1f\x7f]+@[^\s<>@,;\x00-\x1f\x7f]+\.[^\s<>@,;\x00-\x1f\x7f]+$/.test(d.to)&&d.subject.length<=200&&!/[\x00-\x1f\x7f]/.test(d.subject)&&!!d.text.trim()&&!d.text.includes('\0')&&new TextEncoder().encode(JSON.stringify(d)).length<=19000;}
 const receiptKey=(wallet:string)=>'chat:mail-pending:v1:'+wallet;
 export function mailReceipt(wallet:string):MailReceipt|null{try{const raw=localStorage.getItem(receiptKey(wallet));if(!raw)return null;const r=JSON.parse(raw);if(!messageId(r.id)||!Number.isSafeInteger(r.createdAt)||r.createdAt<=0)throw Error();return {id:r.id,createdAt:r.createdAt};}catch{throw new MailClientError('storage');}}
 export function clearMailReceipt(wallet:string){try{localStorage.removeItem(receiptKey(wallet));}catch{throw new MailClientError('storage');}}

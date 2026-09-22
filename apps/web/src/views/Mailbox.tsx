@@ -50,8 +50,8 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
   return()=>clearInterval(timer);
  },[canRead,composing,wallet,folder,message,cursors.length]);
  const selectMessage=(id:string)=>void run(async(signal,current)=>{setMessage(null);setComposing(false);const value=await mailMessage(wallet,folder,id,signal);if(current())setMessage(value);});
- const compose=()=>{setMessage(null);setComposing(true);};
- const reply=()=>{if(!message)return;setDraft({to:replyAddress(message.from),subject:(/^re:/i.test(message.subject)?message.subject:'Re: '+message.subject).slice(0,200),text:''});compose();};
+ const compose=()=>{setDraft(emptyDraft());setMessage(null);setComposing(true);};
+ const reply=()=>{if(!message)return;setDraft({to:message.replyTo??replyAddress(message.from),subject:(/^re:/i.test(message.subject)?message.subject:'Re: '+message.subject).slice(0,200),text:'',...(message.sourceVersion?{reply:{folder,id:message.id,version:message.sourceVersion}}:{})});setMessage(null);setComposing(true);};
  return <section className="mailbox" aria-label={t('mailbox.title')}>
   <header className="mailbox-header"><div><h1>{t('mailbox.title')}</h1><p>{connection?.mailbox||t('mailbox.intro')}</p></div><div className="mailbox-actions">
    {canonical&&mode==='wallet'&&<Button disabled={busy} onClick={()=>void refresh()}>{t('mailbox.refresh')}</Button>}
@@ -79,12 +79,12 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
    </aside>:<aside className="mailbox-list"><p>{t('mailbox.sendOnly')}</p></aside>}
    <div className="mailbox-detail">
     {composing?<form onSubmit={e=>{e.preventDefault();if(busy||pending||!canSend||!validMailDraft(draft))return;void run(async(signal,current)=>{try{await sendMail(wallet,draft,signal);if(current()){setDraft(emptyDraft());setComposing(false);setNotice('sent');if(canRead)await load('Sent',signal,current);}}finally{if(current())readReceipt();}});}}>
-     <h2>{t('mailbox.compose')}</h2><p>{t('mailbox.from',undefined,{mailbox:connection.mailbox})}</p>
+     <h2>{t(draft.reply?'mailbox.reply':'mailbox.compose')}</h2><p>{t('mailbox.from',undefined,{mailbox:connection.mailbox})}</p>
      <Field label={t('mailbox.to')}><input className="input" type="email" value={draft.to} maxLength={254} required disabled={busy||pending} onChange={e=>setDraft({...draft,to:e.target.value})}/></Field>
      <Field label={t('mailbox.subject')}><input className="input" value={draft.subject} maxLength={200} disabled={busy||pending} onChange={e=>setDraft({...draft,subject:e.target.value})}/></Field>
      <Field label={t('mailbox.message')}><textarea className="input" rows={12} value={draft.text} required disabled={busy||pending} onChange={e=>setDraft({...draft,text:e.target.value})}/></Field>
      <p>{t('mailbox.draftHint')}</p><Button type="submit" variant="primary" disabled={busy||pending||!canSend||!validMailDraft(draft)}>{t('mailbox.send')}</Button>
-    </form>:message?<article><h2>{message.subject||t('mailbox.noSubject')}</h2><p>{message.from}</p><time>{message.date}</time><p className="mailbox-notice">{t('mailbox.previewLimit')} <a href="https://mail.bittrees.org/" target="_blank" rel="noreferrer">{t('mailbox.openMailbox')}</a></p><pre className="mailbox-body">{message.text}</pre><Button disabled={busy||!canSend||pending||!replyAddress(message.from)} onClick={reply}>{t('mailbox.reply')}</Button></article>:<div className="mailbox-empty"><h2>{t('mailbox.select')}</h2><p>{t(canRead?'mailbox.selectHint':'mailbox.sendOnly')}</p></div>}
+    </form>:message?<article><h2>{message.subject||t('mailbox.noSubject')}</h2><p>{message.from}</p><time>{message.date}</time><p className="mailbox-notice">{t('mailbox.previewLimit')} <a href="https://mail.bittrees.org/" target="_blank" rel="noreferrer">{t('mailbox.openMailbox')}</a></p><pre className="mailbox-body">{message.text}</pre>{message.sourceVersion&&!message.threadedReply&&<p className="mailbox-notice">{t('mailbox.unthreadedReply')}</p>}<Button disabled={busy||!canSend||pending||!(message.replyTo??replyAddress(message.from))} onClick={reply}>{t('mailbox.reply')}</Button></article>:<div className="mailbox-empty"><h2>{t('mailbox.select')}</h2><p>{t(canRead?'mailbox.selectHint':'mailbox.sendOnly')}</p></div>}
    </div>
   </div>:null}
  </section>;
