@@ -244,7 +244,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
           if (nearBottomRef.current) { setHasNewMessages(false); markVisibleRead(); }
         }}>
-        {messages.length === 0 && !historyLoading && !historyError && (!pushRoom || (pushStatus === "ready" && pushRoom.membership !== "unknown")) && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
+        {messages.length === 0 && !historyLoading && !historyError && (!pushRoom || (pushStatus === "ready" && (pushRoom.publicRoom || pushRoom.membership === "member"))) && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
         {(activeConversation.blocked ? [] : messages).map((m) => {
           const mine = m.sender.toLowerCase() === selfAddress;
           const senderRecord = profiles.get(m.sender.toLowerCase());

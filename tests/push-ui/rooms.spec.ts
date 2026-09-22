@@ -4,7 +4,10 @@ const row = (cid = 'QmLatestMessage', link: string | null = null, body = 'Preser
 test.beforeEach(async ({ page }) => {
   await page.route(/^https:\/\//, async route => {
     const url = route.request().url();
-    if (url === 'https://gov.bittrees.org/api/rooms') return route.fulfill({ json: { rooms: { shareholders: group }, custom: [], revision: 1 } });
+    if (url === 'https://gov.bittrees.org/api/rooms') {
+      const enabled = await page.evaluate(() => (window as any).__pushFixture.catalogEnabled !== false);
+      return route.fulfill({ json: { rooms: enabled ? { shareholders: group } : {}, custom: [], revision: 1 } });
+    }
     if (url === 'https://research.bittrees.org/api/rooms') return route.fulfill({ json: { rooms: {}, custom: [], revision: 0 } });
     if (url.startsWith('https://api.ensideas.com/')) return route.fulfill({ json: { address: owner, name: null, avatar: null } });
     return route.abort();
@@ -223,4 +226,25 @@ test('replaces a provider for the same wallet without reusing its old Push sessi
   await page.locator('.list-item', { hasText: 'shareholders' }).click(); await enable(page);
   await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => (window as any).__pushFixture.signCount)).toBe(2);
+});
+
+test('does not restore a removed room or its old private history when the catalog adds it again', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.evaluate(() => { (window as any).__pushFixture.catalogEnabled = false; });
+  await page.getByRole('button', { name: 'Refresh room list', exact: true }).click();
+  await expect(page.locator('.thread-title')).toHaveCount(0);
+  await page.evaluate(() => { (window as any).__pushFixture.catalogEnabled = true; (window as any).__pushFixture.membership.participant = false; });
+  await page.getByRole('button', { name: 'Refresh room list', exact: true }).click();
+  await expect(page.locator('.list-item', { hasText: 'shareholders' })).toBeVisible();
+  await expect(page.locator('.thread-title')).toHaveCount(0);
+  await expect(page.getByText('Preserved Push history', { exact: true })).toHaveCount(0);
+});
+test('hides cached private history when a member-list request discovers revoked access', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.getByText('View Push members', { exact: true }).click();
+  await page.evaluate(() => { (window as any).__pushFixture.membership.participant = false; });
+  await page.getByRole('button', { name: 'Load or refresh members' }).click();
+  await expect(page.locator('.thread-sub')).toContainText('Not a member');
+  await expect(page.getByText('Preserved Push history', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('No messages yet', { exact: true })).toHaveCount(0);
 });

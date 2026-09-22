@@ -3,7 +3,7 @@ import { PushRoomSession, PushRooms, type PushRoomsSnapshot, type PushSource, ty
 import { getActiveKind, getActiveProvider, getProviderRevision, subscribeProvider } from './walletProviders';
 const empty = (): PushRoomsSnapshot => ({ rooms: [], status: 'idle', revision: 0, loading: false });
 /** The adapter belongs to one live wallet/provider/org/source binding, even if the address stays the same. */
-export function usePushRooms(owner: string, walletMode: boolean, organization: string, onInvalidate: () => void) {
+export function usePushRooms(owner: string, walletMode: boolean, organization: string, onInvalidate: (available?: ReadonlySet<string>) => void) {
   const connectionRevision = useSyncExternalStore(subscribeProvider, getProviderRevision);
   const [source, setSource] = useState<PushSource | null>(null);
   const [snapshot, setSnapshot] = useState<PushRoomsSnapshot>(empty);
@@ -28,6 +28,9 @@ export function usePushRooms(owner: string, walletMode: boolean, organization: s
       if (disposed || live.current !== binding) return;
       const next = rooms.getSnapshot();
       if (previousStatus === 'ready' && next.status !== 'ready') onInvalidate();
+      // Removed catalog entries must discard selected content immediately; a
+      // later reappearance is not permission to restore old private messages.
+      onInvalidate(new Set(next.rooms.map(room => room.id)));
       previousStatus = next.status; setSnapshot(next);
     });
     void rooms.discover().catch(() => {}); // The preserved-catalog error is part of the snapshot.

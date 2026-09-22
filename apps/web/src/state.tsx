@@ -986,8 +986,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const conversationLoadRef = useRef(0);
   const messageLoadRef = useRef(0);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const invalidatePushView = useCallback(() => {
-    if (activeIdRef.current && parsePushConversationId(activeIdRef.current)) {
+  const invalidatePushView = useCallback((available?: ReadonlySet<string>) => {
+    if (activeIdRef.current && parsePushConversationId(activeIdRef.current) && (!available || !available.has(activeIdRef.current))) {
       messageLoadRef.current++; activeIdRef.current = null; setActiveId(null);
       setMessages([]); setHistoryError(null); setHistoryLoading(false); resetHistory();
     }
@@ -1060,14 +1060,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       transportRef.current = t;
       setTransportId(t.id);
       setTransportStatus(t.status ?? "ready");
-      setActiveId(null);
-      setMessages([]);
+      // Initial scope reset happened before init. A Push room may have opened
+      // while the independent native transport was still initializing.
       await reloadConversations();
       if (cancelled) return;
       const queue = createRefreshQueue(async () => {
         if (cancelled || document.visibilityState === "hidden") return;
         await reloadConversations();
-        if (!cancelled) await reloadMessages(activeIdRef.current);
+        const selected = activeIdRef.current;
+        if (!cancelled && selected && !parsePushConversationId(selected)) await reloadMessages(selected);
       }, (error) => {
         if (!cancelled) setTransportError(error instanceof Error ? error.message : "Unable to refresh chats.");
       });
@@ -1229,13 +1230,22 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     [conversations, activeId],
   );
 
+  const pushReadDenied = Boolean(activeConversation?.push && (push.snapshot.status !== 'ready'
+    || (!activeConversation.push.publicRoom && activeConversation.push.membership !== 'member')));
+  // Permission changes can be discovered by any action, not only a history read.
+  // Mask immediately during render, then discard the cached page. In-flight
+  // reads retain their own session/access checks before they may publish.
+  useEffect(() => {
+    if (pushReadDenied) { if (messages.length) setMessages([]); setOlderCursor(undefined); }
+  }, [pushReadDenied, messages.length]);
+
   const value = useMemo<ChatCtx>(() => ({
     pushSource: push.source, setPushSource: push.changeSource, pushStatus: push.snapshot.status, pushLoading: push.snapshot.loading,
     pushError: push.error ?? push.snapshot.error ?? null, enablePushRooms, refreshPushRooms: push.refresh, leavePushRoom, managePushMember, loadPushMembers, historyError,
-    transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages,
-    historyLoading, isHistory: history.before !== undefined, hasOlderMessages: olderCursor !== undefined, navigateHistory,
+    transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages: pushReadDenied ? [] : messages,
+    historyLoading, isHistory: history.before !== undefined, hasOlderMessages: !pushReadDenied && olderCursor !== undefined, navigateHistory,
     enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, pushReadDenied, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
