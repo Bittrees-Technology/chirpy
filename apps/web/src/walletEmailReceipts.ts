@@ -1,9 +1,9 @@
 import type {MailCommand} from '../../../packages/core/src/mailAuth.js';
 
 export class WalletEmailReceiptError extends Error {
-  constructor(public code:'storage'|'pending'|'limit'='storage'){super(code);}
+  constructor(public code:'storage'|'pending'|'limit'|'expired'='storage'){super(code);}
 }
-export type WalletEmailReceipt={id:string;digest:string|null};
+export type WalletEmailReceipt={id:string;digest:string|null;createdAt:number|null};
 export type WalletEmailRecovery={version:1;active:string|null;receipts:WalletEmailReceipt[]};
 export const WALLET_EMAIL_RECEIPTS_CHANGED='chat:wallet-email-receipts-changed';
 const validId=(id:unknown):id is string=>typeof id==='string'&&/^[a-f0-9]{32}$/.test(id);
@@ -22,7 +22,7 @@ export function readWalletEmailRecovery(wallet:string,service:string):WalletEmai
     if(!state||Object.keys(state).sort().join(',')!=='active,receipts,version'||state.version!==1||!Array.isArray(state.receipts)||state.receipts.length>100||!(state.active===null||validId(state.active)))throw Error();
     const ids=new Set<string>();
     for(const receipt of state.receipts){
-      if(!receipt||Object.keys(receipt).sort().join(',')!=='digest,id'||!validId(receipt.id)||ids.has(receipt.id)||!(receipt.digest===null||typeof receipt.digest==='string'&&/^[a-f0-9]{64}$/.test(receipt.digest)))throw Error();
+      if(!receipt||Object.keys(receipt).sort().join(',')!=='createdAt,digest,id'||!validId(receipt.id)||ids.has(receipt.id)||!(receipt.digest===null&&receipt.createdAt===null||typeof receipt.digest==='string'&&/^[a-f0-9]{64}$/.test(receipt.digest)&&typeof receipt.createdAt==='number'&&Number.isSafeInteger(receipt.createdAt)&&receipt.createdAt>0))throw Error();
       ids.add(receipt.id);
     }
     if(state.active!==null&&!ids.has(state.active))throw Error();
@@ -33,7 +33,7 @@ export function readWalletEmailRecovery(wallet:string,service:string):WalletEmai
       if(!validId(legacy))throw Error();
       if(!ids.has(legacy)){
         if(state.receipts.length===100)throw new WalletEmailReceiptError('limit');
-        state.receipts.push({id:legacy,digest:null});
+        state.receipts.push({id:legacy,digest:null,createdAt:null});
         state.active??=legacy;
       }
     }
@@ -60,11 +60,13 @@ export async function reserveWalletEmailReceipt(command:MailCommand,retry:boolea
   return locked(command.wallet,command.service,signal,()=>{
     const state=readWalletEmailRecovery(command.wallet,command.service);
     if(retry){
-      if(state.active!==command.id||state.receipts.find(r=>r.id===command.id)?.digest!==digest)throw new WalletEmailReceiptError('pending');
+      const receipt=state.receipts.find(r=>r.id===command.id);
+      if(state.active!==command.id||receipt?.digest!==digest)throw new WalletEmailReceiptError('pending');
+      if(receipt.createdAt===null||Date.now()<receipt.createdAt||Date.now()-receipt.createdAt>=23*3600000)throw new WalletEmailReceiptError('expired');
     }else{
       if(state.active!==null||state.receipts.some(r=>r.id===command.id))throw new WalletEmailReceiptError('pending');
       if(state.receipts.length===100)throw new WalletEmailReceiptError('limit');
-      state.active=command.id;state.receipts.push({id:command.id,digest});
+      state.active=command.id;state.receipts.push({id:command.id,digest,createdAt:Date.now()});
     }
     save(command.wallet,command.service,state);
   });

@@ -109,8 +109,12 @@ Before opening a send signature, the browser reserves the request ID in a
 wallet-and-service-scoped recovery record under a Web Lock and verifies the write.
 Missing locks, unreadable/malformed records, failed writes and a competing active
 reservation prevent submission. Retries require the same active ID and content
-fingerprint; only signature expiry may change. The record contains IDs and
-fingerprints, not raw recipients, subjects or bodies. Fingerprints are not anonymous
+fingerprint; only signature expiry may change. Retries stop 23 hours after the
+original local reservation, without renewing that deadline, so an old open tab
+cannot recreate a send after server deduplication expires. A clock earlier than
+the original reservation also refuses retries. Old IDs remain available for status
+checks. The record contains IDs, reservation times and fingerprints, not raw
+recipients, subjects or bodies. Fingerprints are not anonymous
 data. Existing `chirpy:mail-receipt:<wallet>` values are read without deletion or
 replacement. Editing a manual status lookup does not overwrite recovery storage.
 

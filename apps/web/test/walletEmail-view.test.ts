@@ -26,7 +26,7 @@ beforeEach(()=>{
  state.identity={address:a};state.mode='wallet';setActiveProvider({request:async()=>[a]},'injected');
  container=document.createElement('div');document.body.append(container);root=createRoot(container);
 });
-afterEach(async()=>{await act(async()=>root.unmount());container.remove();clearActiveProvider();vi.unstubAllGlobals();});
+afterEach(async()=>{await act(async()=>root.unmount());container.remove();clearActiveProvider();vi.unstubAllGlobals();vi.restoreAllMocks();});
 it('isolates saved receipts and clears private drafts when the wallet changes',async()=>{
  storage.set(receiptKey(a),'a'.repeat(32));storage.set(receiptKey(b),'b'.repeat(32));await render();await input(0,'private@example.com');await input(1,'Private subject');
  state.identity={address:b};await render();
@@ -83,4 +83,12 @@ it('picks up another tab reservation and never overwrites it by editing the disp
  const raw=storage.get(walletEmailReceiptKey(a,other.service));
  await act(async()=>window.dispatchEvent(new StorageEvent('storage',{key:walletEmailReceiptKey(a,other.service)})));
  expect(storage.get(walletEmailReceiptKey(a,other.service))).toBe(raw);
+});
+it('stops an expired retry before opening another signature while keeping its ID for lookup',async()=>{
+ vi.mocked(submitWalletEmail).mockRejectedValue(Error('uncertain'));
+ await render();await fillDraft();await click('Sign and queue email');
+ const command=vi.mocked(submitWalletEmail).mock.calls[0][0],createdAt=readWalletEmailRecovery(a,command.service).receipts[0].createdAt!;
+ vi.spyOn(Date,'now').mockReturnValue(createdAt+23*3600000);
+ await click('Retry same request');expect(submitWalletEmail).toHaveBeenCalledTimes(1);expect(container.textContent).toContain('too old to retry safely');
+ expect(container.querySelectorAll('input')[2].value).toBe(command.id);expect(button('Check request status').disabled).toBe(false);
 });

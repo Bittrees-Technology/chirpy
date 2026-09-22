@@ -609,5 +609,6 @@
   "mail.storageError": "Chat could not safely reserve this request. Check saved requests and browser storage before sending. Earlier IDs have not been cleared.",
   "mail.storageRetry": "Check recovery storage",
   "mail.savedRequests": "Saved request IDs",
-  "mail.savedRequestsHint": "These IDs stay on this device when you start another message. Check an earlier result before resending. If 100 IDs are saved, new sends pause rather than remove recovery history."
+  "mail.savedRequestsHint": "These IDs stay on this device when you start another message. Check an earlier result before resending. If 100 IDs are saved, new sends pause rather than remove recovery history.",
+  "mail.retryExpired": "This request is too old to retry safely, or the device clock has changed. Check its status before composing another message."
 }

@@ -24,6 +24,7 @@ function WalletEmailSession() {
   const load=()=>readWalletEmailRecovery(wallet,mailEndpoint().service);
   const [recovery,setRecovery]=useState<WalletEmailRecovery|null>(()=>{try{return load();}catch{return null;}});
   const [storageError,setStorageError]=useState(!recovery);
+  const [retryExpired,setRetryExpired]=useState(false);
   const [receipt,setReceipt]=useState(recovery?.active??'');
   const selected=useRef(receipt);
   const [status,setStatus]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState(false);
@@ -31,7 +32,7 @@ function WalletEmailSession() {
   const choose=(id:string)=>{selected.current=id;setReceipt(id);setStatus('');setError(false);};
   const refresh=()=>{
     try {
-      const state=load();setRecovery(state);setStorageError(false);
+      const state=load();setRecovery(state);setStorageError(false);setRetryExpired(false);
       if(selected.current!==(state.active??'')){choose(state.active??'');setPending(null);}
     }catch{setStorageError(true);}
   };
@@ -72,7 +73,7 @@ function WalletEmailSession() {
       }
     } catch(cause){if(!controller.signal.aborted){
       setError(true);
-      if(cause instanceof WalletEmailReceiptError){refresh();setStorageError(true);setStatus('');}
+      if(cause instanceof WalletEmailReceiptError){refresh();setStorageError(true);setRetryExpired(cause.code==='expired');setStatus('');}
       else if(lookupId)setHistoryStatus({id:lookupId,status:'uncertain'});
       else setStatus('uncertain');
     }}
@@ -94,7 +95,7 @@ function WalletEmailSession() {
     {!enabled ? <p>{t('mail.disabled')}</p> : <>
       <p>{t('mail.pilot')}</p>
       {mode!=='wallet' && <p>{t('mail.connect')}</p>}
-      {storageError&&<div role="alert"><p>{t('mail.storageError')}</p><Button disabled={busy} onClick={refresh}>{t('mail.storageRetry')}</Button></div>}
+      {storageError&&<div role="alert"><p>{t(retryExpired?'mail.retryExpired':'mail.storageError')}</p><Button disabled={busy} onClick={refresh}>{t('mail.storageRetry')}</Button></div>}
       <Field label={t('routing.recipient')}><input className="input" value={to} disabled={busy||!!pending} onChange={e=>setTo(e.target.value)} /></Field>
       <Field label={t('mail.subject')}><input className="input" maxLength={120} value={subject} disabled={busy||!!pending} onChange={e=>setSubject(e.target.value)} /></Field>
       <Field label={t('mail.message')}><textarea className="input" rows={5} value={text} disabled={busy||!!pending} onChange={e=>setText(e.target.value)} /></Field>

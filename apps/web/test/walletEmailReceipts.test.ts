@@ -6,7 +6,7 @@ const key=walletEmailReceiptKey(wallet,service),legacy=walletEmailLegacyReceiptK
 let storage:Map<string,string>;
 const command=(id='a'.repeat(32)):MailCommand=>({action:'send',wallet,service,id,to:'fixture@example.com',subject:'Private subject',text:'Private text',expiresAt:Date.now()+60000});
 beforeEach(()=>{storage=new Map();vi.stubGlobal('localStorage',{getItem:(k:string)=>storage.get(k)??null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)});});
-afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();});
+afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 it('reserves an ID before use, stores no raw email and permits only exact-content retries',async()=>{
  const c=command();await reserveWalletEmailReceipt(c,false);expect(readWalletEmailRecovery(wallet,service).active).toBe(c.id);
  expect(JSON.stringify([...storage])).not.toMatch(/Private|fixture@example/);
@@ -43,7 +43,7 @@ it('keeps a reservation written just before a storage error and refuses a second
  expect(readWalletEmailRecovery(wallet,service).active).toBe(command().id);
  await expect(reserveWalletEmailReceipt(command('b'.repeat(32)),false)).rejects.toMatchObject({code:'pending'});
 });
-it.each(['not-json',JSON.stringify({version:2,active:null,receipts:[]}),JSON.stringify({version:1,active:'a'.repeat(32),receipts:[]}),JSON.stringify({version:1,active:null,receipts:[{id:'a'.repeat(32),digest:null},{id:'a'.repeat(32),digest:null}]})])('preserves malformed records instead of replacing them',async(raw)=>{
+it.each(['not-json',JSON.stringify({version:2,active:null,receipts:[]}),JSON.stringify({version:1,active:'a'.repeat(32),receipts:[]}),JSON.stringify({version:1,active:null,receipts:[{id:'a'.repeat(32),digest:null,createdAt:null},{id:'a'.repeat(32),digest:null,createdAt:null}]})])('preserves malformed records instead of replacing them',async(raw)=>{
  storage.set(key,raw);await expect(reserveWalletEmailReceipt(command(),false)).rejects.toMatchObject({code:'storage'});expect(storage.get(key)).toBe(raw);
 });
 it('keeps malformed legacy input and checks wallet and service isolation',async()=>{
@@ -53,11 +53,20 @@ it('keeps malformed legacy input and checks wallet and service isolation',async(
  expect(readWalletEmailRecovery(wallet,'https://other.example/api/mail').receipts).toHaveLength(0);
 });
 it('does not silently evict old IDs at the recovery limit',async()=>{
- const receipts=Array.from({length:100},(_,i)=>({id:i.toString(16).padStart(32,'0'),digest:null}));
+ const receipts=Array.from({length:100},(_,i)=>({id:i.toString(16).padStart(32,'0'),digest:null,createdAt:null}));
  const raw=JSON.stringify({version:1,active:null,receipts});storage.set(key,raw);
  await expect(reserveWalletEmailReceipt(command(),false)).rejects.toMatchObject({code:'limit'});expect(storage.get(key)).toBe(raw);
 });
 it('refuses missing locks or cancelled reservations before changing storage',async()=>{
  const c=new AbortController();c.abort();await expect(reserveWalletEmailReceipt(command(),false,c.signal)).rejects.toThrow();expect(storage.size).toBe(0);
  Object.defineProperty(navigator,'locks',{configurable:true,value:undefined});await expect(reserveWalletEmailReceipt(command(),false)).rejects.toMatchObject({code:'storage'});expect(storage.size).toBe(0);
+});
+
+it('never renews the original retry deadline or resends after it expires',async()=>{
+ const time=Date.now();vi.useFakeTimers();vi.setSystemTime(time);const c=command();await reserveWalletEmailReceipt(c,false);
+ vi.setSystemTime(time+22*3600000);await reserveWalletEmailReceipt({...c,expiresAt:Date.now()+60000},true);expect(readWalletEmailRecovery(wallet,service).receipts[0].createdAt).toBe(time);
+ vi.setSystemTime(time+23*3600000);await expect(reserveWalletEmailReceipt({...c,expiresAt:Date.now()+60000},true)).rejects.toMatchObject({code:'expired'});
+ vi.setSystemTime(time+31*86400000);await expect(reserveWalletEmailReceipt({...c,expiresAt:Date.now()+60000},true)).rejects.toMatchObject({code:'expired'});
+ vi.setSystemTime(time-1);await expect(reserveWalletEmailReceipt({...c,expiresAt:Date.now()+60000},true)).rejects.toMatchObject({code:'expired'});
+ expect(readWalletEmailRecovery(wallet,service).active).toBe(c.id);
 });
