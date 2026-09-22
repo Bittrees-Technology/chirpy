@@ -4,7 +4,7 @@ import { mailConfig, suppressMailRecipient } from '../server/mail-service.js';
 const [path,...extra]=process.argv.slice(2);
 if(!path || extra.length) throw Error('Usage: mail-suppress.mjs private-record.json');
 // Suppression remains available while sending is paused; preview stays disabled.
-const config=mailConfig({...process.env,CHIRPY_MAIL_ENABLED:'1'});
+const config=mailConfig({...process.env,CHIRPY_MAIL_ENABLED:'1'},{deliveryIdentity:false});
 if(!config) throw Error('Configure mail storage and service credentials.');
 const file=await open(path,'r');
 let record;

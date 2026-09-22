@@ -20,9 +20,10 @@ describe('recipient opt-out',()=>{
     for(const body of [null,[],{token:'bad'},{token,extra:true}]){const response=res();await handler({method:'POST',headers:{'content-type':'application/json'},body},response);expect(response.code).toBe(400);}
     expect(fetcher).not.toHaveBeenCalled();
   });
-  it('works when sending is paused and does not turn unknown or failed requests into success',async()=>{
+  it.each([false,true])('works while sending is paused with partial Wallet configuration=%s',async(partial)=>{
     for(const [key,value] of Object.entries(env))vi.stubEnv(key,value);
     const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
+    if(partial)vi.stubEnv('CHIRPY_MAIL_IDENTITY_URL','https://wallet.example/api/service/delivery');
     fetcher.mockResolvedValue({ok:true,json:async()=>({result:null})});
     const missing=res();await handler({method:'POST',headers:{'content-type':'application/json'},body:{token}},missing);expect(missing.code).toBe(404);
     const config=mailConfig({...env,CHIRPY_MAIL_ENABLED:'1'});fetcher.mockResolvedValueOnce({ok:true,json:async()=>({result:`${config.prefix}suppressed:${'cd'.repeat(32)}`})}).mockResolvedValueOnce({ok:true,json:async()=>({result:'opted-out'})});

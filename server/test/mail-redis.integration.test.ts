@@ -149,6 +149,41 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
       expect(await redis(['GET',`${key}:payload`])).not.toBeNull();
     } finally { await fixture.close(); }
   });
+  it('checks Wallet at enqueue and every retry using one immutable scope and provider key',async()=>{
+    config.identity={url:'https://wallet.example/api/service/delivery',credential:'x'.repeat(32)};
+    binding.identity={bindingId:'wallet-binding',version:1};await redis(['SET',bk,JSON.stringify(binding)]);
+    const scopes:any[]=[],sends:any[]=[];
+    const request=async(url,o)=>{
+      if(url===config.identity.url){const scope=JSON.parse(o.body);scopes.push(scope);return Response.json({...scope,version:scope.expectedVersion,email:c.to,expiresAt:Date.now()+60000});}
+      sends.push({key:o.headers['Idempotency-Key'],body:o.body});if(sends.length===1)throw Error('ack lost');return {ok:true,json:async()=>({id:'provider-wallet'})};
+    };
+    const service=createMailService(config,redis,request);expect((await service.execute(c)).status).toBe('queued');
+    await service.drain();expect((await status()).status).toBe('queued');await readyAgain();await service.drain();
+    expect(scopes).toHaveLength(3);for(const scope of scopes)expect(scope).toEqual(scopes[0]);
+    expect(sends).toHaveLength(2);expect(sends[0]).toEqual(sends[1]);expect((await status()).status).toBe('accepted');
+  });
+  it.each(['revoked','mismatch','disabled','retargeted','suppressed','outage'])('blocks Wallet-scoped delivery after %s',async(kind)=>{
+    config.identity={url:'https://wallet.example/api/service/delivery',credential:'x'.repeat(32)};
+    binding.identity={bindingId:'wallet-binding',version:1};await redis(['SET',bk,JSON.stringify(binding)]);
+    let phase='enqueue',sends=0;
+    const request=async(url,o)=>{
+      if(url!=='https://wallet.example/api/service/delivery'){sends++;return {ok:true,json:async()=>({id:'unexpected'})};}
+      if(phase==='worker'){
+        if(kind==='revoked')return new Response('',{status:403});
+        if(kind==='outage')return new Response('',{status:503});
+        if(kind==='suppressed')await suppressMailRecipient(config,{email:c.to,reason:'opt-out',evidenceId:'synthetic'},redis);
+      }
+      const scope=JSON.parse(o.body);return Response.json({...scope,version:scope.expectedVersion,email:phase==='worker'&&kind==='mismatch'?'other@example.com':c.to,expiresAt:Date.now()+60000});
+    };
+    const service=createMailService(config,redis,request);await service.execute(c);phase='worker';if(kind==='disabled')config.identity=null;if(kind==='retargeted')config.identity={...config.identity,url:'https://other.example/api/service/delivery'};
+    await service.drain();expect(sends).toBe(0);expect((await status()).status).toBe(kind==='outage'?'queued':'stopped');
+  });
+  it('Wallet mode rejects unverified mappings and cannot upgrade an old queued job implicitly',async()=>{
+    const service=createMailService(config,redis,async()=>{throw Error('must not contact provider');});await service.execute(c);
+    config.identity={url:'https://wallet.example/api/service/delivery',credential:'x'.repeat(32)};
+    expect((await service.execute({...c,id:'ef'.repeat(16)})).status).toBe('denied');
+    await service.drain();expect((await status()).status).toBe('stopped');
+  });
   it('one worker claims a job; acceptance purges content and preserves status',async()=>{
     const sent:any[]=[];const provider=async(_url,options)=>{sent.push(JSON.parse(options.body));await new Promise(r=>setTimeout(r,30));return {ok:true,json:async()=>({id:'provider-1'})};};
     const service=createMailService(config,redis,provider);await service.execute(c);

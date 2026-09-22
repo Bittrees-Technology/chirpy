@@ -15,7 +15,7 @@ export function mailEventConfig(env=process.env) {
   const secret=env.RESEND_WEBHOOK_SECRET || '';
   if(!/^whsec_[A-Za-z0-9+/]+={0,2}$/.test(secret) || Buffer.from(secret.slice(6),'base64').length<24 || secret.length>200) return null;
   // Late complaints must still suppress recipients while outbound sending is paused.
-  const config=mailConfig({...env,CHIRPY_MAIL_ENABLED:'1'});
+  const config=mailConfig({...env,CHIRPY_MAIL_ENABLED:'1'},{deliveryIdentity:false});
   if(!config) return null;
   try {return {...config,webhook:new Webhook(secret)};} catch {return null;}
 }

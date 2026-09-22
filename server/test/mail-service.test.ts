@@ -25,6 +25,10 @@ describe('wallet email authorization',()=>{
     for(const key of Object.keys(env)) expect(mailConfig({...env,[key]:''})).toBeNull();
     expect(mailConfig({...env,CHIRPY_MAIL_SERVICE_URL:'https://user:secret@chirpy.example/api/mail'})).toBeNull();
     expect(mailConfig({...env,CHIRPY_MAIL_SERVICE_URL:'https://chirpy.example/api/mail?spoof=1'})).toBeNull();
+    const partial={...env,CHIRPY_MAIL_IDENTITY_URL:'https://wallet.example/api/service/delivery'};
+    expect(mailConfig(partial)).toBeNull();
+    // Suppression and opt-out must work even when forwarding configuration is broken.
+    expect(mailConfig(partial,{deliveryIdentity:false})).not.toBeNull();
   });
   it('binds the wallet signature to service, recipient, content, ID and expiry',async()=>{
     const c=command();const sig=await wallet.signMessage({message:mailSignMessage(c)});

@@ -272,3 +272,13 @@ This is configuration validation only. It cannot verify credential validity,
 provider domain ownership, webhook registration, scheduler health, recipient
 consent, backups, alert delivery or real-device acceptance. Complete those external
 checks before activation; `externalVerificationRequired` always remains true.
+
+## Wallet-backed authorization mode
+
+Configure both `CHIRPY_MAIL_IDENTITY_URL` (the exact HTTPS Wallet `/api/service/delivery` endpoint) and `CHIRPY_MAIL_IDENTITY_SECRET` through the server secret manager. Partial/invalid configuration disables sending; independent opt-out, suppression and provider-event handling do not require Wallet configuration. Previews remain disabled. This code does not configure or activate that service. The existing provider/domain, scheduler, allowlist and operational acceptance are still required.
+
+In this mode each trusted private mapping also carries `identity: { bindingId, version }`, referring to a genuinely verified Wallet binding. Local record fields are queue indexes and an additional revocation gate, not proof of current Wallet consent. The browser cannot supply this reference. Chat requires Wallet's exact sender-specific forwarding consent and matching destination before enqueue and immediately before every provider attempt. Missing mappings or denied/mismatched resolution cannot send. Transient failures preserve the original job/payload and bounded retries.
+
+Chat derives an opaque delivery ID from the existing service-scoped job key and uses the signed immutable message digest as the content hash. The queued record pins this scope and Wallet endpoint. Same-message retries reuse both and the provider idempotency key. Removing or retargeting Wallet configuration cannot downgrade existing jobs; enabling Wallet mode does not silently upgrade old jobs. Drain or reconcile old jobs before changing modes. After the Wallet network check, Chat rechecks local binding version, expiry and recipient-wide suppression before handoff.
+
+The response must match binding/version, sender, delivery ID, content hash and exact recipient, with an unexpired bounded deadline. Responses are capped at4KiB and redirects are rejected. Wallet resolution grants no inbound bridge identity, mailbox access, room membership, key custody, or assurance that a provider delivered/read a message. Live consumer credentials, mapping enrollment and self-addressed bridge acceptance remain separate deployment work.
