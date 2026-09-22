@@ -1,6 +1,6 @@
 // Capture/verify a quarantined recovery copy. Never imports or opens the XMTP SDK.
 import {createHash} from 'node:crypto';
-import {mkdirSync,mkdtempSync,realpathSync,lstatSync,fstatSync,readdirSync,openSync,closeSync,readSync,writeSync,readFileSync,fsyncSync,rmSync,constants} from 'node:fs';
+import {mkdirSync,mkdtempSync,realpathSync,lstatSync,fstatSync,readdirSync,openSync,closeSync,readSync,writeSync,fsyncSync,rmSync,constants} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname,basename,isAbsolute,relative} from 'node:path';
 import {acquireInboundState,STATE_LOCK,RECOVERY_QUARANTINE} from './inbound-state-lock.js';
@@ -53,12 +53,14 @@ function configuration(directory){
  const identity=inboundSenderIdentity(config);
  const saltPath=join(directory,'xmtp.db3.sqlcipher_salt');
  if(lstatSync(saltPath).size!==32)throw Error('Invalid snapshot database salt');
- const salt=readFileSync(saltPath,'utf8');
+ const saltFd=openSync(saltPath,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);let salt;
+ try{const stat=fstatSync(saltFd);if(!stat.isFile()||stat.nlink!==1||(stat.mode&0o077)||stat.size!==32)throw Error('Invalid snapshot database salt');const buffer=Buffer.alloc(33);const size=readSync(saltFd,buffer,0,33,null);if(size!==32)throw Error('Invalid snapshot database salt');salt=buffer.subarray(0,size).toString('utf8');}finally{closeSync(saltFd);}
  if(!/^[a-fA-F0-9]{32}$/.test(salt))throw Error('Invalid snapshot database salt');
  return {config,identity};
 }
 export function captureInboundSnapshot(source,output){
- if(!isAbsolute(output)||output!==join(realpathSync(dirname(output)),basename(output))||relative(source,output)===''||!relative(source,output).startsWith('..'))throw Error('New canonical snapshot outside the sender directory required');
+ const relation=relative(source,output);
+ if(!isAbsolute(output)||output!==join(realpathSync(dirname(output)),basename(output))||(relation!=='..'&&!relation.startsWith('../')))throw Error('New canonical snapshot outside the sender directory required');
  syncPrivateDirectory(dirname(output));
  const ownership=acquireInboundState(source);
  try{

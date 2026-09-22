@@ -81,5 +81,5 @@ it('keeps incomplete snapshot copies quarantined when the journal identity is in
  expect(()=>captureInboundSnapshot(f.source,f.output)).toThrow();expect(existsSync(join(f.output,RECOVERY_QUARANTINE))).toBe(true);expect(existsSync(join(f.output,SNAPSHOT_MANIFEST))).toBe(false);expect(()=>new InboundSendJournal(f.output,f.identity)).toThrow('quarantined');expect(existsSync(join(f.source,STATE_LOCK))).toBe(false);
 });
 it('refuses snapshots inside live state and nonprivate destinations',()=>{
- const f=fixture();expect(()=>captureInboundSnapshot(f.source,join(f.source,'backup'))).toThrow();const parent=join(f.root,'public');mkdirSync(parent,{mode:0o755});expect(()=>captureInboundSnapshot(f.source,join(parent,'backup'))).toThrow();expect(existsSync(join(f.source,STATE_LOCK))).toBe(false);
+ const f=fixture();for(const name of ['backup','..backup']){expect(()=>captureInboundSnapshot(f.source,join(f.source,name))).toThrow();expect(existsSync(join(f.source,name))).toBe(false);}const parent=join(f.root,'public');mkdirSync(parent,{mode:0o755});expect(()=>captureInboundSnapshot(f.source,join(parent,'backup'))).toThrow();expect(existsSync(join(f.source,STATE_LOCK))).toBe(false);
 });
