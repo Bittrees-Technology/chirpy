@@ -1,6 +1,7 @@
+import { redirectFixture } from './helpers/mail-redirect-fixture.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
-import { mailConfig, validMailCommand, verifyMailCommand, validMailBinding, suppressMailRecipient } from '../mail-service.js';
+import { mailConfig, validMailCommand, verifyMailCommand, validMailBinding, suppressMailRecipient, mailKv } from '../mail-service.js';
 import { mailSignMessage } from '../../packages/core/src/mailAuth.js';
 import handler from '../../api/mail.js';
 import worker from '../../api/mail-worker.js';
@@ -10,6 +11,15 @@ const command=()=>({action:'send',service:env.CHIRPY_MAIL_SERVICE_URL,wallet:wal
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
 function res(){return {code:0,body:null as any,setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};}
 describe('wallet email authorization',()=>{
+  it.each([307,308])('does not forward storage commands through HTTP %i redirects',async(code)=>{
+    const fixture=await redirectFixture(code);
+    try {
+      const config=mailConfig(env)!;
+      const kv=mailKv(config,(_url,init)=>fetch(fixture.url,init));
+      await expect(kv(['SET','synthetic-private-key','synthetic-private-value'])).rejects.toThrow();
+      expect(fixture.requests()).toEqual(['/source']);
+    } finally { await fixture.close(); }
+  });
   it('fails closed without complete explicit configuration',()=>{
     expect(mailConfig({})).toBeNull(); expect(mailConfig(env)).not.toBeNull(); expect(mailConfig({...env,VERCEL_ENV:'preview'})).toBeNull();
     for(const key of Object.keys(env)) expect(mailConfig({...env,[key]:''})).toBeNull();

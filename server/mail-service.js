@@ -18,7 +18,7 @@ export function mailConfig(env = process.env) {
 }
 export function mailKv(config, request = fetch) {
   return async command => {
-    const response = await request(config.kvUrl, { method: 'POST', headers: { Authorization: `Bearer ${config.kvToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(command), signal: AbortSignal.timeout(5000) });
+    const response = await request(config.kvUrl, { method: 'POST', redirect: 'error', headers: { Authorization: `Bearer ${config.kvToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(command), signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw Error('storage unavailable');
     const result = await response.json(); if (result.error) throw Error('storage unavailable'); return result.result;
   };
@@ -114,7 +114,7 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
             const suppressed=await kv(['EXISTS',suppressionKey(config,payload.to[0])]);
             if (suppressed || !validMailBinding(binding,job.wallet,payload.to[0]) || binding.version!==job.bindingVersion) outcome='stopped';
             else {
-              const response=await request('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${config.providerKey}`,'Content-Type':'application/json','Idempotency-Key':`chirpy-mail/${hash(config.service)}/${job.wallet}/${job.id}`},body:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});
+              const response=await request('https://api.resend.com/emails',{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${config.providerKey}`,'Content-Type':'application/json','Idempotency-Key':`chirpy-mail/${hash(config.service)}/${job.wallet}/${job.id}`},body:JSON.stringify(payload),signal:AbortSignal.timeout(10000)});
               if (response.ok) { const result=await response.json(); if (typeof result.id==='string' && result.id.length<=200 && result.id) { outcome='accepted'; providerId=result.id; } }
               else if (response.status>=400 && response.status<500 && ![408,409,429].includes(response.status)) outcome='stopped';
             }
