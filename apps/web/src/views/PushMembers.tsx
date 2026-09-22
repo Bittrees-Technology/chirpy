@@ -3,6 +3,7 @@ import type { PushMemberPage } from '@app/transport';
 import { useChat } from '../state';
 import { useI18n } from '../i18n';
 import { Button } from '../ui';
+import { usePublicProfiles } from '../usePublicProfiles';
 
 /** Mounted with a room/wallet/access key; old requests cannot populate a new scope. */
 export function PushMembers({ canModerate }: { canModerate: boolean }) {
@@ -10,6 +11,7 @@ export function PushMembers({ canModerate }: { canModerate: boolean }) {
   const [result, setResult] = useState<PushMemberPage | null>(null);
   const [pending, setPending] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
+  const profiles = usePublicProfiles(result?.members.map(member => member.address) ?? [], true);
   const generation = useRef(0);
   useEffect(() => () => { generation.current++; }, []);
   const load = async (page: number, filter = pending) => {
@@ -33,7 +35,7 @@ export function PushMembers({ canModerate }: { canModerate: boolean }) {
     {result && <>
       <p>{t('push.memberPage', undefined, { page: result.page })}</p>
       {result.members.length === 0 && <p>{t('push.noMembersPage')}</p>}
-      <ul>{result.members.map(member => <li key={member.address}><code>{member.address}</code> · {t(member.role === 'ADMIN' ? 'push.admin' : 'push.membership.member')}</li>)}</ul>
+      <ul>{result.members.map(member => <li key={member.address}>{profiles.get(member.address.toLowerCase())?.label && <span>{profiles.get(member.address.toLowerCase())!.label} · </span>}<code>{member.address}</code> · {t(member.role === 'ADMIN' ? 'push.admin' : 'push.membership.member')}</li>)}</ul>
       <div className="local-actions">
         <Button disabled={busy || result.page <= 1} onClick={() => void load(result.page - 1)}>{t('list.previous')}</Button>
         <Button disabled={busy || !result.hasMore} onClick={() => void load(result.page + 1)}>{t('list.next')}</Button>

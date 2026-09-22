@@ -3,8 +3,14 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
-    { "source": "/mail/optout", "destination": "/mail/optout/index.html" },
-    { "source": "/mail/optout/", "destination": "/mail/optout/index.html" },
+    {
+      "source": "/mail/optout",
+      "destination": "/mail/optout/index.html"
+    },
+    {
+      "source": "/mail/optout/",
+      "destination": "/mail/optout/index.html"
+    },
     {
       "source": "/es/support",
       "destination": "/es/support/index.html"
@@ -77,6 +83,9 @@
     },
     "api/mail/[action].js": {
       "maxDuration": 60
+    },
+    "api/profile.js": {
+      "maxDuration": 30
     }
   }
 }

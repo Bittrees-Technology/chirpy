@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Conversation } from "@app/transport";
 import { useChat, useIdentity } from "../state";
 import { Avatar, Empty, fmtTime } from "../ui";
-import { nameFor, useEnsProfiles } from "../useEns";
+import { useEnsProfiles } from "../useEns";
+import { usePublicProfiles, publicName } from "../usePublicProfiles";
 import { useI18n } from "../i18n";
 import { translateStatus } from "../i18n/statusMessages";
 
@@ -20,7 +21,7 @@ export function ConversationColumn(
   },
 ) {
   const { conversations, activeId, select, startDm, pushSource, setPushSource, pushStatus, pushLoading, pushError, enablePushRooms, refreshPushRooms } = useChat();
-  const { identity } = useIdentity();
+  const { identity, mode: identityMode } = useIdentity();
   const { t, lang } = useI18n();
   const [inboxView, setInboxView] = useState<"inbox" | "requests" | "blocked">("inbox");
   const [query, setQuery] = useState("");
@@ -55,7 +56,9 @@ export function ConversationColumn(
   const pageCount = Math.max(1, Math.ceil(filteredItems.length / 50));
   const currentPage = Math.min(page, pageCount - 1);
   const visibleItems = filteredItems.slice(currentPage * 50, (currentPage + 1) * 50);
-  const dmProfiles = useEnsProfiles(visibleItems.filter((c) => c.kind === "dm").map(peerOf));
+  const profileWallets = visibleItems.filter((c) => c.kind === "dm" && !c.blocked).map(peerOf);
+  const publicProfiles = usePublicProfiles(profileWallets, identityMode === "wallet");
+  const dmProfiles = useEnsProfiles(profileWallets.filter(a => identityMode !== "wallet" || publicProfiles.get(a?.toLowerCase())?.revision === 0));
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [currentPage, normalizedQuery, inboxView]);
   const showConnectEmpty = needsConnect && items.length === 0;
   const savedLabel = t("list.savedMessages", "Saved Messages");
@@ -165,7 +168,7 @@ export function ConversationColumn(
           const record = peer ? dmProfiles.get(peer.toLowerCase()) : undefined;
           const peerLabel = c.kind === "room"
             ? `# ${c.title}`
-            : nameFor(peer ?? c.title, record, c.title);
+            : publicName(peer ?? c.title, publicProfiles.get(peer?.toLowerCase() ?? ""), record, c.title, identityMode === "wallet");
           return (
             <button
               key={c.id}
@@ -175,7 +178,7 @@ export function ConversationColumn(
               <Avatar id={c.id} label={peerLabel} src={c.kind === "dm" ? record?.avatar ?? undefined : undefined} />
               <div className="list-item-main">
                 <div className="list-item-top">
-                  <span className="list-item-title">{peerLabel}</span>
+                  <span className="list-item-title" title={peer}>{peerLabel}{c.kind === "dm" && identityMode === "wallet" && <small className="profile-wallet">{peer}</small>}</span>
                   {c.lastMessage && <span className="list-item-time">{fmtTime(c.lastMessage.sentAt, lang)}</span>}
                 </div>
                 <div className="list-item-bottom">

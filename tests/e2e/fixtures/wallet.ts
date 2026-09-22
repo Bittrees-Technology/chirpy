@@ -51,6 +51,12 @@ export async function injectSyntheticWallet(target: WalletInjectionTarget, priva
       },
     };
   });
+  // No public profile choice unless the test supplies its own endpoint fixture.
+  await target.route("**/api/profile?wallet=*", route => {
+    const url = new URL(route.request().url());
+    return route.fulfill({json: {service: new URL('/api/profile', url).href,
+      profiles: (url.searchParams.get('wallet') ?? '').split(',').map(wallet => ({version: 1, wallet, revision: 0, label: null, updatedAt: 0}))}});
+  });
   await target.route("https://api.ensideas.com/ens/resolve/**", async (route) => {
     await route.fulfill({
       status: 200,
