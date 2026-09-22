@@ -120,3 +120,11 @@ it('HTTP disconnect can clear access while disabled; failures never expose upstr
  await expect(f.api.operation(p.session.token,{wallet,action:'folders',input:{}})).rejects.toMatchObject({status:401});
  expect(await f.api.disconnect(p.session.token)).toEqual({ok:true,sourceRevoked:true});
 });
+it('HTTP disconnect clears an absent or malformed session for a fresh connection',async()=>{
+ const call=httpFixture(fixture());
+ for(const cookie of ['', '__Host-chat_mail_session=expired']){
+  const response=await call('disconnect',{}, {cookie});
+  expect(response.code).toBe(200);expect(response.body).toEqual({ok:true,sourceRevoked:true});
+  expect(response.headers['Set-Cookie']).toContain('Max-Age=0');
+ }
+});

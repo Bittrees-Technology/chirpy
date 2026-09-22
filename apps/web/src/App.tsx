@@ -10,14 +10,15 @@ import { Settings } from "./views/Settings";
 import { NewDmDialog, NewRoomDialog, CreateOrgDialog, ImportOrgDialog } from "./views/dialogs";
 
 import { LocalLibrary } from "./views/LocalLibrary";
+import { Mailbox } from "./views/Mailbox";
 import { MessageRoutes } from "./views/MessageRoutes";
 import { recipientFromFragment } from "./messageRouting";
 
-type View = "chats" | "rooms" | "settings" | "routes";
+type View = "chats" | "rooms" | "settings" | "routes" | "mail";
 const AppViewContext = createContext<{ view: View; setView: (view: View) => void } | null>(null);
 /** Keep navigation stable while wallet-owned state is discarded on account changes. */
 export function AppViewProvider({ children }: { children: React.ReactNode }) {
-  const [view, setView] = useState<View>("chats");
+  const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get("mail") === "connected" ? "mail" : "chats");
   return <AppViewContext.Provider value={{ view, setView }}>{children}</AppViewContext.Provider>;
 }
 
@@ -54,6 +55,7 @@ function Sidebar(
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chats", label: t("nav.chats"), icon: "💬" },
     { id: "rooms", label: t("nav.rooms", "Rooms"), icon: "👥" },
+    { id: "mail", label: t("mailbox.title"), icon: "📨" },
     { id: "routes", label: t("routing.nav"), icon: "✉️" },
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
@@ -89,6 +91,7 @@ function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chats", label: t("nav.chats"), icon: "💬" },
     { id: "rooms", label: t("nav.rooms", "Rooms"), icon: "👥" },
+    { id: "mail", label: t("mailbox.title"), icon: "📨" },
     { id: "routes", label: t("routing.nav"), icon: "✉️" },
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
@@ -108,7 +111,7 @@ export function App() {
   const { storageError, recoveryPaused } = useSettingsPrefs();
   const { t } = useI18n();
   const { transportId, transportStatus } = useChat();
-  const { identity } = useIdentity();
+  const { identity, mode } = useIdentity();
   const { activeOrg } = useOrgs();
   const navigation = useContext(AppViewContext);
   if (!navigation) throw new Error("App requires AppViewProvider");
@@ -158,6 +161,7 @@ export function App() {
             <Thread showBack onBack={() => setMobilePane("list")} />
           </div>
         )}
+        {view === "mail" && <Mailbox key={`${identity.address}:${mode}`} onOpenSettings={() => openView("settings")} />}
         {view === "routes" && <MessageRoutes onCompose={() => { setLinkedRecipient(null); setDialog("newDm"); }} />}
         {view === "settings" && (
           <Settings onCreateOrg={() => setDialog("createOrg")} onImportOrg={() => setDialog("importOrg")} />
