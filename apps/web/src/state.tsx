@@ -5,8 +5,9 @@ import {
   PERSONAL_ORG, parseOrg, type Identity, type OrgConfig, type Policy,
 } from "@app/core";
 import {
-  createTransport, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
+  createTransport, parsePushConversationId, type PushSource, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
 } from "@app/transport";
+import { usePushRooms } from "./usePushRooms";
 import { createRefreshQueue } from "./refreshQueue";
 import { MAX_SAVED_ORGANIZATIONS, ORGANIZATIONS_KEY, loadOrganizationStore } from "./orgStorage";
 import { APP_NAME, DEFAULT_TRANSPORT } from "./app.config";
@@ -922,6 +923,16 @@ export const useSettingsPrefs = () => {
 // Chat  (binds a Transport to the active org + identity)
 // ====================================================================
 interface ChatCtx {
+  pushSource: PushSource | null;
+  setPushSource: (source: PushSource | null) => void;
+  pushStatus: string;
+  pushLoading: boolean;
+  pushError: string | null;
+  enablePushRooms: () => Promise<void>;
+  refreshPushRooms: () => Promise<void>;
+  leavePushRoom: () => Promise<void>;
+  managePushMember: (action: 'add' | 'remove', address: string, role: 'ADMIN' | 'MEMBER') => Promise<void>;
+  historyError: string | null;
   transportId: string;
   transportStatus: string;
   transportError: string | null;
@@ -958,7 +969,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [transportStatus, setTransportStatus] = useState("idle");
   const [transportError, setTransportError] = useState<string | null>(null);
   const [transportNeedsRevoke, setTransportNeedsRevoke] = useState(false);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [nativeConversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
@@ -972,6 +983,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const conversationLoadRef = useRef(0);
+  const messageLoadRef = useRef(0);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const invalidatePushView = useCallback(() => {
+    if (activeIdRef.current && parsePushConversationId(activeIdRef.current)) {
+      messageLoadRef.current++; activeIdRef.current = null; setActiveId(null);
+      setMessages([]); setHistoryError(null); setHistoryLoading(false); resetHistory();
+    }
+  }, [resetHistory]);
+  const push = usePushRooms(identity.address, mode === 'wallet', activeOrg.id, invalidatePushView);
+  const { getAdapter: getPushAdapter } = push;
+  const conversations = useMemo(() => [...nativeConversations, ...push.snapshot.rooms], [nativeConversations, push.snapshot.rooms]);
   const reloadConversations = useCallback(async () => {
     const request = ++conversationLoadRef.current;
     const t = transportRef.current; if (!t) return;
@@ -981,22 +1003,26 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     } catch (error) { if (transportRef.current === t && conversationLoadRef.current === request) setTransportError(error instanceof Error ? error.message : "Unable to load conversations."); }
   }, []);
 
-  const messageLoadRef = useRef(0);
   const reloadMessages = useCallback(async (id: string | null) => {
     if (id !== activeIdRef.current) return;
     const request = ++messageLoadRef.current;
     const t = transportRef.current;
-    if (!t || !id) { setMessages([]); setOlderCursor(undefined); setHistoryLoading(false); return; }
+    const isPush = !!id && !!parsePushConversationId(id);
+    const rooms = isPush ? getPushAdapter() : null;
+    if (!id || (isPush ? !rooms || rooms.getSnapshot().status !== 'ready' : !t)) {
+      setMessages([]); setOlderCursor(undefined); setHistoryLoading(false); return;
+    }
     const before = historyRef.current.before;
-    setHistoryLoading(true);
+    const current = () => messageLoadRef.current === request && activeIdRef.current === id && historyRef.current.before === before
+      && (isPush ? getPushAdapter() === rooms : transportRef.current === t);
+    setHistoryLoading(true); setHistoryError(null);
     try {
-      const page = await t.listMessagePage(id, before);
-      if (messageLoadRef.current === request && transportRef.current === t && activeIdRef.current === id && historyRef.current.before === before) {
-        setMessages(page.messages); setOlderCursor(page.olderCursor);
-      }
-    } catch (error) { if (messageLoadRef.current === request) setTransportError(error instanceof Error ? error.message : "Unable to load messages."); }
-    finally { if (messageLoadRef.current === request) setHistoryLoading(false); }
-  }, []);
+      const page = isPush ? await rooms!.history(id, before) : await t!.listMessagePage(id, before);
+      if (current()) { setMessages(page.messages); setOlderCursor(page.olderCursor); }
+    } catch (error) {
+      if (current()) { setHistoryError(error instanceof Error ? error.message : "Unable to load messages."); if (isPush) setMessages([]); }
+    } finally { if (messageLoadRef.current === request) setHistoryLoading(false); }
+  }, [getPushAdapter]);
 
   const navigateHistory = useCallback((direction: "older" | "newer" | "latest" | "refresh") => {
     const current = historyRef.current;
@@ -1027,7 +1053,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const t = createTransport(DEFAULT_TRANSPORT, activeOrg, identity, provider);
       setTransportError(null);
       await t.init().catch((err) => {
-        setTransportError(err instanceof Error ? err.message : "Transport failed to initialize.");
+        if (!cancelled) setTransportError(err instanceof Error ? err.message : "Transport failed to initialize.");
       });
       if (cancelled) return;
       transportRef.current = t;
@@ -1048,7 +1074,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       unsub = () => { queue.cancel(); stop(); };
     })();
     return () => { cancelled = true; unsub(); };
-  }, [activeOrg.id, identity.address, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeOrg.id, identity.address, mode, push.connectionRevision]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { reloadMessages(activeId); }, [activeId, reloadMessages]);
 
@@ -1056,13 +1082,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const reselected = id === activeIdRef.current;
     activeIdRef.current = id;
     messageLoadRef.current++;
-    resetHistory(); setMessages([]);
+    resetHistory(); setMessages([]); setHistoryError(null);
     setActiveId(id);
     if (reselected) void reloadMessages(id);
   }, [resetHistory, reloadMessages]);
 
   const markRead = useCallback(async (throughMessageId: string) => {
-    if (!activeId) return;
+    if (!activeId || parsePushConversationId(activeId)) return;
     await transportRef.current?.markRead(activeId, { sendReceipt: receiptOverride(prefs.readReceiptOverrides, activeId) ?? prefs.readReceiptsDefault, throughMessageId });
   }, [activeId, prefs.readReceiptsDefault, prefs.readReceiptOverrides]);
 
@@ -1074,9 +1100,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setTransportStatus("enabling");
     try {
       await t.enable(opts);
+      if (transportRef.current !== t) return;
       setTransportStatus(t.status ?? "ready");
       await reloadConversations();
     } catch (err) {
+      if (transportRef.current !== t) return;
       setTransportStatus(t.status ?? "error");
       setTransportError(err instanceof Error ? err.message : "Messaging could not be enabled.");
       if ((err as { code?: string })?.code === "installation_limit") setTransportNeedsRevoke(true);
@@ -1093,15 +1121,24 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const send = useCallback(async (body: string, replyTo?: string) => {
     if (!activeId || !body.trim()) return;
+    if (parsePushConversationId(activeId)) {
+      if (replyTo) throw new Error('Replies are not supported for Push rooms yet.');
+      const rooms = getPushAdapter(); if (!rooms) throw new Error('Push rooms are reconnecting.');
+      await rooms.send(activeId, body);
+      if (getPushAdapter() !== rooms) throw new Error('Room connection changed. Check history before retrying.');
+      if (activeIdRef.current === activeId) { resetHistory(); await reloadMessages(activeId); }
+      return;
+    }
     if (!transportRef.current) throw new Error("Messaging is reconnecting. Try again shortly.");
     const transport = transportRef.current;
     await transport.send(activeId, body, { replyTo });
     if (activeIdRef.current !== activeId || transportRef.current !== transport) return;
     resetHistory(); await reloadMessages(activeId);
-  }, [activeId, reloadMessages, resetHistory]);
+  }, [activeId, reloadMessages, resetHistory, getPushAdapter]);
 
   const react = useCallback(async (messageId: string, emoji: string) => {
     if (!activeId) return;
+    if (parsePushConversationId(activeId)) throw new Error('Reactions are not supported for Push rooms yet.');
     await transportRef.current?.react(activeId, messageId, emoji);
     await reloadMessages(activeId);
   }, [activeId, reloadMessages]);
@@ -1120,7 +1157,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const requestRoomJoin = useCallback(async (conversationId: string) => {
     try {
-      await transportRef.current?.requestRoomJoin?.(conversationId);
+      if (parsePushConversationId(conversationId)) {
+        const rooms = getPushAdapter(); if (!rooms) throw new Error('Enable Push rooms first.');
+        const result = await rooms.join(conversationId);
+        await reloadMessages(conversationId);
+        return { ok: result.membership === 'member', message: result.membership === 'member' ? 'You joined the Push room.' : 'Membership is pending approval.' };
+      }
+      if (!transportRef.current?.requestRoomJoin) throw new Error('Room joining is unavailable.');
+      await transportRef.current.requestRoomJoin(conversationId);
       await reloadConversations();
       return { ok: true, message: "Join request approved. Syncing room membership." };
     } catch (err) {
@@ -1129,10 +1173,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         : "Self-serve join failed. Ask a room admin to add you.";
       return { ok: false, message };
     }
-  }, [reloadConversations]);
+  }, [reloadConversations, reloadMessages, getPushAdapter]);
 
   const setRoomPolicy = useCallback(async (policy: Policy) => {
     if (!activeId) return;
+    if (parsePushConversationId(activeId)) throw new Error('Push room policy remains with the original room.');
     await transportRef.current?.setRoomPolicy(activeId, policy);
     await reloadConversations();
   }, [activeId, reloadConversations]);
@@ -1145,16 +1190,44 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     await reloadMessages(activeId);
   }, [activeId, reloadConversations, reloadMessages]);
 
+  const enablePushRooms = useCallback(async () => {
+    await push.enable();
+    if (activeIdRef.current && parsePushConversationId(activeIdRef.current)) await reloadMessages(activeIdRef.current);
+  }, [push.enable, reloadMessages]);
+  const leavePushRoom = useCallback(async () => {
+    const id = activeIdRef.current; const rooms = getPushAdapter();
+    if (!id || !parsePushConversationId(id) || !rooms) throw new Error('Select a connected Push room.');
+    await rooms.leave(id);
+    if (getPushAdapter() === rooms && activeIdRef.current === id) { setMessages([]); resetHistory(); await reloadMessages(id); }
+  }, [getPushAdapter, reloadMessages, resetHistory]);
+  const managePushMember = useCallback(async (action: 'add' | 'remove', address: string, role: 'ADMIN' | 'MEMBER') => {
+    const id = activeIdRef.current; const rooms = getPushAdapter();
+    if (!id || !parsePushConversationId(id) || !rooms) throw new Error('Select a connected Push room.');
+    await rooms.moderate(id, action, address, role);
+  }, [getPushAdapter]);
+  useEffect(() => {
+    if (!activeId || !parsePushConversationId(activeId) || push.snapshot.status !== 'ready') return;
+    const queue = createRefreshQueue(async () => {
+      if (document.visibilityState !== 'hidden' && navigator.onLine && historyRef.current.before === undefined) await reloadMessages(activeIdRef.current);
+    }, () => {});
+    const notify = () => queue.notify();
+    const timer = setInterval(notify, 15_000);
+    window.addEventListener('online', notify); document.addEventListener('visibilitychange', notify);
+    return () => { clearInterval(timer); queue.cancel(); window.removeEventListener('online', notify); document.removeEventListener('visibilitychange', notify); };
+  }, [activeId, push.snapshot.status, reloadMessages]);
+
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
     [conversations, activeId],
   );
 
   const value = useMemo<ChatCtx>(() => ({
+    pushSource: push.source, setPushSource: push.changeSource, pushStatus: push.snapshot.status, pushLoading: push.snapshot.loading,
+    pushError: push.error ?? push.snapshot.error ?? null, enablePushRooms, refreshPushRooms: push.refresh, leavePushRoom, managePushMember, historyError,
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages,
     historyLoading, isHistory: history.before !== undefined, hasOlderMessages: olderCursor !== undefined, navigateHistory,
     enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, historyError, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

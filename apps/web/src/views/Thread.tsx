@@ -11,7 +11,7 @@ import { useI18n } from "../i18n";
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
 export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) {
-  const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent, markRead, historyLoading, isHistory, hasOlderMessages, navigateHistory } = useChat();
+  const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent, markRead, historyLoading, isHistory, hasOlderMessages, navigateHistory, historyError, pushStatus, enablePushRooms, leavePushRoom, managePushMember } = useChat();
   const { identity } = useIdentity();
   const { prefs, storageBusy, storageError, recoveryPaused, setChatReadReceipts } = useSettingsPrefs();
   const { t, lang } = useI18n();
@@ -33,6 +33,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [consentPending, setConsentPending] = useState(false);
   const [joinPending, setJoinPending] = useState(false);
+  const [memberAddress, setMemberAddress] = useState("");
+  const [memberRole, setMemberRole] = useState<"MEMBER" | "ADMIN">("MEMBER");
+  const [memberAction, setMemberAction] = useState<"add" | "remove">("add");
+  const [moderating, setModerating] = useState(false);
+  useEffect(() => { setMemberAddress(""); setMemberRole("MEMBER"); setMemberAction("add"); }, [conversationKey, identity.address]);
   const [policyPending, setPolicyPending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -43,7 +48,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const selfAddress = identity.address.toLowerCase();
   const latestMessageId = messages.at(-1)?.id;
   const markVisibleRead = () => {
-    if (!isHistory && !historyLoading && latestMessageId && messagesRef.current?.getClientRects().length && nearBottomRef.current && !activeConversation?.pending && !activeConversation?.blocked && document.visibilityState === "visible" && document.hasFocus()) {
+    if (!activeConversation?.push && !isHistory && !historyLoading && latestMessageId && messagesRef.current?.getClientRects().length && nearBottomRef.current && !activeConversation?.pending && !activeConversation?.blocked && document.visibilityState === "visible" && document.hasFocus()) {
       void markRead?.(latestMessageId).catch(() => {});
     }
   };
@@ -54,6 +59,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     return () => { window.removeEventListener("focus", markVisibleRead); document.removeEventListener("visibilitychange", markVisibleRead); };
   }, [conversationKey, latestMessageId, markRead, activeConversation?.pending, activeConversation?.blocked, isHistory, historyLoading]);
 
+  const pushRoom = activeConversation?.push;
   const isRoomConv = activeConversation?.kind === "room";
   const peerAddress = activeConversation && !isRoomConv
     ? (activeConversation.peers.find((p) => p.toLowerCase() !== selfAddress) ?? activeConversation.peers[0])
@@ -103,11 +109,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
   const replyTarget = replyTo ? messages.find((m) => m.id === replyTo) : null;
   const isRoom = activeConversation.kind === "room";
-  const policy: Policy | null = isRoom ? (activeConversation.policy ?? null) : null;
+  const policy: Policy | null = isRoom && !pushRoom ? (activeConversation.policy ?? null) : null;
   const readOnly = policy?.mode === "read-only";
   const isAdmin = isRoom && activeConversation.isAdmin === true;
   const configurationError = isRoom && activeConversation.configurationError === true;
-  const postingBlocked = configurationError || (readOnly && !isAdmin);
+  const postingBlocked = Boolean(pushRoom && (pushStatus !== "ready" || !pushRoom.canSend)) || configurationError || (readOnly && !isAdmin);
   const needsConsent = !isRoom && (activeConversation.pending || activeConversation.blocked);
   const changeConsent = async (state: "allowed" | "denied") => {
     setConsentPending(true);
@@ -115,7 +121,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     catch (error) { setJoinStatus({ ok: false, message: error instanceof Error ? error.message : "Consent update failed. Try again." }); }
     finally { setConsentPending(false); }
   };
-  const isGatedRoom = isRoom && Boolean(activeConversation.gate?.rules.length);
+  const isGatedRoom = !pushRoom && isRoom && Boolean(activeConversation.gate?.rules.length);
   const isMember = activeConversation.peers.some((peer) => peer.toLowerCase() === identity.address.toLowerCase());
   const toggleFreeze = () => {
     if (!policy || !isAdmin || policyPending) return;
@@ -124,9 +130,13 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   };
   const requestJoin = async () => {
     setJoinPending(true);
-    const result = await requestRoomJoin(activeConversation.id);
-    setJoinStatus(result);
-    setJoinPending(false);
+    const id = activeConversation.id;
+    try {
+      const result = await requestRoomJoin(id);
+      if (currentConversationRef.current === id) setJoinStatus(result);
+    } catch (error) {
+      if (currentConversationRef.current === id) setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed") });
+    } finally { setJoinPending(false); }
   };
 
   return (
@@ -143,7 +153,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
             {headerName}
           </div>
           <div className="thread-sub">
-            {isRoom
+            {pushRoom ? `${t(`push.${pushRoom.source}`)} · Push · ${t(pushRoom.publicRoom === true ? "push.publicRoom" : pushRoom.publicRoom === false ? "push.privateRoom" : "push.visibilityUnknown")} · ${t(`push.membership.${pushRoom.membership}`)}` : isRoom
               ? `${t(activeConversation.peers.length === 1 ? "thread.member" : "thread.members", undefined, { count: new Intl.NumberFormat(lang).format(activeConversation.peers.length) })} · ${t(activeConversation.gate?.rules.length ? "thread.gated" : "thread.open")}${policy ? ` · ${policySummary(policy)}` : ""}`
               : shortAddr(activeConversation.peers.find((p) => p !== identity.address) ?? activeConversation.peers[0])}
           </div>
@@ -163,6 +173,34 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           </div>
         ) : null}
       </header>
+      {pushRoom && <div className="join-banner">
+        <span>{t("push.provenance")}</span>
+        {pushStatus !== "ready" ? <Button disabled={pushStatus === "enabling"} onClick={() => { void enablePushRooms().catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed") })); }}>{t("push.connect")}</Button> : <>
+          {pushRoom.canJoin && <Button disabled={joinPending} onClick={requestJoin}>{t("thread.requestJoin")}</Button>}
+          {(pushRoom.membership === "member" || pushRoom.membership === "pending") && <Button disabled={joinPending} onClick={() => {
+            const id = conversationKey; setJoinPending(true);
+            void leavePushRoom().catch((error) => { if (currentConversationRef.current === id) setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed") }); }).finally(() => setJoinPending(false));
+          }}>{t("push.leave")}</Button>}
+        </>}
+      </div>}
+      {pushRoom?.canModerate && pushStatus === "ready" && <details className="join-banner">
+        <summary>{t("push.manageMembers")}</summary>
+        <form onSubmit={(event) => {
+          event.preventDefault(); if (moderating) return;
+          const id = conversationKey; setModerating(true); setJoinStatus(null);
+          void managePushMember(memberAction, memberAddress.trim(), memberRole).then(() => {
+            if (currentConversationRef.current === id) { setMemberAddress(""); setJoinStatus({ ok: true, message: t("push.memberUpdated") }); }
+          }).catch((error) => {
+            if (currentConversationRef.current === id) setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed") });
+          }).finally(() => setModerating(false));
+        }}>
+          <label>{t("push.memberWallet")}<input required className="input" aria-label={t("push.memberWallet")} value={memberAddress} onChange={(event) => setMemberAddress(event.target.value)} pattern="0x[a-fA-F0-9]{40}" maxLength={42} /></label>
+          <label>{t("push.memberRole")}<select value={memberRole} onChange={(event) => setMemberRole(event.target.value === "ADMIN" ? "ADMIN" : "MEMBER")}><option value="MEMBER">{t("push.membership.member")}</option><option value="ADMIN">{t("push.admin")}</option></select></label>
+          <label>{t("push.memberAction")}<select value={memberAction} onChange={(event) => setMemberAction(event.target.value === "remove" ? "remove" : "add")}><option value="add">{t("push.addMember")}</option><option value="remove">{t("push.removeMember")}</option></select></label>
+          <button className="btn btn-ghost" type="submit" disabled={moderating || !/^0x[a-fA-F0-9]{40}$/.test(memberAddress.trim())}>{t("push.applyMemberChange")}</button>
+        </form>
+      </details>}
+      {historyError && <div className="error-banner" role="alert">{historyError}</div>}
       {configurationError && <div className="error-banner" role="alert">{t("thread.invalidRoom", "Room configuration is invalid or unsupported. Ask an administrator to repair it.")}</div>}
 
       {!isRoom && peerAddress?.toLowerCase() !== selfAddress && <div className="join-banner dm-controls">
@@ -202,7 +240,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
           if (nearBottomRef.current) { setHasNewMessages(false); markVisibleRead(); }
         }}>
-        {messages.length === 0 && !historyLoading && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
+        {messages.length === 0 && !historyLoading && !historyError && (!pushRoom || (pushStatus === "ready" && pushRoom.membership !== "unknown")) && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
         {(activeConversation.blocked ? [] : messages).map((m) => {
           const mine = m.sender.toLowerCase() === selfAddress;
           const senderRecord = profiles.get(m.sender.toLowerCase());
@@ -218,14 +256,14 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                   <MessageBody body={m.body} />
                   <span className="msg-time">{fmtTime(m.sentAt, lang)}</span>
                 </div>
-                <div className="msg-tools">
+                {!pushRoom && <div className="msg-tools">
                   {EMOJIS.map((e) => (
                     <button key={e} className="react-btn" disabled={Boolean(needsConsent || postingBlocked)} aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
                       void react(m.id, e).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
                     }}>{e}</button>
                   ))}
                   <button className="react-btn" disabled={Boolean(needsConsent || postingBlocked)} aria-label={t("thread.reply", "Reply")} onClick={() => setReplyTo(m.id)}>↩</button>
-                </div>
+                </div>}
                 {m.reactions && Object.keys(m.reactions).length > 0 && (
                   <div className="msg-reactions">
                     {Object.entries(m.reactions).map(([e, who]) => (
@@ -252,7 +290,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
       {readOnly && isAdmin && !configurationError && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chat. Administrators can still post; other clients may ignore this policy.")}</div>}
       {configurationError ? null : needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : postingBlocked ? (
-        <div className="composer readonly-note">{t("thread.readOnly", "Member posting is paused in Chat. Other clients may still send messages.")}</div>
+        <div className="composer readonly-note">{pushRoom ? t("push.cannotSend") : t("thread.readOnly", "Member posting is paused in Chat. Other clients may still send messages.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>
           <input

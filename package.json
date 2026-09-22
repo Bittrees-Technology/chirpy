@@ -15,7 +15,8 @@
     "e2e:xmtp": "XMTP_E2E=1 VITE_TRANSPORT=xmtp VITE_XMTP_ENV=dev playwright test --grep @xmtp",
     "tauri": "pnpm --filter @app/web tauri",
     "test:hardening": "vitest run --project api",
-    "e2e:push-runtime": "playwright test --config playwright.push.config.ts"
+    "e2e:push-runtime": "playwright test --config playwright.push.config.ts",
+    "e2e:push-ui": "playwright test --config playwright.push-ui.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.61.0",

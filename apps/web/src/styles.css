@@ -302,3 +302,12 @@ input, textarea, select { font-family: inherit; }
 
 .restore-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; display: block; }
 .card[data-insights-ignore] details { margin: 12px 0; overflow-wrap: anywhere; }
+
+/* Keep the shared consent control in layout on phones so it cannot cover
+   navigation or the message composer. No space is reserved when it is hidden. */
+@media (max-width: 760px) {
+  body:has(> .bt-insights-preferences:not([hidden])) { display: flex; flex-direction: column; }
+  body:has(> .bt-insights-preferences:not([hidden])) > #root { flex: 1; min-height: 0; height: auto; }
+  body > .bt-insights-consent { bottom: calc(128px + env(safe-area-inset-bottom)); max-height: calc(100dvh - 148px - env(safe-area-inset-bottom)); overflow-y: auto; }
+  body > .bt-insights-preferences { position: static; flex-shrink: 0; align-self: flex-start; margin: 6px 16px calc(6px + env(safe-area-inset-bottom)); }
+}

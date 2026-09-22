@@ -18,7 +18,7 @@ export function ConversationColumn(
     onOpenConversation: () => void;
   },
 ) {
-  const { conversations, activeId, select, startDm } = useChat();
+  const { conversations, activeId, select, startDm, pushSource, setPushSource, pushStatus, pushLoading, pushError, enablePushRooms, refreshPushRooms } = useChat();
   const { identity } = useIdentity();
   const { t, lang } = useI18n();
   const [inboxView, setInboxView] = useState<"inbox" | "requests" | "blocked">("inbox");
@@ -84,10 +84,25 @@ export function ConversationColumn(
           <h1>{t(isRooms ? "nav.rooms" : "nav.chats", title)}</h1>
           <div className="list-actions">
             {isRooms
-              ? <button className="btn btn-primary btn-sm" onClick={onNewRoom}>{t("list.newRoom", "+ Room")}</button>
+              ? <button className="btn btn-primary btn-sm" onClick={onNewRoom}>{pushSource ? t("push.newNativeRoom") : t("list.newRoom", "+ Room")}</button>
               : <button className="btn btn-primary btn-sm" onClick={onNewDm}>{t("list.newChat", "+ Chat")}</button>}
           </div>
         </div>
+        {isRooms && <div className="local-shortcuts">
+          <label>{t("push.source")}
+            <select aria-label={t("push.source")} value={pushSource ?? ""} onChange={(event) => setPushSource(event.target.value === "governance" ? "governance" : event.target.value === "research" ? "research" : null)}>
+              <option value="">{t("push.noSource")}</option>
+              <option value="governance">{t("push.governance")}</option>
+              <option value="research">{t("push.research")}</option>
+            </select>
+          </label>
+          {pushSource && <>
+            <span role="status">{t(`push.status.${pushStatus}`)}</span>
+            {pushStatus !== "ready" && <button className="btn btn-ghost btn-sm" disabled={pushStatus === "enabling"} onClick={() => { void enablePushRooms().catch(() => {}); }}>{t("push.connect")}</button>}
+            <button className="btn btn-ghost btn-sm" disabled={pushLoading} onClick={() => { void refreshPushRooms().catch(() => {}); }}>{t("push.refreshRooms")}</button>
+            {pushError && <div role="alert" className="error-banner">{pushError}</div>}
+          </>}
+        </div>}
         {!isRooms && (
           <button
             className={`list-item saved-row ${savedConversation?.id === activeId ? "active" : ""}`}

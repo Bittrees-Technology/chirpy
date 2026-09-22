@@ -1,6 +1,6 @@
 # Push integration status
 
-Chat retains XMTP as its active messaging transport. The public Push registry adapter is a prerequisite for bringing Governance and Research rooms into the same app; it does not yet enable Push messaging.
+Chat retains XMTP messaging and adds independently connected Governance/Research Push rooms. This implementation remains subject to source-room and live-device acceptance before consumer cutover.
 
 `packages/transport/src/pushRegistry.ts` reads only the fixed public production registries, omits credentials, rejects redirects, and bounds response size and duration. A failed or unsupported registry rejects instead of returning an empty catalog. Consumers must preserve the previous catalog and show the failure. A successful empty registry is a distinct result.
 
@@ -8,7 +8,7 @@ Room identifiers retain the original Push chat ID inside a source-qualified `pus
 
 Discovery is not admission. Built-in entries currently expose registry keys and no gate descriptor; a null descriptor must never mean public membership. Custom rules retain their source shape and must not be translated into Chat's illustrative organization gates. Joining, sending and moderation must use the original room's protocol authority.
 
-Remaining integration work includes independent wallet-bound Push lifecycle and signing, session invalidation, history and reconnect, send states, membership and moderation, and conversation UI with accurate protocol capabilities. Do not remove legacy messenger access or enable launch forwarding based on this adapter. Live room-by-room and device acceptance remain required.
+The room adapter and UI now provide source selection, explicit wallet-bound connection, bounded history pages, periodic receive refresh, text sends, join/leave and bounded administrator actions. Participant-list parity and broader legacy content/identity acceptance remain incomplete. Do not remove legacy messenger access or enable launch forwarding based on this adapter. Live room-by-room and device acceptance remain required.
 
 ## Wallet session foundation
 
@@ -16,8 +16,17 @@ Remaining integration work includes independent wallet-bound Push lifecycle and 
 
 The SDK is lazy-loaded in production mode. Recovered private keys stay internal to the SDK session; this app adds no browser key cache. Automatic SDK key upgrades are disabled. Legacy recovery is routed through a restricted provider wrapper for the selected wallet; arbitrary RPC requests and other account addresses are rejected. A checked-in pnpm patch makes the SDK construct its injected-wallet fallback lazily, so a supplied guarded provider works even without window.ethereum. The browser test covers both absent and unrelated injected wallets using synthetic V1 recovery. Original messenger/key recovery access must remain available. No cross-device/live recovery acceptance is claimed.
 
-The session exposes guarded room operations, not SDK private keys or a general transaction signer. It is not yet wired to the Chat provider or conversation UI. The next increment must add source selection, independent connection states, lifecycle disposal, normalized history/send results, membership and protocol capability controls. Preserve XMTP IDs and behavior throughout.
+The session exposes guarded room operations, not SDK private keys or a general transaction signer. The Chat provider disposes and invalidates it when wallet/provider/organization/source bindings change. The Rooms list and Thread expose independent connection and membership states and route source-qualified IDs through the Push adapter. Preserve XMTP IDs and behavior throughout.
 
 SDK 1.7.32 uses older dependency ranges. Targeted overrides pin its Axios to 0.33.0 and UUID to 11.1.1; the isolated browser suite exercises the real SDK initializer with an intercepted synthetic registry, original cryptography, UUID generation, signer compatibility and selected-provider V1 recovery. Requests outside the fixture are blocked. OpenPGP resolves to patched 5.11.3. The scoped build polyfill plugin brings one low-severity `elliptic` advisory through `node-stdlib-browser`/`crypto-browserify`; the plugin's include list excludes the crypto polyfill. This build dependency still needs follow-up; the moderate-and-above audit remains enforced. These checks do not prove production protocol/device interoperability.
 
 The SDK patch also removes its module-global decrypted room-secret cache. A real-crypto browser regression reproduced cross-wallet reuse before the patch and rejects the second wallet key after it. Each group-message read now obtains the encrypted secret and decrypts it with the supplied private key; public-key caches are unchanged. This can increase history-read latency and request count. Do not reintroduce a shared decrypted cache as a performance shortcut.
+
+
+## Conversation boundaries and acceptance
+
+History is loaded in pages of at most 30 records, bound to the original room. Linked CIDs determine order; malformed, cross-room, conflicting duplicate, cyclic or disconnected pages reject. Issued cursors share traversal metadata (CID positions and SHA-256 normalized page fingerprints), preventing cross-page repeats, cycles and rewrites without retaining earlier message bodies. At most 200 cursor tokens remain; traversal metadata grows with explicitly requested pages and is released with its last cursor or the session. An empty response to an existing continuation reference is a failure, not successful end-of-history. Unsupported non-EVM legacy senders currently reject a page; unsupported content and undecryptable messages remain visible placeholders. Do not claim complete legacy-history parity.
+
+Every room action refreshes protocol membership/permissions; private reads require membership. Late reads are discarded after known membership changes, and pending membership grants no posting or repeated join action. Writes never retry automatically. A resolved SDK request does not mean delivered/read. Public plaintext signatures are not independently verified here. XMTP receipt preferences, illustrative room policies, replies and reactions do not apply to Push rooms.
+
+`pnpm e2e:push-ui` builds the real application with an SDK alias supplied only by its isolated test configuration. Synthetic wallets and intercepted registries cover connection, text sending, pending membership, denied writes/admin changes, account/chain/source transitions, uncertain send outcomes and malformed history. Every external HTTPS request outside the fixture is aborted. This complements `pnpm e2e:push-runtime`, which exercises the actual SDK and crypto; neither substitutes for approved live-room/device acceptance. No real messages or production memberships are changed by these suites.
