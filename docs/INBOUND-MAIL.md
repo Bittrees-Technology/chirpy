@@ -1,6 +1,6 @@
 # Email-to-wallet bridge implementation contract
 
-Status: authenticated event/provenance contract and encrypted durable receiver implemented. Durable Mail source outbox and dedicated XMTP delivery worker remain unimplemented. The receiver is disabled by default; it creates no forwarding permission or signer. Wallet separately implements inbound consent and recipient resolution. No live bridging is enabled.
+Status: authenticated event/provenance contract, encrypted receiver, durable send journal, dedicated XMTP sender and queue executor are implemented. Mail separately implements the source outbox and dispatch-time authority checker; Wallet implements inbound consent and recipient resolution. Live provisioning, deployment, recovery policy and acceptance remain incomplete. Receiver and worker are disabled by default; no live bridging is enabled.
 
 ## Source event and authentication
 
@@ -10,7 +10,7 @@ The event ID is SHA256 of compact JSON `["https://mail.bittrees.org",mailbox,mes
 
 Use independent random32byte source credentials, represented as64lowercase hex characters, never member wallet keys or the room gate key. HMAC-SHA256 signs the exact UTF8 request-body hash together with the fixed source, exact Chat `/api/mail-inbound` destination, protocol version and millisecond timestamp (see `signInboundMail`). The transport headers are `X-Chat-Mail-Timestamp` and `X-Chat-Mail-Signature`. Reject bodies above64KiB before buffering or parsing. Verify the HMAC before decoding JSON; reject invalid UTF8, unknown fields, stale timestamps (5minutes), excessive future skew (30seconds), stale arrivals (23hours), automated events and any nonzero bridge depth. Keep secrets out of logs. Fixed HTTPS endpoints must reject redirects.
 
-The HMAC authenticates a Mail node, not the external From header. It does not replace mailbox ownership checks, separate per-direction consent or replay deduplication. An identical authenticated request may retry inside the timestamp window; the future durable queue must deduplicate by source/event ID and retain original content scope. Refreshing the transport timestamp must never extend event or delivery expiry.
+The HMAC authenticates a Mail node, not the external From header. It does not replace mailbox ownership checks, separate per-direction consent or replay deduplication. An identical authenticated request may retry inside the timestamp window; the durable queue deduplicates by source/event ID and retains original content scope. Refreshing the transport timestamp must never extend event or delivery expiry.
 
 ## Content and delivery boundaries
 
@@ -20,19 +20,19 @@ The text fallback explicitly identifies a Chat bridge message and unverified ema
 
 ## Still required before activation
 
-- Mail durable source outbox with fresh assignment/grant checks and canonical message/version references; the current five-minute notification queue is insufficient.
-- Dispatch leases/retries, suppression/loop handling and fresh Wallet checks at every delivery attempt. The ingress queue is implemented below; no delivery worker runs yet.
+- Deploy and enroll Mail’s durable source outbox with fresh assignment/grant checks and canonical message/version references; the five-minute notification queue is insufficient.
+- Configure the source and delivery worker scheduler, then accept leases/retries, loop handling and fresh authority checks on real approved accounts. No live delivery worker runs yet.
 - Dedicated, explicitly configured XMTP bridge identity and protected persistent SDK database, separate from member and gatekeeper keys; truthful queued/published/uncertain states.
-- Crash-safe XMTP publication/reconciliation and revocation tests. Installed Node SDK6.0.0 exposes conversation-wide `publishMessages`, not selective publication through its public interface. Do not publish a conversation's pending batch unless every pending message remains authorized; an old revoked pending message must not ride along with a new one. Never infer an exception means nothing was sent.
+- Proof-backed uncertain-publication recovery and live crash/revocation acceptance. Installed Node SDK6.0.0 exposes conversation-wide `publishMessages`, not selective publication through its public interface. Do not publish a conversation's pending batch unless every pending message remains authorized; an old revoked pending message must not ride along with a new one. Never infer an exception means nothing was sent.
 - Source/worker hosting, credentials, enrollment, recipient support/retention/monitoring policy and approved real-account acceptance.
 
-SDK interface reference: https://github.com/xmtp/xmtp-js/blob/main/sdks/node-sdk/src/Conversation.ts . The pinned installed version, rather than current main alone, must govern implementation and tests.
+Pinned native publication reference: https://github.com/xmtp/libxmtp/blob/1481f4bfe05defa5df00a17b749471ff5072f4d8/crates/xmtp_mls/src/groups/mls_sync.rs . Installed Node SDK6.0.0/node-bindings1.10.0 and their pinned source govern implementation and tests.
 
 ## Disabled durable receiver
 
 `api/mail-inbound.js` preserves raw request bytes and accepts server POSTs only at the exact Chat endpoint. Browser Origin/Cookie requests, preview deployments, unconfigured services, invalid HMACs and non-allowlisted mailboxes are rejected. Configure only through the server secret manager using `selfhost/mail-inbound.env.example`; independent source HMAC, payload encryption and Wallet inbound credentials are required. No Resend or member-wallet key is needed by this receiver.
 
-Before new queue insertion, Wallet must confirm the exact mailbox/binding/version, content hash and delivery ID and return a valid recipient wallet and fixed expiry. The queue encrypts the entire event, resolution scope and recipient with AES-256-GCM and the storage job key as authenticated context. Metadata contains only event ID, digest, pinned Wallet endpoint, status and timing. Neither plaintext email content nor recipient wallet appears in metadata. A future worker must preserve the pinned endpoint and scope and recheck both Mail source authority and Wallet consent before publication.
+Before new queue insertion, Wallet must confirm the exact mailbox/binding/version, content hash and delivery ID and return a valid recipient wallet and fixed expiry. The queue encrypts the entire event, resolution scope and recipient with AES-256-GCM and the storage job key as authenticated context. Metadata contains event ID, digest, pinned Wallet endpoint, status, claim/timing fields and a hash of any publication receipt. Neither plaintext email content nor recipient wallet appears in metadata. The worker preserves the pinned endpoint and scope and rechecks both Mail source authority and Wallet consent before publication.
 
 Redis atomically deduplicates by delivery ID and immutable content digest, checks the lesser of source-arrival and Wallet deadlines against its own clock, enforces a 1000-job queue cap and daily200/mailbox and1000/global pilot intake limits. Replays do not increase quota or refresh TTL. Changed content conflicts. Payload expires at the deadline (maximum23hours); status metadata remains30days. Worker cleanup must remove expired queue entries; configure no source intake until worker/monitoring acceptance prevents stranded mail. Lost insertion acknowledgements can retry the same event and recover the original receipt.
 
@@ -48,8 +48,7 @@ New wallet-to-email jobs freeze `X-Chat-Bridge: wallet-to-email` in the encrypte
 web handlers. `InboundSendJournal.provision` accepts only a newly created dedicated
 private directory and a64hex identity fingerprint. Existing SDK data must never
 receive a fresh empty journal. The fingerprint must bind the configured bridge
-identity, network and SDK database location; the future transport adapter must
-verify those actual values. Opening a missing, unsafe, corrupt, inconsistent or
+identity, network and SDK database location; the dedicated sender below verifies those actual values. Opening a missing, unsafe, corrupt, inconsistent or
 wrong-identity journal fails closed rather than provisioning automatically.
 
 `guardedInboundSend` atomically records one durable armed attempt before invoking
@@ -60,8 +59,8 @@ A same-event retry with changed content/recipient/text conflicts. Exceptions,
 process death, expiry and permission revocation never clear the guard. There is
 no lease timeout that allows another SDK callback to proceed after uncertainty.
 
-Only an exact verified publication receipt may complete the attempt. The future
-SDK adapter must check published delivery status, sender inbox, conversation,
+Only an exact verified publication receipt may complete the attempt. The
+SDK adapter checks published delivery status, sender inbox, conversation,
 message ID and exact text against the guarded scope before returning it. The
 journal validates and durably stores that receipt; it is not a cryptographic or
 SDK publication verifier itself. A committed receipt whose acknowledgement was
@@ -76,9 +75,9 @@ sync as a read-only recovery step: pinned libxmtp1481f4b send_message and
 sync_with_conn both publish queued intents. A new send may publish an older
 revoked one even when publishMessages is not called explicitly.
 
-This implements the durable guard only. The live queue worker, SDK message
-verification, controlled provisioning, source-process invocation and approved
-uncertainty reconciliation remain required. No SDK key/client, network connection,
+This module implements the durable guard; the sender and queue executor below
+use it. Controlled provisioning, approved uncertainty reconciliation and live
+acceptance remain required. No SDK key/client, network connection,
 source timer or forwarding capability is created by this module.
 
 ## Private source-check process adapter
@@ -101,7 +100,7 @@ or more than1second in the future. Expired source events do not start a process.
 Positive responses are never cached. Call this before each publication attempt;
 an exception is unavailable authority, not permission or proof of non-delivery.
 
-The future queue worker must keep this preflight outside any new send when the
+The queue worker keeps this preflight outside any new send when the
 bridge journal already contains an unresolved attempt. This adapter does not
 start the worker, install Mail files, register a wallet or enable forwarding.
 
@@ -128,7 +127,7 @@ The trusted sender executable described below checks live Mail source and the
 pinned Wallet recipient, uses a dedicated SDK identity/database, verifies the exact
 Published message and returns `{scope,receipt}` before terminating.
 This process boundary does not itself verify SDK publication or enable a worker.
-The queue worker, provisioning, proof-backed recovery and live acceptance remain
+Worker deployment, provisioning, proof-backed recovery and live acceptance remain
 launch requirements.
 
 
@@ -137,7 +136,7 @@ launch requirements.
 `server/inbound-sender-child.js` is the trusted executable for the process boundary.
 Its private configuration must be an absolute, regular, non-symlink file with no
 group/other permissions, at most16KiB and `enabled: true` to run. It accepts bounded
-JSON stdin only. Keep it disabled until provisioning, queue integration and live
+JSON stdin only. Keep it disabled until provisioning, worker deployment and live
 acceptance are complete. Do not invoke it as a manual retry command.
 
 The configuration contains `network` (`dev` or `production`), the dedicated EOA
@@ -176,5 +175,45 @@ client. Any failure returns a generic error and keeps the durable guard armed.
 
 Tests use a controlled SDK adapter to exercise publication/authority failures and
 real child processes for disabled/consumed launch rejection. These are not live
-network acceptance. Queue integration, approved dedicated installation, source
+network acceptance. Worker deployment, approved dedicated installation, source
 enrollment, host configuration and proof-backed uncertain-send recovery remain open.
+
+
+## Queue execution and restart recovery
+
+Run `node selfhost/mail-inbound-worker.mjs --once` under a non-PID1 supervisor
+with Node24. It handles one due job and exits; no service/timer is installed or
+started by this change. Both inbound configuration and
+`CHAT_MAIL_INBOUND_WORKER_ENABLED=1` are required.
+`CHAT_MAIL_SENDER_CONFIG` names the private sender configuration described above,
+whose own `enabled` flag must also be true. The disabled path opens no journal and
+contacts no storage or SDK. The worker always launches the repository's fixed child
+entrypoint, using the same configured identity and source checks.
+
+Redis claims are atomic, use server time and120second leases, and preserve the
+original metadata/payload TTL. Claim tokens fence stale workers. Missing or foreign
+queue references are removed from the queue without deleting unrelated keys.
+One call scans at most50 candidate references and processes at most one valid job.
+Repeated scheduled calls reclaim expired work without extending message retention.
+
+Before decrypting or sending, the worker checks the local journal. An exact
+published receipt repairs a lost queue write even when the payload has expired;
+an armed attempt becomes uncertain without opening the SDK. Only a job with no
+prior send may retry after transient authorization failure, with bounded exponential
+backoff. Expired/denied/changed-scope/corrupt payloads stop before SDK launch. A fresh
+claim/deadline check precedes the sender, which independently repeats authority
+checks and enforces its durable one-time launch.
+
+After sending, only durable publication evidence can mark the queue published.
+Redis stores its hash, not message text, recipient wallet or conversation ID. Lost
+finish acknowledgements and expired leases never clear the SDK guard or trigger
+a resend. Published/stopped jobs discard encrypted payloads; uncertain jobs retain
+only their original payload TTL and leave the durable guard intact. Metadata retains
+its original30day expiry. No status claims recipient delivery/read.
+
+The command emits bounded status/id/blocked fields without body/address/key data.
+Exit2 means an uncertain/blocked sender needs attention; exit1 means worker/storage
+unavailability. Preserve both journal and queue state on either outcome. Scheduler,
+monitoring/alert destination, provisioning, recovery policy and live acceptance
+remain required before activation. Never resolve uncertainty by deleting state or
+resubmitting a fresh event ID.
