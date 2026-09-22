@@ -20,3 +20,9 @@ it('leaves the real worker disabled without reading an unavailable sender config
   env:{PATH:'/usr/bin:/bin',CHAT_MAIL_INBOUND_WORKER_ENABLED:'0',CHAT_MAIL_SENDER_CONFIG:'/missing'},encoding:'utf8',timeout:5000});
  expect(result.status).toBe(0);expect(JSON.parse(result.stdout)).toEqual({enabled:false});expect(result.stderr).toBe('');
 });
+
+it('the real status command reports disabled as unready without reading private state',()=>{
+ const result=spawnSync(process.execPath,[fileURLToPath(new URL('../../selfhost/mail-inbound-worker.mjs',import.meta.url)),'--status'],{
+  env:{PATH:'/usr/bin:/bin',CHAT_MAIL_INBOUND_WORKER_ENABLED:'0',CHAT_MAIL_SENDER_CONFIG:'/missing'},encoding:'utf8',timeout:5000});
+ expect(result.status).toBe(2);expect(JSON.parse(result.stdout)).toEqual({enabled:false,status:'disabled'});expect(result.stderr).toBe('');
+});

@@ -217,3 +217,41 @@ unavailability. Preserve both journal and queue state on either outcome. Schedul
 monitoring/alert destination, provisioning, recovery policy and live acceptance
 remain required before activation. Never resolve uncertainty by deleting state or
 resubmitting a fresh event ID.
+
+
+## Worker health and inactive scheduler templates
+
+`node selfhost/mail-inbound-worker.mjs --status` reports aggregate queue counts,
+oldest age, last attempted/successful tick and sender guard state. It reads queue
+metadata only, never email payloads or the SDK. It does not refresh the heartbeat,
+claim jobs, clear a guard or alter Redis queue state. Opening the existing journal
+still validates its identity/integrity and applies supported schema migration.
+The status command exits2 when disabled or degraded and1 if state is unavailable;
+only a healthy enabled worker exits0. A disabled monitor must not look healthy.
+
+Each completed `--once` tick records its outcome with Redis server time. Failures,
+blocked attempts and retries preserve the last successful tick; inspecting status
+never makes an absent scheduler appear alive. Freshness and oldest queued age are
+bounded to5minutes. Expired jobs, stale claims, corrupt/orphaned references, overflow
+and unresolved guards degrade health. A matching active send lease is distinguished
+from uncertainty after that lease expires. Scanning is bounded to1000queue entries.
+Output contains status, counts and times, not body, mailbox, wallet, event IDs or keys.
+
+`selfhost/systemd/chat-mail-inbound{,-health}.{service,timer}` are inactive user-unit
+templates. Worker scheduling waits30seconds after the previous run finishes; health
+checks run once a minute. The worker timeout is110seconds (less than its120second
+queue lease), and service termination kills its control group. Both units use
+private temporary storage, restrictive permissions, no new privileges and a
+read-only filesystem except the dedicated bridge state directory.
+
+Templates expect a private Node24 runtime at `%h/.local/share/chat/runtime/bin/node`,
+source at `%h/.local/share/chat/app`, environment at `%h/.config/chat/mail-inbound.env`
+and sender state at `%h/.local/state/chat-mail-bridge`. Match the sender configuration
+and installation fingerprint to that directory. Do not replace the system Node
+installation used by existing services. Verify the runtime, native SDK, source
+checker access and supervisor restrictions on the chosen host before activation.
+
+No units are installed/enabled and no alerts are sent by these templates. Connect
+the approved failure/health alert handler before enabling the monitor. Alert
+destination, isolated runtime installation, provisioning, backup/restore and live
+acceptance remain external activation requirements.
