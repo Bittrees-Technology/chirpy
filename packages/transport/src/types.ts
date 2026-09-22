@@ -19,6 +19,8 @@ export interface MessagePage {
 export type ConversationKind = "dm" | "room";
 
 export interface Conversation {
+  /** Original Push room capabilities, never interpreted as native Chat gate policy. */
+  push?: import("./pushRooms.js").PushRoomDetails;
   id: string;
   kind: ConversationKind;
   title: string;

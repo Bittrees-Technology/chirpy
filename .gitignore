@@ -29,3 +29,5 @@ selfhost/mail.env
 selfhost/mail-bindings.json
 
 .push-runtime-dist/
+
+.push-ui-dist/

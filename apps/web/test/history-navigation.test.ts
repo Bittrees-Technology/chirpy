@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { IdentityProvider, OrgProvider, SettingsPrefsProvider, ChatProvider, useChat } from '../src/state';
 const mock = vi.hoisted(() => ({ page: vi.fn() }));
-vi.mock('@app/transport', () => ({ createTransport: () => ({ id: 'mock', status: 'ready', init: async () => {}, listConversations: async () => [], listMessagePage: mock.page, subscribe: () => () => {} }) }));
+vi.mock('@app/transport', async (importOriginal) => ({ ...await importOriginal<typeof import("@app/transport")>(), createTransport: () => ({ id: 'mock', status: 'ready', init: async () => {}, listConversations: async () => [], listMessagePage: mock.page, subscribe: () => () => {} }) }));
 vi.mock('../src/ens', () => ({ resolveEns: async () => null }));
 afterEach(() => { vi.unstubAllGlobals(); mock.page.mockReset(); });
 it('ignores a delayed history response after switching chats and resets navigation on reselection', async () => {

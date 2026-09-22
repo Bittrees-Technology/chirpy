@@ -14,6 +14,11 @@ export interface WalletEventProvider extends Eip1193Provider {
 
 let activeProvider: WalletEventProvider | null = null;
 let activeKind: WalletProviderKind | null = null;
+let providerRevision = 0;
+const providerObservers = new Set<() => void>();
+export const getProviderRevision = () => providerRevision;
+export function subscribeProvider(listener: () => void) { providerObservers.add(listener); return () => { providerObservers.delete(listener); }; }
+function changedProvider() { providerRevision++; providerObservers.forEach(listener => listener()); }
 
 const accountFromResponse = (accounts: unknown): string | null =>
   Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : null;
@@ -34,11 +39,13 @@ export function getActiveKind(): WalletProviderKind | null {
 export function setActiveProvider(provider: WalletEventProvider, kind: WalletProviderKind) {
   activeProvider = provider;
   activeKind = kind;
+  changedProvider();
 }
 
 export function clearActiveProvider() {
   activeProvider = null;
   activeKind = null;
+  changedProvider();
 }
 
 export const walletConnectAvailable = (): boolean =>
