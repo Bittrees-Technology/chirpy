@@ -599,5 +599,11 @@
   "mailbox.download": "Download",
   "mailbox.downloadReady": "File prepared for download.",
   "mailbox.attachmentUnsupported": "Too large or unsupported",
-  "mailbox.noAttachments": "No attachments"
+  "mailbox.noAttachments": "No attachments",
+  "mailbox.plainView": "Plain text",
+  "mailbox.formattedView": "View formatting",
+  "mailbox.formattedTitle": "Formatted email preview",
+  "mailbox.formattedHint": "Basic formatting only. Images, links and interactive content are blocked.",
+  "mailbox.formattedShortened": "This preview has been shortened.",
+  "mailbox.noFormattedBody": "This email has no formatted body."
 }

@@ -86,6 +86,12 @@ export async function mailThread(wallet:string,folder:string,id:string,cursor:st
 }
 export async function mailMessages(wallet:string,folder:string,signal?:AbortSignal){return (await mailPage(wallet,folder,null,signal)).messages;}
 export async function mailMessage(wallet:string,folder:string,id:string,signal?:AbortSignal){if(!validMailFolder(folder)||!messageId(id))throw new MailClientError('failed');const data=await operation(wallet,'message',{folder,id},signal),m=summary(data.message);if(m.id!==id||typeof data.message.text!=='string'||new TextEncoder().encode(data.message.text).length>16000)throw new MailClientError('failed');const v=data.message;if(v.sourceVersion!==undefined&&(!messageId(v.sourceVersion)||typeof v.replyTo!=='string'||v.replyTo!==''&&!validMailDraft({to:v.replyTo,subject:'',text:'x'})||typeof v.threadedReply!=='boolean'))throw new MailClientError('failed');return {...m,text:v.text,...(v.sourceVersion?{sourceVersion:v.sourceVersion,replyTo:v.replyTo,threadedReply:v.threadedReply}:{})} as MailMessage;}
+export async function mailHtml(wallet:string,folder:string,id:string,version:string,signal?:AbortSignal){
+ if(!validMailFolder(folder)||!messageId(id)||!messageId(version))throw new MailClientError('failed');
+ const data=await operation(wallet,'html',{folder,id,version},signal);
+ if(data.id!==id||data.sourceVersion!==version||typeof data.html!=='string'||new TextEncoder().encode(data.html).length>16000||typeof data.bodyAvailable!=='boolean'||typeof data.truncated!=='boolean'||!data.bodyAvailable&&(data.html!==''||data.truncated))throw new MailClientError('failed');
+ return {html:data.html,bodyAvailable:data.bodyAvailable,truncated:data.truncated};
+}
 export type MailAttachment={id:string;filename:string;contentType:string;bytes:number|null;downloadable:boolean};
 const attachmentChunkBytes=12288,attachmentMaxBytes=262144;
 function attachmentItem(value:any):MailAttachment{
