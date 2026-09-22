@@ -557,6 +557,7 @@
   "mailbox.message": "Mensaje",
   "mailbox.draftHint": "Solo texto. El borrador se borra al salir de Correo o recargar. El aviso de envío pendiente se guarda en este dispositivo.",
   "mailbox.send": "Enviar correo",
+  "mailbox.unthreadedReply": "Este mensaje no tiene referencias de conversación válidas. La respuesta puede aparecer como una conversación aparte.",
   "mailbox.reply": "Responder",
   "mailbox.select": "Lee o escribe un correo",
   "mailbox.selectHint": "Elige un mensaje o crea un correo nuevo.",

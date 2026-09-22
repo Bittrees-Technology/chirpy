@@ -6,7 +6,7 @@ import {I18nProvider} from '../src/i18n';
 import * as mail from '../src/connectedMail';
 const state=vi.hoisted(()=>({identity:{address:'0x'+'1'.repeat(40)},mode:'wallet'}));
 vi.mock('../src/state',()=>({useIdentity:()=>state}));
-vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
+vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),sendMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
 let container:HTMLDivElement,root:Root;
 const connection=()=>({mailbox:'fixture@bittrees.org',scopes:['read','send'] as ('read'|'send')[],expiresAt:new Date(Date.now()+3600000).toISOString()});
 const item={id:'a'.repeat(64),from:'Fixture <fixture@bittrees.org>',subject:'Acceptance fixture',date:'Today'};
@@ -80,4 +80,14 @@ it('revoked access during older-page navigation clears every page and cursor con
  vi.mocked(mail.mailPage).mockResolvedValue({messages:[item],nextCursor:'c'.repeat(64)});await render();
  vi.mocked(mail.mailPage).mockRejectedValue(new mail.MailClientError('denied'));await click('Older messages');
  expect(container.textContent).not.toContain(item.subject);expect(container.textContent).not.toContain('Older messages');expect(container.textContent).toContain('Review your Mail connection');
+});
+it('replies use the source Reply-To and original version, while a new email clears reply context',async()=>{
+ vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Original',sourceVersion:'d'.repeat(64),replyTo:'reply@bittrees.org',threadedReply:true});
+ await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());await click('Reply');
+ expect(container.querySelector<HTMLInputElement>('input[type=email]')?.value).toBe('reply@bittrees.org');
+ await act(async()=>{const textarea=container.querySelector('textarea')!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textarea,'Authorized fixture reply');textarea.dispatchEvent(new Event('input',{bubbles:true}));});
+ await act(async()=>container.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ expect(mail.sendMail).toHaveBeenCalledWith(state.identity.address,expect.objectContaining({to:'reply@bittrees.org',reply:{folder:'INBOX',id:item.id,version:'d'.repeat(64)}}),expect.any(AbortSignal));
+ await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());await click('Reply');await click('New email');
+ expect(container.querySelector<HTMLInputElement>('input[type=email]')?.value).toBe('');expect(container.querySelector('h2')?.textContent).toBe('New email');
 });

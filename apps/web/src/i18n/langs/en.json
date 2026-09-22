@@ -557,6 +557,7 @@
   "mailbox.message": "Message",
   "mailbox.draftHint": "Plain text only. Draft text is cleared when you leave Email or reload. A pending-send warning is saved on this device.",
   "mailbox.send": "Send email",
+  "mailbox.unthreadedReply": "This message has no usable conversation references. A reply may appear as a separate conversation.",
   "mailbox.reply": "Reply",
   "mailbox.select": "Read or write an email",
   "mailbox.selectHint": "Choose a message, or start a new email.",

@@ -71,3 +71,8 @@ it('validates bounded pages and passes only the selected cursor to Mail',async()
 it('reports changed or oversized pages with recovery guidance',async()=>{
  for(const [status,code] of [[409,'pageChanged'],[413,'pageLimit']] as const){fetcher.mockResolvedValueOnce(Response.json({}, {status}));await expect(mailPage(wallet,'INBOX','c'.repeat(64))).rejects.toMatchObject({code});}
 });
+it('accepts bounded source reply metadata and rejects malformed version or recipient',async()=>{
+ const message={id:'a'.repeat(64),from:'fixture@bittrees.org',subject:'Fixture',date:'Today',text:'Original',sourceVersion:'b'.repeat(64),replyTo:'reply@bittrees.org',threadedReply:true};
+ fetcher.mockResolvedValueOnce(Response.json({message}));expect(await mailMessage(wallet,'INBOX',message.id)).toEqual(message);
+ for(const change of [{sourceVersion:'invalid'},{replyTo:'a@example.org\r\nBcc:x@example.org'},{threadedReply:'yes'}]){fetcher.mockResolvedValueOnce(Response.json({message:{...message,...change}}));await expect(mailMessage(wallet,'INBOX',message.id)).rejects.toMatchObject({code:'failed'});}
+});
