@@ -125,12 +125,45 @@ responses cannot replace the result for a newly selected request. Cancelling a
 browser request does not recall an already submitted email.
 
 The recovery record is bounded to 100 IDs and does not silently evict earlier
-requests. At capacity, new sends stop. Export/retention controls and cross-origin
-transfer of these recovery IDs remain required before unrestricted production
-use. Web Locks coordinate updated tabs on the same origin; they cannot coordinate
-an old client that does not use this protocol, another origin or another device.
-Keep forwarding disabled until supported browser/storage/device acceptance and
-the broader launch requirements pass.
+requests. At capacity, new sends stop. Channels offers encrypted request-ID
+backup, reviewed additive restore, and explicitly confirmed cleanup, even while
+forwarding is disabled. These actions require current wallet ownership proofs.
+
+Backups contain only version, wallet, canonical service, export time, active ID
+and at most 100 unique IDs. They exclude message content, fingerprints, original
+retry clocks, wallet keys and signatures. The separate `chat-email-requests` v1
+format uses AES-256-GCM and PBKDF2-SHA-256 (600,000 iterations), purpose-specific
+authenticated data, fresh salt/nonce, an 8 KiB plaintext limit and 16 KiB file
+limit. The existing settings recovery format is unchanged. Passphrases are not
+stored and cannot be recovered by Chat.
+
+Unlock is read-only; apply requires another fresh ownership proof and the exact
+reviewed local revision. Restore accepts only the same wallet and canonical mail
+service; it never fetches or trusts a URL from a file. It adds lookup-only records
+with null fingerprint/timestamp. Existing records retain their original retry
+limits, and the current active ID takes precedence. A restored active ID is
+selected only if no local request is active. No message is submitted by recovery.
+Archives from a different service are refused: cross-origin transfer works only
+when both clients use the same canonical API service. Historical service-alias
+migration needs a separately verified identity/storage migration; a file cannot
+authorize one.
+
+Export reopens its encrypted result for verification and checks that storage is
+unchanged before requesting a download. This does not prove the file was saved.
+Cleanup requires acknowledgement that the file and passphrase were saved, a new
+wallet proof, and the exact exported revision. It keeps the active ID and legacy
+compatibility ID, removing only other backed-up entries in a single verified
+localStorage write. The legacy slot is never rewritten/deleted. Keep the backup
+for future signed lookups; this is not provider-side retention or delivery proof.
+
+Apply and cleanup share the send reservation Web Lock, fail on malformed storage,
+capacity overflow, changed state or missing locks, and never auto-repair or evict
+records. If a write completes before its acknowledgement fails, reload the list
+to inspect the result; keep the original archive. Same-origin current clients
+cooperate. Old clients and manual tools may not, so refresh other tabs before
+recovery; cross-device and cross-origin concurrent sending still need rollout
+acceptance. Physical native-device recovery remains to be verified. Keep
+forwarding disabled until the broader launch requirements pass.
 
 The email plainly identifies the authorizing wallet and the Chirpy service. It is
 text-only, with a 120-character subject and 16 KiB body. No attachments, HTML,
