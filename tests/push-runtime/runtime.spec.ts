@@ -13,7 +13,7 @@ test('real browser SDK imports, crypto and signer compatibility without external
   });
   await page.goto('/'); await expect(page.locator('body')).toHaveText('Push runtime ready');
   const result = await page.evaluate(() => (window as any).runPushCompatibility());
-  expect(result).toMatchObject({ sdkLoaded: true, realRuntimeReady: true, legacyRecoveryBound: true, decrypted: 'Synthetic room message', tamperedRejected: true, staleRejected: true, personalSigned: true, typedSigned: true, storageUnchanged: true });
-  expect(registryRequests).toBe(1);
+  expect(result).toMatchObject({ sdkLoaded: true, realRuntimeReady: true, withoutInjectedReady: true, withoutInjectedPublicKey: true, legacyRecoveryBound: true, decrypted: 'Synthetic room message', tamperedRejected: true, staleRejected: true, personalSigned: true, typedSigned: true, storageUnchanged: true });
+  expect(registryRequests).toBe(2);
   expect(result.uuid).toMatch(/^[0-9a-f-]{36}$/); expect(external).toEqual([]); expect(errors).toEqual([]);
 });

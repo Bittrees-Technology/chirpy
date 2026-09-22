@@ -3,7 +3,7 @@ import { PushAPI } from '../../packages/transport/node_modules/@pushprotocol/res
 import { Signer } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/helpers/signer';
 import { getUUID } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/payloads/helpers';
 import { PGPHelper } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/chat/helpers/pgp';
-import { decryptPGPKey } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/helpers/crypto';
+import { decryptPGPKey, getPublicKey } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/helpers/crypto';
 const owner = `0x${'1'.repeat(40)}`;
 (window as any).runPushCompatibility = async () => {
   const originalStorage = { ...localStorage };
@@ -17,7 +17,7 @@ const owner = `0x${'1'.repeat(40)}`;
   let tamperedRejected = false;
   try { await PGPHelper.verifySignature({ messageContent: 'Altered', signatureArmored, publicKeyArmored: keys.publicKeyArmored }); } catch { tamperedRejected = true; }
   const requests: string[] = []; let current = true; let captured!: PushSigner;
-  const provider = { on() {}, removeListener() {}, async request({ method }: { method: string }) { requests.push(method); if (method === 'eth_accounts') return [owner]; if (method === 'eth_chainId') return '0x1'; if (method === 'eth_decrypt') return keys.privateKeyArmored; if (method === 'personal_sign' || method === 'eth_signTypedData_v4') return `0x${'a'.repeat(130)}`; throw new Error('Unexpected signing method'); } };
+  const provider = { on() {}, removeListener() {}, async request({ method }: { method: string }) { requests.push(method); if (method === 'eth_accounts') return [owner]; if (method === 'eth_chainId') return '0x1'; if (method === 'eth_decrypt') return keys.privateKeyArmored; if (method === 'eth_getEncryptionPublicKey') return 'synthetic-encryption-public-key'; if (method === 'personal_sign' || method === 'eth_signTypedData_v4') return `0x${'a'.repeat(130)}`; throw new Error('Unexpected signing method'); } };
   const session = new PushRoomSession(owner, provider, () => current, async signer => {
     captured = signer;
     const sdkSigner = new Signer(signer);
@@ -35,10 +35,15 @@ const owner = `0x${'1'.repeat(40)}`;
   const realRuntimeReady = realRuntime.getSnapshot().status === 'ready';
   realRuntime.dispose();
   delete (window as any).ethereum;
+  const walletConnectOnly = new PushRoomSession(owner, provider, () => current);
+  await walletConnectOnly.enable();
+  const withoutInjectedReady = walletConnectOnly.getSnapshot().status === 'ready';
+  walletConnectOnly.dispose();
+  const withoutInjectedPublicKey = await getPublicKey({ signer: captured, account: owner }) === 'synthetic-encryption-public-key';
   session.dispose(); current = false;
   let staleRejected = false;
   try { await captured.signMessage({ message: 'After disposal' }); } catch { staleRejected = true; }
-  return { realRuntimeReady, sdkLoaded: typeof PushAPI.initialize === 'function', uuid: getUUID(), decrypted, tamperedRejected, staleRejected,
+  return { withoutInjectedReady, withoutInjectedPublicKey, realRuntimeReady, sdkLoaded: typeof PushAPI.initialize === 'function', uuid: getUUID(), decrypted, tamperedRejected, staleRejected,
     legacyRecoveryBound: recovered === keys.privateKeyArmored && wrongProviderCalls === 0, personalSigned: requests.includes('personal_sign'), typedSigned: requests.includes('eth_signTypedData_v4'), storageUnchanged: JSON.stringify(originalStorage) === JSON.stringify({ ...localStorage }) };
 };
 document.body.textContent = 'Push runtime ready';

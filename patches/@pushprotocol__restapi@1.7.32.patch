@@ -1,0 +1,30 @@
+diff --git a/src/lib/helpers/crypto.js b/src/lib/helpers/crypto.js
+index 1078a3b63aa16053c284acb4486c587f4d67ed18..0a283b55972dcf33b75501194ce9f9d8c458cb1f 100644
+--- a/src/lib/helpers/crypto.js
++++ b/src/lib/helpers/crypto.js
+@@ -37,11 +37,10 @@ const getPublicKey = (options) => tslib_1.__awaiter(void 0, void 0, void 0, func
+     const { account, signer } = options || {};
+     const pushSigner = signer ? new signer_1.Signer(signer) : undefined;
+     const address = account || (yield (pushSigner === null || pushSigner === void 0 ? void 0 : pushSigner.getAddress())) || '';
+-    const metamaskProvider = viem.createWalletClient({
++    const web3Provider = ((_a = signer === null || signer === void 0 ? void 0 : signer.provider) === null || _a === void 0 ? void 0 : _a.provider) || viem.createWalletClient({
+         chain: chains_1.mainnet,
+         transport: viem.custom(window.ethereum),
+     });
+-    const web3Provider = ((_a = signer === null || signer === void 0 ? void 0 : signer.provider) === null || _a === void 0 ? void 0 : _a.provider) || metamaskProvider;
+     const keyB64 = yield web3Provider.request({
+         method: 'eth_getEncryptionPublicKey',
+         params: [address],
+@@ -96,11 +95,10 @@ const decryptPGPKey = (options) => tslib_1.__awaiter(void 0, void 0, void 0, fun
+                     });
+                 }
+                 else {
+-                    const metamaskProvider = viem.createWalletClient({
++                    const web3Provider = ((_d = signer === null || signer === void 0 ? void 0 : signer.provider) === null || _d === void 0 ? void 0 : _d.provider) || viem.createWalletClient({
+                         chain: chains_1.mainnet,
+                         transport: viem.custom(window.ethereum),
+                     });
+-                    const web3Provider = ((_d = signer === null || signer === void 0 ? void 0 : signer.provider) === null || _d === void 0 ? void 0 : _d.provider) || metamaskProvider;
+                     privateKey = yield web3Provider.request({
+                         method: 'eth_decrypt',
+                         params: [encryptedPGPPrivateKey, address],
