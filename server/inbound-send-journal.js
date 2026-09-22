@@ -49,6 +49,15 @@ CREATE TABLE attempts(event TEXT PRIMARY KEY,content_hash TEXT NOT NULL,recipien
   }
   #transaction(fn){this.#db.exec('BEGIN IMMEDIATE');try{const result=fn();this.#db.exec('COMMIT');return result;}catch(error){this.#db.exec('ROLLBACK');throw error;}}
   inspect(){const bridge=this.#consistent();return {blocked:bridge.active_event!==null,eventId:bridge.active_event};}
+  assertIdentity(expected){if(expected!==this.#identity)throw Error('Bridge journal identity mismatch');}
+  outcome(eventId,contentHash){
+    if(!hex(eventId)||!hex(contentHash))throw Error('Invalid outcome scope');
+    this.#consistent();
+    const attempt=this.#db.prepare('SELECT * FROM attempts WHERE event=?').get(eventId);
+    if(!attempt)return {status:'missing'};
+    if(attempt.content_hash!==contentHash)throw Error('Outcome scope mismatch');
+    return attempt.state==='published'?{status:'published',receipt:JSON.parse(attempt.receipt)}:{status:'uncertain'};
+  }
   begin(scope){
     if(!validScope(scope))throw Error('Invalid send scope');
     return this.#transaction(()=>{

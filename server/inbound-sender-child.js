@@ -1,6 +1,6 @@
 // Entrypoint for inbound-sender-process.js, not an operator retry command.
-import { openSync, fstatSync, readSync, closeSync, constants } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { readInboundSenderConfig } from './inbound-sender-config.js';
 import { InboundSendJournal } from './inbound-send-journal.js';
 import { inboundSenderIdentity, publishInboundXmtp } from './inbound-xmtp-sender.js';
 
@@ -21,19 +21,7 @@ async function main() {
   if (process.platform === 'win32' || process.argv.length !== 6 || process.argv[2] !== '--config' || process.argv[4] !== '--parent-pid' || !isAbsolute(process.argv[3])) {
     throw Error('Invalid sender invocation');
   }
-  const fd = openSync(process.argv[3], constants.O_RDONLY | constants.O_NOFOLLOW);
-  let config;
-  try {
-    const stat = fstatSync(fd);
-    if (!stat.isFile() || (stat.mode & 0o077) || stat.size > 16384) throw Error('Private sender configuration required');
-    const buffer = Buffer.alloc(16385); let bytes = 0;
-    while (bytes < buffer.length) {
-      const count = readSync(fd, buffer, bytes, buffer.length - bytes, null);
-      if (!count) break; bytes += count;
-    }
-    if (bytes > 16384) throw Error('Sender configuration too large');
-    config = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, bytes)));
-  } finally { closeSync(fd); }
+  const config = readInboundSenderConfig(process.argv[3]);
   if (config?.enabled !== true) throw Error('Sender disabled');
   const chunks = []; let bytes = 0;
   for await (const chunk of process.stdin) {
