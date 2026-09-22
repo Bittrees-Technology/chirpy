@@ -124,9 +124,57 @@ source-check subprocess, and waits for closure. A receipt printed before a hung
 process exits is not success. Parent termination also leaves the durable guard
 armed; operators must not reset it or reopen that SDK database as a recovery step.
 
-The trusted sender executable must still be implemented: it must check live Mail
-source and the pinned Wallet recipient, use the dedicated SDK identity/database,
-verify the exact Published message and return `{scope,receipt}` before terminating.
+The trusted sender executable described below checks live Mail source and the
+pinned Wallet recipient, uses a dedicated SDK identity/database, verifies the exact
+Published message and returns `{scope,receipt}` before terminating.
 This process boundary does not itself verify SDK publication or enable a worker.
 The queue worker, provisioning, proof-backed recovery and live acceptance remain
 launch requirements.
+
+
+## Dedicated XMTP sender
+
+`server/inbound-sender-child.js` is the trusted executable for the process boundary.
+Its private configuration must be an absolute, regular, non-symlink file with no
+group/other permissions, at most16KiB and `enabled: true` to run. It accepts bounded
+JSON stdin only. Keep it disabled until provisioning, queue integration and live
+acceptance are complete. Do not invoke it as a manual retry command.
+
+The configuration contains `network` (`dev` or `production`), the dedicated EOA
+`address`, pinned64hex `inboxId` and `installationId`,32bytehex `databaseKey`,
+absolute private `directory`, `source` (python/script/config/state from the source
+process adapter), and `identity` (HTTPS `/api/service/inbound` url and dedicated
+credential). No wallet private key is accepted or required at runtime. The existing
+private `directory/xmtp.db3` must hold an explicitly pre-registered dedicated
+installation. The journal in that same directory must use the fingerprint returned
+by `inboundSenderIdentity(config)`; the fingerprint binds the network, address,
+installation, inbox, directory, database-key hash and Wallet service URL. Do not copy
+a member/gate database or replace a journal with blank state. Controlled initial
+provisioning and backup/restore acceptance remain required.
+
+Journal schema2 adds an atomic one-time child launch claim. Opening schema1 migrates
+transactionally and marks all existing attempts consumed, preserving uncertainty
+rather than granting another SDK launch. The child claims before importing/opening
+the SDK; concurrent or repeated invocations cannot reopen an already-started attempt.
+Only the supervising parent persists the publication receipt after child termination.
+
+`publishInboundXmtp` uses `Client.build` with auto-registration and device sync
+disabled; checks the actual inbox/installation; resolves the recipient wallet;
+verifies the DM peer and two-member scope; and repeats live Mail source and pinned
+Wallet recipient authorization after conversation preparation. It rejects changed
+inbox mappings and retains the original deadline. One non-optimistic send is followed
+by a local lookup verifying exact ID, conversation, sender, text, text content type,
+application kind and Published status. It does not sync, publish pending messages
+or retry to repair missing publication evidence. Published is not a read receipt.
+
+Run the worker under a supervisor (use an init process in containers); the worker
+parent must not be PID1, so orphan adoption cannot masquerade as its original parent.
+The child has an independent55second hard lifetime, watches for parent loss and
+terminates its process group on timeout or termination signals. It explicitly exits
+after emitting a verified receipt so native SDK work cannot remain in a cached
+client. Any failure returns a generic error and keeps the durable guard armed.
+
+Tests use a controlled SDK adapter to exercise publication/authority failures and
+real child processes for disabled/consumed launch rejection. These are not live
+network acceptance. Queue integration, approved dedicated installation, source
+enrollment, host configuration and proof-backed uncertain-send recovery remain open.
