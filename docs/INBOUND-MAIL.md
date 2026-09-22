@@ -41,3 +41,42 @@ HTTP202/status queued means durable intake only, never XMTP publication/delivery
 ## Outbound loop marker
 
 New wallet-to-email jobs freeze `X-Chat-Bridge: wallet-to-email` in the encrypted provider payload. Mail’s inbound source rejects any `X-Chat-Bridge` occurrence before creating an inbound event. Retries preserve the exact original payload; existing jobs are not rewritten. Do not label a user-written message `Auto-Submitted: auto-generated`: RFC3834 section5.2 reserves that value for automatically generated content. The marker is a loop guard, not recipient authorization or a delivery receipt. Mail source also recognizes the existing Chat provenance text for older unmarked jobs; neither rule replaces fresh source and Wallet consent checks.
+
+## Durable pre-publication guard
+
+`server/inbound-send-journal.js` is self-hosted Node24 code. It is not imported by
+web handlers. `InboundSendJournal.provision` accepts only a newly created dedicated
+private directory and a64hex identity fingerprint. Existing SDK data must never
+receive a fresh empty journal. The fingerprint must bind the configured bridge
+identity, network and SDK database location; the future transport adapter must
+verify those actual values. Opening a missing, unsafe, corrupt, inconsistent or
+wrong-identity journal fails closed rather than provisioning automatically.
+
+`guardedInboundSend` atomically records one durable armed attempt before invoking
+any callback that might initialize or use XMTP. SQLite FULL durability, write
+transactions and a bridge-wide active event prevent concurrent sends. The scope
+binds the immutable event ID/content hash, hashed recipient and rendered text hash.
+A same-event retry with changed content/recipient/text conflicts. Exceptions,
+process death, expiry and permission revocation never clear the guard. There is
+no lease timeout that allows another SDK callback to proceed after uncertainty.
+
+Only an exact verified publication receipt may complete the attempt. The future
+SDK adapter must check published delivery status, sender inbox, conversation,
+message ID and exact text against the guarded scope before returning it. The
+journal validates and durably stores that receipt; it is not a cryptographic or
+SDK publication verifier itself. A committed receipt whose acknowledgement was
+lost can be recovered without re-entering the callback. A completed event's
+receipt is immutable. The guard does not expose an unsafe reset/clear operation.
+
+Retain the journal together with its SDK database and keys in protected backups.
+No automatic pruning/TTL is applied to attempts; agree retention and recovery
+policy before activation. Uncertain work must remain quarantined until a separate
+proof-backed reconciliation procedure is implemented. Never use conversation
+sync as a read-only recovery step: pinned libxmtp1481f4b send_message and
+sync_with_conn both publish queued intents. A new send may publish an older
+revoked one even when publishMessages is not called explicitly.
+
+This implements the durable guard only. The live queue worker, SDK message
+verification, controlled provisioning, source-process invocation and approved
+uncertainty reconciliation remain required. No SDK key/client, network connection,
+source timer or forwarding capability is created by this module.
