@@ -12,17 +12,20 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
  const [composing,setComposing]=useState(false),[draft,setDraft]=useState(emptyDraft),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [receipt,setReceipt]=useState<MailReceipt|null>(null),[receiptBroken,setReceiptBroken]=useState(false),[checkedSent,setCheckedSent]=useState(false);
  const [cursors,setCursors]=useState<string[]>([]),[nextCursor,setNextCursor]=useState<string|null>(null);
- const epoch=useRef(0),busyRef=useRef(false),controller=useRef<AbortController|null>(null);
+ const epoch=useRef(0),busyRef=useRef(false),pollingRef=useRef(false),controller=useRef<AbortController|null>(null);
  const clearPrivate=()=>{setMessages([]);setMessage(null);setFolders([]);setCursors([]);setNextCursor(null);};
  const readReceipt=()=>{try{setReceipt(mailReceipt(wallet));setReceiptBroken(false);}catch{setReceiptBroken(true);}};
- const run=async(fn:(signal:AbortSignal,current:()=>boolean)=>Promise<void>)=>{
-  if(busyRef.current)return;busyRef.current=true;setBusy(true);setError('');setNotice('');
+ const cancelPoll=()=>{if(pollingRef.current){epoch.current++;controller.current?.abort();pollingRef.current=false;}};
+ const run=async(fn:(signal:AbortSignal,current:()=>boolean)=>Promise<void>,background=false)=>{
+  if(busyRef.current||(background&&pollingRef.current))return;
+  if(background)pollingRef.current=true;
+  else{cancelPoll();busyRef.current=true;setBusy(true);setError('');setNotice('');}
   const generation=++epoch.current,c=new AbortController();controller.current=c;const current=()=>epoch.current===generation&&!c.signal.aborted;
   try{await fn(c.signal,current);}catch(e){if(current()){
    const code=e instanceof MailClientError?e.code:'failed';setError(code);
    if(code==='session'||code==='wallet'||code==='denied'){clearPrivate();setConnection(null);setAuthenticated(false);setPhase(code==='denied'?'denied':'signedOut');}
    if(code==='unavailable'){clearPrivate();setConnection(null);setPhase('unavailable');}
-  }}finally{if(epoch.current===generation){busyRef.current=false;setBusy(false);readReceipt();}}
+  }}finally{if(epoch.current===generation){controller.current=null;if(background)pollingRef.current=false;else{busyRef.current=false;setBusy(false);readReceipt();}}}
  };
  const load=async(target:string,signal:AbortSignal,current:()=>boolean,trail:string[]=[])=>{setMessage(null);const page=await mailPage(wallet,target,trail.at(-1)??null,signal);if(current()){setMessages(page.messages);setNextCursor(page.nextCursor);setCursors(trail);setFolder(target);}};
  const refresh=()=>run(async(signal,current)=>{
@@ -33,25 +36,25 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
  useEffect(()=>{
   readReceipt();if(canonical&&mode==='wallet')void refresh();else setPhase('wallet');
   const storage=(event:StorageEvent)=>{if(event.key==='chat:mail-pending:v1:'+wallet)readReceipt();};window.addEventListener('storage',storage);
-  return()=>{epoch.current++;controller.current?.abort();busyRef.current=false;window.removeEventListener('storage',storage);};
+  return()=>{epoch.current++;controller.current?.abort();pollingRef.current=false;busyRef.current=false;window.removeEventListener('storage',storage);};
  },[wallet,mode]);
  useEffect(()=>{
-  if(!connection)return;const expire=()=>{epoch.current++;controller.current?.abort();busyRef.current=false;setBusy(false);clearPrivate();setConnection(null);setAuthenticated(false);setPhase('signedOut');setError('session');};
+  if(!connection)return;const expire=()=>{epoch.current++;controller.current?.abort();pollingRef.current=false;busyRef.current=false;setBusy(false);clearPrivate();setConnection(null);setAuthenticated(false);setPhase('signedOut');setError('session');};
   const remaining=Date.parse(connection.expiresAt)-Date.now();if(remaining<=0){expire();return;}
   const timer=setTimeout(expire,remaining);return()=>clearTimeout(timer);
  },[connection]);
  const pending=!!receipt||receiptBroken,canRead=!!connection?.scopes.includes('read'),canSend=!!connection?.scopes.includes('send');
- // Refresh only the visible, idle reading view; never replay a send or disturb a draft.
+ // Poll without locking controls. Foreground actions invalidate/abort polls; late results cannot replace a newer view.
  useEffect(()=>{
   if(!canRead||composing||cursors.length)return;
   const timer=setInterval(()=>{if(document.visibilityState!=='visible'||busyRef.current)return;
-   void run(async(signal,current)=>{const page=await mailPage(wallet,folder,null,signal);if(current()){setMessages(page.messages);setNextCursor(page.nextCursor);if(message&&!page.messages.some(m=>m.id===message.id))setMessage(null);}});
+   void run(async(signal,current)=>{const page=await mailPage(wallet,folder,null,signal);if(current()){setMessages(page.messages);setNextCursor(page.nextCursor);if(message&&!page.messages.some(m=>m.id===message.id))setMessage(null);}},true);
   },45000);
-  return()=>clearInterval(timer);
+  return()=>{clearInterval(timer);cancelPoll();};
  },[canRead,composing,wallet,folder,message,cursors.length]);
  const selectMessage=(id:string)=>void run(async(signal,current)=>{setMessage(null);setComposing(false);const value=await mailMessage(wallet,folder,id,signal);if(current())setMessage(value);});
- const compose=()=>{setDraft(emptyDraft());setMessage(null);setComposing(true);};
- const reply=()=>{if(!message)return;setDraft({to:message.replyTo??replyAddress(message.from),subject:(/^re:/i.test(message.subject)?message.subject:'Re: '+message.subject).slice(0,200),text:'',...(message.sourceVersion?{reply:{folder,id:message.id,version:message.sourceVersion}}:{})});setMessage(null);setComposing(true);};
+ const compose=()=>{cancelPoll();setDraft(emptyDraft());setMessage(null);setComposing(true);};
+ const reply=()=>{if(!message)return;cancelPoll();setDraft({to:message.replyTo??replyAddress(message.from),subject:(/^re:/i.test(message.subject)?message.subject:'Re: '+message.subject).slice(0,200),text:'',...(message.sourceVersion?{reply:{folder,id:message.id,version:message.sourceVersion}}:{})});setMessage(null);setComposing(true);};
  return <section className="mailbox" aria-label={t('mailbox.title')}>
   <header className="mailbox-header"><div><h1>{t('mailbox.title')}</h1><p>{connection?.mailbox||t('mailbox.intro')}</p></div><div className="mailbox-actions">
    {canonical&&mode==='wallet'&&<Button disabled={busy} onClick={()=>void refresh()}>{t('mailbox.refresh')}</Button>}
@@ -60,7 +63,7 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
   <p className="mailbox-notice">{t('mailbox.privacy')}</p>
   {error&&<p className="mailbox-alert" role="alert">{t('mailbox.error.'+error)}</p>}
   {notice&&<p className="mailbox-notice" role="status">{t('mailbox.'+notice)}{notice==='revokeSource'&&<> <a href="https://mail.bittrees.org/connect/chat" target="_blank" rel="noreferrer">{t('mailbox.openMail')}</a></>}</p>}
-  {busy&&<p className="mailbox-notice" role="status">{t('mailbox.working')} <Button onClick={()=>{epoch.current++;controller.current?.abort();busyRef.current=false;setBusy(false);setNotice('cancelled');readReceipt();}}>{t('mailbox.cancel')}</Button></p>}
+  {busy&&<p className="mailbox-notice" role="status">{t('mailbox.working')} <Button onClick={()=>{epoch.current++;controller.current?.abort();pollingRef.current=false;busyRef.current=false;setBusy(false);setNotice('cancelled');readReceipt();}}>{t('mailbox.cancel')}</Button></p>}
   {pending&&<div className="mailbox-pending" role="status"><strong>{t('mailbox.pending')}</strong><p>{t('mailbox.pendingHint')}</p>
    {canRead&&<Button disabled={busy} onClick={()=>void run(async(signal,current)=>{setComposing(false);await load('Sent',signal,current);})}>{t('mailbox.checkSent')}</Button>}
    <label><input type="checkbox" checked={checkedSent} onChange={e=>setCheckedSent(e.target.checked)}/>{t('mailbox.checkedSent')}</label>
