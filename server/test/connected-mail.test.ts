@@ -128,3 +128,24 @@ it('HTTP disconnect clears an absent or malformed session for a fresh connection
   expect(response.headers['Set-Cookie']).toContain('Max-Age=0');
  }
 });
+
+it('reconnects after status hides an expired grant without replacing active access',async()=>{
+ const f=fixture(),p=await f.connected();
+ await expect(f.api.start(p.session.token,wallet)).rejects.toMatchObject({status:409});
+ f.advance(1800000);
+ expect((await f.api.status(p.session.token,wallet)).connection).toBeNull();
+ const started=await f.api.start(p.session.token,wallet);
+ const state=new URLSearchParams(new URL(started.url).hash.slice(1)).get('state');
+ expect(state).not.toBe(p.input.state);
+ await expect(f.api.callback(p.session.token,p.input)).rejects.toMatchObject({status:401});
+ f.grant.expiresAt=new Date(Date.parse(f.grant.expiresAt)+60000).toISOString();
+ expect(await f.api.callback(p.session.token,{...p.input,state})).toMatchObject({mailbox:f.grant.mailbox});
+ await expect(f.api.start(p.session.token,wallet)).rejects.toMatchObject({status:409});
+});
+it('expired-grant recovery discards an in-flight old response and never extends session lifetime',async()=>{
+ const f=fixture(),p=await f.connected();
+ f.onRequest(async()=>{f.advance(1800000);await f.api.start(p.session.token,wallet);});
+ await expect(f.api.operation(p.session.token,{wallet,action:'messages',input:{folder:'INBOX'}})).rejects.toMatchObject({status:401});
+ f.advance(1800000);
+ await expect(f.api.start(p.session.token,wallet)).rejects.toMatchObject({status:401});
+});
