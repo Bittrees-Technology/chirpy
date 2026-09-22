@@ -104,3 +104,29 @@ an exception is unavailable authority, not permission or proof of non-delivery.
 The future queue worker must keep this preflight outside any new send when the
 bridge journal already contains an unresolved attempt. This adapter does not
 start the worker, install Mail files, register a wallet or enable forwarding.
+
+
+## Isolated sender process boundary
+
+`server/inbound-sender-process.js` arms the durable journal before launching an
+explicitly configured, trusted Node executable and sender script. The child gets
+its private configuration path as an argument and the exact email, recipient,
+provenance text and canonical scope on bounded stdin. No inherited Node options,
+provider credentials or signing keys are passed. Deployment code supplies these
+absolute paths; email content must never select an executable. POSIX is required.
+
+The boundary accepts a scope-matched publication receipt only after the child
+terminates successfully and all pipes close. Output is bounded to 4 KiB per
+stream. A timeout (maximum 60 seconds), crash, invalid output or mismatched receipt
+leaves the durable guard armed; no automatic retry launches a second sender.
+Timeout/output failure kills the entire child process group, including a Mail
+source-check subprocess, and waits for closure. A receipt printed before a hung
+process exits is not success. Parent termination also leaves the durable guard
+armed; operators must not reset it or reopen that SDK database as a recovery step.
+
+The trusted sender executable must still be implemented: it must check live Mail
+source and the pinned Wallet recipient, use the dedicated SDK identity/database,
+verify the exact Published message and return `{scope,receipt}` before terminating.
+This process boundary does not itself verify SDK publication or enable a worker.
+The queue worker, provisioning, proof-backed recovery and live acceptance remain
+launch requirements.
