@@ -331,3 +331,7 @@ input, textarea, select { font-family: inherit; }
 @media(max-width:700px){.mailbox{padding:16px}.mailbox-content{grid-template-columns:1fr}.mailbox-list{border-right:0;padding:16px 0;border-bottom:1px solid var(--line)}.mailbox-rows{max-height:32vh}.mailbox-detail{padding:16px 0}.mailbox-actions{width:100%}}
 
 .mailbox-conversation{border:1px solid var(--line);padding:12px;margin-bottom:24px}.mailbox-conversation h2{margin:0;font-size:18px}.mailbox-conversation-members{max-height:16rem;overflow:auto;margin-top:12px}.mailbox-conversation .mailbox-row{padding:10px}.mailbox-conversation .mailbox-row strong{font-size:14px}
+
+.mailbox-attachments {border-top:1px solid var(--line);margin-top:1rem;padding-top:.75rem;overflow-wrap:anywhere}
+.mailbox-attachments ul {list-style:none;padding:0;display:grid;gap:.75rem}
+.mailbox-attachments li {display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}

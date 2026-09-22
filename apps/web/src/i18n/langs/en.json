@@ -589,8 +589,15 @@
   "mailbox.canonicalTitle": "Open Email on Chat",
   "mailbox.canonicalHint": "Connect your mailbox at chat.bittrees.org. Email connections belong to that website.",
   "mailbox.openChat": "Open Chat",
-  "mailbox.previewLimit": "This is a plain-text preview. Long messages may be shortened; formatting and attachments are not shown.",
+  "mailbox.previewLimit": "This is a plain-text preview. Long messages may be shortened; formatting is not shown.",
   "mailbox.openMailbox": "Open Mail",
   "mailbox.deniedTitle": "Review your Mail connection",
-  "mailbox.deniedHint": "Access was revoked or changed. Clear this connection attempt, then reconnect and review permissions in Mail."
+  "mailbox.deniedHint": "Access was revoked or changed. Clear this connection attempt, then reconnect and review permissions in Mail.",
+  "mailbox.attachments": "Attachments",
+  "mailbox.attachmentHint": "Downloads only: up to 256 KiB per file in messages up to 512 KiB. Files are not scanned or opened automatically. Only open files you trust.",
+  "mailbox.showAttachments": "Show attachments",
+  "mailbox.download": "Download",
+  "mailbox.downloadReady": "File prepared for download.",
+  "mailbox.attachmentUnsupported": "Too large or unsupported",
+  "mailbox.noAttachments": "No attachments"
 }

@@ -589,8 +589,15 @@
   "mailbox.canonicalTitle": "Abre Email en Chat",
   "mailbox.canonicalHint": "Conecta tu buzón en chat.bittrees.org. Las conexiones de correo pertenecen a ese sitio web.",
   "mailbox.openChat": "Abrir Chat",
-  "mailbox.previewLimit": "Esta es una vista previa de texto. Los mensajes largos pueden estar recortados; no se muestran el formato ni los adjuntos.",
+  "mailbox.previewLimit": "Esta es una vista previa de texto sin formato. Los mensajes largos pueden acortarse; no se muestra el formato.",
   "mailbox.openMailbox": "Abrir Mail",
   "mailbox.deniedTitle": "Revisa tu conexión de Mail",
-  "mailbox.deniedHint": "El acceso fue revocado o cambió. Borra este intento de conexión, vuelve a conectar y revisa los permisos en Mail."
+  "mailbox.deniedHint": "El acceso fue revocado o cambió. Borra este intento de conexión, vuelve a conectar y revisa los permisos en Mail.",
+  "mailbox.attachments": "Archivos adjuntos",
+  "mailbox.attachmentHint": "Solo descargas: hasta 256 KiB por archivo en mensajes de hasta 512 KiB. Los archivos no se analizan ni se abren automáticamente. Abre solo archivos de confianza.",
+  "mailbox.showAttachments": "Mostrar archivos adjuntos",
+  "mailbox.download": "Descargar",
+  "mailbox.downloadReady": "Archivo preparado para descargar.",
+  "mailbox.attachmentUnsupported": "Demasiado grande o no compatible",
+  "mailbox.noAttachments": "No hay archivos adjuntos"
 }
