@@ -149,3 +149,14 @@ it('expired-grant recovery discards an in-flight old response and never extends 
  f.advance(1800000);
  await expect(f.api.start(p.session.token,wallet)).rejects.toMatchObject({status:401});
 });
+it('conversation relay requires read scope and discards results after disconnect',async()=>{
+ for(const scopes of [['send'],['read']]){
+  const f=fixture();f.grant.scopes=scopes;const p=await f.connected();
+  for(const action of ['threads','thread']){
+   const input={wallet,action,input:{folder:'INBOX',...(action==='thread'?{id:'d'.repeat(64)}:{})}};
+   if(scopes[0]==='send')await expect(f.api.operation(p.session.token,input)).rejects.toMatchObject({status:403});
+   else{await f.api.operation(p.session.token,input);expect(f.calls.at(-1).body).toEqual(input);}
+  }
+  if(scopes[0]==='read'){let once=true;f.onRequest(async()=>{if(once){once=false;await f.api.disconnect(p.session.token);}});await expect(f.api.operation(p.session.token,{wallet,action:'thread',input:{folder:'INBOX',id:'d'.repeat(64)}})).rejects.toMatchObject({status:401});}
+ }
+});
