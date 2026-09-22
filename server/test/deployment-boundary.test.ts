@@ -6,7 +6,7 @@ import { resetRateLimits } from "../server-utils.js";
 afterEach(() => { vi.restoreAllMocks(); resetRateLimits(); });
 it("ships only the intended API entrypoints", () => {
   expect(readdirSync(new URL('../../api/', import.meta.url)).filter(name => name !== 'node_modules').sort()).toEqual([
-    'health.js', 'mail', 'mail-events.js', 'mail-optout.js', 'mail-worker.js', 'mail.js', 'package.json', 'room-join.js', 'usersync.js', 'workflow-event.js',
+    'health.js', 'mail', 'mail-events.js', 'mail-inbound.js', 'mail-optout.js', 'mail-worker.js', 'mail.js', 'package.json', 'room-join.js', 'usersync.js', 'workflow-event.js',
   ]);
   expect(readdirSync(new URL('../../api/mail/', import.meta.url))).toEqual(['[action].js']);
   const route = readFileSync(new URL('../../api/room-join.js', import.meta.url), 'utf8');
