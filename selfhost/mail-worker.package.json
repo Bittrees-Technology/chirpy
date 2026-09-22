@@ -1,0 +1,17 @@
+{
+  "name": "chat-mail-worker",
+  "private": true,
+  "type": "module",
+  "description": "Pinned runtime dependencies for the self-hosted Chat inbound mail worker.",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "dependencies": {
+    "@xmtp/node-sdk": "6.0.0",
+    "viem": "2.53.1",
+    "svix": "2.5.0"
+  },
+  "overrides": {
+    "ws": "8.21.0"
+  }
+}

@@ -30,6 +30,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Dependency security audit
         run: pnpm audit --audit-level=moderate
+      - name: Isolated inbound worker runtime
+        run: node scripts/check-mail-worker-runtime.mjs
       - run: pnpm typecheck
       - run: pnpm typecheck:api
       - name: Unit and hardening regression suite
