@@ -1,6 +1,6 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {createSiweMessage} from 'viem/siwe';
-import {connectMail,mailStatus,mailMessages,mailMessage,mailReceipt,sendMail,replyAddress,MailClientError} from '../src/connectedMail';
+import {connectMail,mailStatus,mailMessages,mailPage,mailMessage,mailReceipt,sendMail,replyAddress,MailClientError} from '../src/connectedMail';
 const mocks=vi.hoisted(()=>({provider:null as any}));
 vi.mock('../src/walletProviders',()=>({getActiveProvider:()=>mocks.provider}));
 const wallet='0x'+'1'.repeat(40);let storage:Map<string,string>;let requests:any[],fetcher:ReturnType<typeof vi.fn>;
@@ -57,4 +57,17 @@ it('coordinates concurrent sends across tabs and refuses uncoordinated storage',
  localStorage.removeItem('chat:mail-pending:v1:'+wallet);
  Object.defineProperty(navigator,'locks',{configurable:true,value:undefined});
  await expect(sendMail(wallet,draft)).rejects.toMatchObject({code:'storage'});expect(fetcher).toHaveBeenCalledTimes(1);
+});
+it('validates bounded pages and passes only the selected cursor to Mail',async()=>{
+ const rows=Array.from({length:25},(_,i)=>({id:i.toString(16).padStart(64,'0'),from:'fixture@bittrees.org',subject:'Fixture',date:'Today'})),cursor='c'.repeat(64);
+ fetcher.mockResolvedValueOnce(Response.json({messages:rows,nextCursor:'d'.repeat(64)}));
+ expect(await mailPage(wallet,'INBOX',cursor)).toEqual({messages:rows,nextCursor:'d'.repeat(64)});
+ expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body).input).toEqual({folder:'INBOX',cursor});
+ for(const data of [{messages:rows,nextCursor:cursor},{messages:rows,nextCursor:'bad'},{messages:rows.slice(1),nextCursor:'d'.repeat(64)},{messages:[rows[0],rows[0]],nextCursor:null}]){
+  fetcher.mockResolvedValueOnce(Response.json(data));await expect(mailPage(wallet,'INBOX',cursor)).rejects.toMatchObject({code:'failed'});
+ }
+ const count=fetcher.mock.calls.length;await expect(mailPage(wallet,'INBOX','../escape')).rejects.toMatchObject({code:'failed'});expect(fetcher).toHaveBeenCalledTimes(count);
+});
+it('reports changed or oversized pages with recovery guidance',async()=>{
+ for(const [status,code] of [[409,'pageChanged'],[413,'pageLimit']] as const){fetcher.mockResolvedValueOnce(Response.json({}, {status}));await expect(mailPage(wallet,'INBOX','c'.repeat(64))).rejects.toMatchObject({code});}
 });

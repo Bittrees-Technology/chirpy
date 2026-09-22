@@ -5,7 +5,7 @@ export type MailConnection={mailbox:string;scopes:('read'|'send')[];expiresAt:st
 export type MailSummary={id:string;from:string;subject:string;date:string};
 export type MailMessage=MailSummary&{text:string};
 export type MailReceipt={id:string;createdAt:number};
-export class MailClientError extends Error {constructor(public code:'session'|'unavailable'|'denied'|'wallet'|'failed'|'storage'){super(code);}}
+export class MailClientError extends Error {constructor(public code:'session'|'unavailable'|'denied'|'wallet'|'failed'|'storage'|'pageChanged'|'pageLimit',public status?:number){super(code);}}
 const isWallet=(v:unknown):v is string=>typeof v==='string'&&/^0x[a-f0-9]{40}$/.test(v);
 const messageId=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 export const validMailFolder=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$/.test(v)&&v===v.trim();
@@ -17,7 +17,7 @@ export async function assertMailWallet(wallet:string){
 async function request(action:string,input?:unknown,signal?:AbortSignal){
  const response=await fetch('/api/mail/'+action,{method:input===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:input===undefined?undefined:JSON.stringify(input),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(40000)]):AbortSignal.timeout(40000)});
  let data;try{data=await response.json();}catch{throw new MailClientError('failed');}
- if(!response.ok)throw new MailClientError(response.status===401?'session':response.status===403?'denied':response.status===503?'unavailable':'failed');return data;
+ if(!response.ok)throw new MailClientError(response.status===401?'session':response.status===403?'denied':response.status===503?'unavailable':'failed',response.status);return data;
 }
 function connection(v:any):MailConnection|null{
  if(v===null)return null;
@@ -52,7 +52,15 @@ export async function connectMail(wallet:string,authenticated:boolean,signal?:Ab
 async function operation(wallet:string,action:string,input:unknown,signal?:AbortSignal){await assertMailWallet(wallet);const data=await request('operation',{wallet,action,input},signal);await assertMailWallet(wallet);signal?.throwIfAborted();return data;}
 export async function mailFolders(wallet:string,signal?:AbortSignal){const data=await operation(wallet,'folders',{},signal);if(!Array.isArray(data.folders)||data.folders.length>1000||!data.folders.every(validMailFolder))throw new MailClientError('failed');return [...new Set(data.folders)] as string[];}
 function summary(v:any):MailSummary{if(!v||!messageId(v.id)||typeof v.from!=='string'||v.from.length>200||typeof v.subject!=='string'||v.subject.length>200||typeof v.date!=='string'||v.date.length>80)throw new MailClientError('failed');return {id:v.id,from:v.from,subject:v.subject,date:v.date};}
-export async function mailMessages(wallet:string,folder:string,signal?:AbortSignal){if(!validMailFolder(folder))throw new MailClientError('failed');const data=await operation(wallet,'messages',{folder},signal);if(!Array.isArray(data.messages)||data.messages.length>25)throw new MailClientError('failed');return data.messages.map(summary) as MailSummary[];}
+export async function mailPage(wallet:string,folder:string,cursor:string|null=null,signal?:AbortSignal){
+ if(!validMailFolder(folder)||(cursor!==null&&!messageId(cursor)))throw new MailClientError('failed');
+ let data;try{data=await operation(wallet,'messages',{folder,...(cursor?{cursor}:{})},signal);}catch(e){if(e instanceof MailClientError&&(e.status===409||e.status===413))throw new MailClientError(e.status===409?'pageChanged':'pageLimit');throw e;}
+ if(!Array.isArray(data.messages)||data.messages.length>25||(data.nextCursor!==undefined&&data.nextCursor!==null&&!messageId(data.nextCursor))||data.nextCursor===cursor&&cursor!==null)throw new MailClientError('failed');
+ const messages=data.messages.map(summary) as MailSummary[];
+ if(new Set(messages.map(m=>m.id)).size!==messages.length||data.nextCursor&&messages.length!==25)throw new MailClientError('failed');
+ return {messages,nextCursor:(data.nextCursor??null) as string|null};
+}
+export async function mailMessages(wallet:string,folder:string,signal?:AbortSignal){return (await mailPage(wallet,folder,null,signal)).messages;}
 export async function mailMessage(wallet:string,folder:string,id:string,signal?:AbortSignal){if(!validMailFolder(folder)||!messageId(id))throw new MailClientError('failed');const data=await operation(wallet,'message',{folder,id},signal),m=summary(data.message);if(m.id!==id||typeof data.message.text!=='string'||new TextEncoder().encode(data.message.text).length>16000)throw new MailClientError('failed');return {...m,text:data.message.text} as MailMessage;}
 export type MailDraft={to:string;subject:string;text:string};
 export function validMailDraft(d:MailDraft){return d.to.length<=254&&/^[^\s<>@,;\x00-\x1f\x7f]+@[^\s<>@,;\x00-\x1f\x7f]+\.[^\s<>@,;\x00-\x1f\x7f]+$/.test(d.to)&&d.subject.length<=200&&!/[\x00-\x1f\x7f]/.test(d.subject)&&!!d.text.trim()&&!d.text.includes('\0')&&new TextEncoder().encode(JSON.stringify(d)).length<=19000;}
