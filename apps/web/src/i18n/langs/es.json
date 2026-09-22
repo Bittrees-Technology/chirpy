@@ -418,5 +418,8 @@
   "local.edit": "Editar",
   "local.delete": "Eliminar",
   "local.deleteConfirm": "¿Eliminar este elemento local? No se puede deshacer.",
-  "local.pages": "Páginas de datos locales"
+  "local.pages": "Páginas de datos locales",
+  "settings.storageError": "No se pudieron guardar ni leer los ajustes de forma segura. Se conservaron los datos del navegador. Restablece el acceso al almacenamiento y recarga antes de reintentar. La exportación de ajustes y la sincronización están en pausa.",
+  "status.syncOffUnsaved": "La sincronización se detuvo en esta sesión, pero no se pudo guardar la preferencia local. Restablece el almacenamiento antes de recargar.",
+  "status.syncRevokedUnsaved": "Se revocaron las autorizaciones de sincronización, pero no se pudo guardar la preferencia local. Restablece el almacenamiento antes de recargar."
 }

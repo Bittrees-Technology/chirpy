@@ -6,7 +6,7 @@ import { IdentityProvider, SettingsPrefsProvider, useIdentity, useSettingsPrefs 
 
 const mocks = vi.hoisted(() => ({
   address: "0x0000000000000000000000000000000000000001",
-  pull: vi.fn(), push: vi.fn(), authorize: vi.fn(),
+  pull: vi.fn(), push: vi.fn(), authorize: vi.fn(), revoke: vi.fn(), revokeAll: vi.fn(),
 }));
 vi.mock("../src/ens", () => ({ resolveEns: async () => null }));
 vi.mock("../src/walletProviders", () => {
@@ -21,6 +21,8 @@ vi.mock("../src/userSync", async (original) => ({
   pullRemoteBlob: (...args) => mocks.pull(...args),
   pushBlob: (...args) => mocks.push(...args),
   createSyncAuthorization: (...args) => mocks.authorize(...args),
+  revokeSyncAuthorization: (...args) => mocks.revoke(...args),
+  revokeAllSyncAuthorizations: (...args) => mocks.revokeAll(...args),
 }));
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -70,6 +72,69 @@ it.each(["authorization", "remote read", "write acknowledgment"])(
       const persisted = JSON.parse(storage.get(`chat:settingsPrefs:v1:wallet:${mocks.address}`)!);
       expect(persisted.readReceiptsDefault).toBe(false);
       if (stage !== "write acknowledgment") expect(mocks.push).not.toHaveBeenCalled();
+    } finally { await act(async () => root.unmount()); }
+  },
+);
+
+it('does not report sync enabled when the acknowledged preference cannot be persisted', async () => {
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  vi.stubGlobal('crypto', webcrypto);
+  const storage = new Map<string, string>(); let deny = false;
+  vi.stubGlobal('localStorage', { getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => { if (deny && key.startsWith('chat:settingsPrefs:v1:')) throw new Error('Quota'); storage.set(key, value); },
+    removeItem: key => storage.delete(key) });
+  mocks.authorize.mockReset().mockResolvedValue({ grant: { expiresAt: Date.now() + 60_000 } });
+  mocks.pull.mockReset().mockResolvedValue(null);
+  mocks.push.mockReset().mockImplementation(async () => { deny = true; return { ok: true }; });
+  let current: any;
+  function Probe() { current = { ...useIdentity(), ...useSettingsPrefs() }; return null; }
+  const root = createRoot(document.createElement('div'));
+  try {
+    await act(async () => root.render(React.createElement(IdentityProvider, null,
+      React.createElement(SettingsPrefsProvider, null, React.createElement(Probe)))));
+    await act(async () => current.connectWallet());
+    await act(async () => current.setReadReceiptsDefault(true));
+    const key = `chat:settingsPrefs:v1:wallet:${mocks.address}`;
+    const before = storage.get(key);
+    let result: any;
+    await act(async () => { result = await current.enableSyncAcrossDevices(); });
+    expect(result.ok).toBe(false);
+    expect(current.storageError).toContain('Settings could not be saved');
+    expect(current.syncState.hasSessionKey).toBe(false);
+    expect(current.prefs.syncAcrossDevices).toBe(false);
+    expect(storage.get(key)).toBe(before);
+  } finally { await act(async () => root.unmount()); }
+});
+
+
+it.each(['disableSyncAcrossDevices', 'revokeAllSyncDevices'])(
+  'stops session authority through %s even if its preference write fails', async action => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.stubGlobal('crypto', webcrypto);
+    const storage = new Map<string, string>(); let deny = false;
+    vi.stubGlobal('localStorage', { getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => { if (deny && key.startsWith('chat:settingsPrefs:v1:')) throw new Error('Quota'); storage.set(key, value); },
+      removeItem: key => storage.delete(key) });
+    mocks.authorize.mockReset().mockResolvedValue({ grant: { expiresAt: Date.now() + 60_000 } });
+    mocks.pull.mockReset().mockResolvedValue(null); mocks.push.mockReset().mockResolvedValue({ ok: true });
+    mocks.revoke.mockReset().mockResolvedValue(undefined); mocks.revokeAll.mockReset().mockResolvedValue(undefined);
+    let current: any;
+    function Probe() { current = { ...useIdentity(), ...useSettingsPrefs() }; return null; }
+    const root = createRoot(document.createElement('div'));
+    try {
+      await act(async () => root.render(React.createElement(IdentityProvider, null,
+        React.createElement(SettingsPrefsProvider, null, React.createElement(Probe)))));
+      await act(async () => current.connectWallet());
+      await act(async () => { expect((await current.enableSyncAcrossDevices()).ok).toBe(true); });
+      const key = `chat:settingsPrefs:v1:wallet:${mocks.address}`; const before = storage.get(key);
+      deny = true; let result: any;
+      await act(async () => { result = await current[action](); });
+      expect(result.ok).toBe(false);
+      expect(result.message).toContain('local preference could not be saved');
+      expect(current.prefs.syncAcrossDevices).toBe(false);
+      expect(current.syncState.hasSessionKey).toBe(false);
+      expect(storage.get(key)).toBe(before);
+      expect(action === 'disableSyncAcrossDevices' ? mocks.revoke : mocks.revokeAll).toHaveBeenCalledOnce();
     } finally { await act(async () => root.unmount()); }
   },
 );

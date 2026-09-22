@@ -295,3 +295,7 @@ input, textarea, select { font-family: inherit; }
 .local-address { font-size: 12px; }
 .local-note-input { min-height: 110px; resize: vertical; }
 .local-note-text { white-space: pre-wrap; margin: 0 0 8px; }
+
+.main.has-settings-error { flex-direction: column; }
+.main.has-settings-error > .split { flex: 1; min-height: 0; }
+.settings-storage-error { margin: 8px; flex-shrink: 0; }

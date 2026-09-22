@@ -418,5 +418,8 @@
   "local.edit": "Edit",
   "local.delete": "Delete",
   "local.deleteConfirm": "Delete this local item? This cannot be undone.",
-  "local.pages": "Local data pages"
+  "local.pages": "Local data pages",
+  "settings.storageError": "Settings could not be saved or safely read. Existing browser data was kept. Restore storage access and reload before retrying. Settings export and sync are paused.",
+  "status.syncOffUnsaved": "Sync stopped for this session, but the local preference could not be saved. Restore browser storage before reloading.",
+  "status.syncRevokedUnsaved": "Sync authorizations were revoked, but the local preference could not be saved. Restore browser storage before reloading."
 }
