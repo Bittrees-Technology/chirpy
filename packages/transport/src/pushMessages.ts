@@ -1,3 +1,4 @@
+import { pushSenderIdentity } from './pushIdentity.js';
 import type { ChatMessage } from './types.js';
 import { parsePushConversationId } from './pushRegistry.js';
 export const PUSH_HISTORY_LIMIT = 30;
@@ -13,12 +14,6 @@ function cid(value: unknown): string {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(value)) invalid();
   return value;
 }
-function sender(value: unknown): string {
-  if (typeof value !== 'string') invalid();
-  const match = /^(?:eip155:(?:[0-9]+:)?)?(0x[a-fA-F0-9]{40})$/.exec(value);
-  if (!match) invalid();
-  return match[1].toLowerCase();
-}
 /** Only decrypted SDK results belong here; this function does not verify signatures.
  * Push's public plaintext path does not provide XMTP-equivalent sender verification. */
 export function readPushHistory(raw: unknown, conversationId: string, requestedReference?: string): PushHistoryPage {
@@ -32,8 +27,8 @@ export function readPushHistory(raw: unknown, conversationId: string, requestedR
     // Do not show another room's message even if a cursor or backend response is wrong.
     const recipients = [row.toDID, row.toCAIP10].filter(value => value !== undefined);
     if (!recipients.length || recipients.some(value => value !== room.chatId)) invalid();
-    const from = sender(row.fromCAIP10 ?? row.fromDID);
-    if (row.fromDID !== undefined && sender(row.fromDID) !== from) invalid();
+    const from = pushSenderIdentity(row.fromDID, row.fromCAIP10);
+    if (!from) invalid();
     if (typeof row.timestamp !== 'number' || !Number.isSafeInteger(row.timestamp) || row.timestamp < 0 || row.timestamp > 8_640_000_000_000_000) invalid();
     const link = row.link === null ? null : cid(row.link);
     if (link === id) invalid();

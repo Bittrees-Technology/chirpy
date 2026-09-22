@@ -509,5 +509,6 @@
   "push.refreshMembers": "Cargar o actualizar miembros",
   "push.loadingMembers": "Cargando miembros…",
   "push.memberPage": "Página {page} · Hasta 20 miembros por página; no es el total de miembros.",
-  "push.noMembersPage": "No se devolvieron miembros en esta página."
+  "push.noMembersPage": "No se devolvieron miembros en esta página.",
+  "push.sourceIdentity": "Identidad de Push"
 }

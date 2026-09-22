@@ -30,6 +30,13 @@ describe('Push history boundary', () => {
     expect(readPushHistory([], conversation)).toEqual({ messages: [] });
     expect(() => readPushHistory([], conversation, first)).toThrow('unsupported room history');
   });
+  it('preserves legacy NFT epochs and smart-wallet chain identities in room history', () => {
+    const nft = `nft:eip155:1:${alice}:42`;
+    expect(readPushHistory([{ ...message(first, null), fromDID: `${nft}:100`, fromCAIP10: nft }], conversation).messages[0].sender).toBe(`${nft}:100`);
+    const smart = `scw:eip155:10:${alice}`;
+    expect(readPushHistory([{ ...message(first, null), fromDID: smart, fromCAIP10: smart }], conversation).messages[0].sender).toBe(smart);
+    expect(() => readPushHistory([{ ...message(first, null), fromDID: `${nft}:100`, fromCAIP10: `${nft}:200` }], conversation)).toThrow();
+  });
   it('rejects unsupported identities and sender mismatches', () => {
     for (const fromDID of [`eip155:${bob}`, 'eip155:nft:unknown', 'javascript:alert(1)', 'not-an-address']) {
       expect(() => readPushHistory([{ ...message(first, null), fromDID }], conversation)).toThrow();

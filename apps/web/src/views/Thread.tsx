@@ -256,6 +256,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                 {m.replyTo && (
                   <div className="msg-reply-ref">↩ {(parent?.body ?? m.replyPreview)?.slice(0, 60) ?? t("thread.earlierReply", "Reply to an earlier message")}</div>
                 )}
+                {pushRoom && !/^0x[a-fA-F0-9]{40}$/.test(m.sender) && <div className="push-identity">{t("push.sourceIdentity")}: <code>{m.sender}</code></div>}
                 <div className="msg-bubble">
                   <MessageBody body={m.body} />
                   <span className="msg-time">{fmtTime(m.sentAt, lang)}</span>

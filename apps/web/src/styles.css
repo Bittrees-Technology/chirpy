@@ -314,3 +314,5 @@ input, textarea, select { font-family: inherit; }
 
 .push-members { max-height: 240px; overflow: auto; }
 .push-members li { overflow-wrap: anywhere; }
+
+.push-identity { font-size: 12px; overflow-wrap: anywhere; max-width: 100%; }

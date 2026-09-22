@@ -176,3 +176,51 @@ test('paginates members on mobile and restricts pending lists to administrators'
   await expect(page.getByRole('combobox', { name: 'Member list', exact: true })).toHaveCount(0);
   await expect(page.locator('.push-members code')).toHaveCount(0);
 });
+test('preserves legacy NFT ownership epochs and smart-wallet identity labels', async ({ page }) => {
+  await openRoom(page);
+  const nft = `nft:eip155:1:${other}:42:100`, smart = `scw:eip155:10:${other}`;
+  await page.evaluate(({ nft, smart, messages }) => { const s = (window as any).__pushFixture; s.pages.latest = [{ ...messages[0], fromDID: nft }, { ...messages[1], fromDID: smart }]; }, { nft, smart, messages: [row('QmLatestMessage', 'QmOlderMessage', 'NFT historical message'), row('QmOlderMessage', null, 'Smart-wallet message')] });
+  await enable(page);
+  await expect(page.locator('.push-identity code')).toHaveText([smart, nft]);
+  await expect(page.getByText('NFT historical message', { exact: true })).toBeVisible();
+  await expect(page.getByText('Smart-wallet message', { exact: true })).toBeVisible();
+});
+test('reconnects the same wallet without accepting history from its disposed session', async ({ page }) => {
+  await openRoom(page); await page.evaluate(() => { (window as any).__pushFixture.hold.history = true; }); await enable(page);
+  await expect.poll(() => page.evaluate(() => (window as any).__pushFixture.pending.history?.length ?? 0)).toBe(1);
+  await page.evaluate(() => { const s = (window as any).__pushFixture; s.emit('disconnect', {}); s.hold.history = false; s.pages.latest[0].messageContent = 'After reconnect'; });
+  await expect(page.locator('.thread-title')).toHaveCount(0);
+  // An injected provider can reconnect with the same authorized accounts.
+  // The old Push session must still require a fresh explicit enable/signature.
+  await expect(page.getByText('Push is not connected', { exact: true })).toBeVisible();
+  await page.locator('.list-item', { hasText: 'shareholders' }).click(); await enable(page);
+  await expect(page.getByText('After reconnect', { exact: true })).toBeVisible();
+  await page.evaluate(() => (window as any).__pushFixture.release('history'));
+  await expect.poll(() => page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'historyResult').length)).toBe(2);
+  await expect(page.getByText('Preserved Push history', { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__pushFixture.signCount)).toBe(2);
+});
+test('invalidates the room session when the organization changes', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.locator('.nav-item', { hasText: 'Settings' }).click(); await page.getByRole('button', { name: 'Import', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Import organization' });
+  await dialog.getByRole('textbox').fill(JSON.stringify({ version: 1, branding: { name: 'Another organization' }, namespace: 'push-scope-test', chain: { chainId: 1 }, entryGate: [], gating: {} }));
+  await dialog.getByRole('button', { name: 'Import', exact: true }).click(); await expect(dialog).toHaveCount(0);
+  await page.locator('.nav-item', { hasText: 'Rooms' }).click(); await expect(page.locator('.thread-title')).toHaveCount(0);
+  await page.locator('.list-item', { hasText: 'shareholders' }).click(); await expect(page.locator('.thread').getByRole('button', { name: 'Connect Push rooms' })).toBeVisible();
+  await expect(page.getByText('Preserved Push history', { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__pushFixture.signCount)).toBe(1);
+});
+
+test('replaces a provider for the same wallet without reusing its old Push session', async ({ page }) => {
+  await openRoom(page); await page.evaluate(() => { (window as any).__pushFixture.hold.history = true; }); await enable(page);
+  await expect.poll(() => page.evaluate(() => (window as any).__pushFixture.pending.history?.length ?? 0)).toBe(1);
+  await page.evaluate(() => { const s = (window as any).__pushFixture; s.replaceProvider(); s.release('history'); });
+  await expect(page.locator('.thread-title')).toHaveCount(0); await expect(page.getByText('Push is not connected', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'historyResult').length)).toBe(1);
+  await expect(page.getByText('Preserved Push history', { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__pushFixture.signCount)).toBe(1);
+  await page.locator('.list-item', { hasText: 'shareholders' }).click(); await enable(page);
+  await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__pushFixture.signCount)).toBe(2);
+});

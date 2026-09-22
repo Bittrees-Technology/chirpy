@@ -1,3 +1,4 @@
+import { setActiveProvider } from '../../apps/web/src/walletProviders';
 // External SDK boundary only. Chat's real controller, adapter, session guards,
 // wallet-provider integration and views run unchanged in this test build.
 const state = () => (window as any).__pushFixture;
@@ -10,12 +11,16 @@ export const CONSTANTS = { ENV: { PROD: 'prod' } };
 export const PushAPI = {
   async initialize(signer: any) {
     const owner = signer.account.address;
+    state().replaceProvider = () => {
+      const next = { ...(window as any).ethereum };
+      (window as any).ethereum = next; setActiveProvider(next, 'injected');
+    };
     state().calls.push({ kind: 'initialize', owner });
     await signer.signMessage({ message: 'Synthetic test-only Push session' });
     await wait('initialize');
     const call = (kind: string, room: string, extra?: unknown) => state().calls.push({ kind, room, owner, extra });
     return { account: owner, decryptedPgpPvtKey: 'synthetic-test-key', chat: {
-      history: async (room: string, options: any) => { call('history', room, options); const rows = clone(state().pages[options?.reference ?? 'latest'] ?? []); await wait('history'); return rows; },
+      history: async (room: string, options: any) => { call('history', room, options); const rows = clone(state().pages[options?.reference ?? 'latest'] ?? []); await wait('history'); call('historyResult', room); return rows; },
       send: async (room: string, content: any) => { call('send', room, content); await wait('send'); return {}; },
       group: {
         info: async (room: string) => { call('info', room); return { chatId: room, groupName: 'Existing room', groupDescription: 'Preserved source room', isPublic: state().publicRoom }; },

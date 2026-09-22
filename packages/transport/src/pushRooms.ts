@@ -1,3 +1,4 @@
+import { parsePushIdentity } from './pushIdentity.js';
 import type { Conversation, MessagePage } from './types.js';
 import { loadPushRegistry, type PushCatalog, type PushCatalogRoom, type PushSource } from './pushRegistry.js';
 import { PushRoomSession, type PushRoomClient, type PushSessionStatus } from './pushSession.js';
@@ -187,9 +188,8 @@ export class PushRooms {
     const seen = new Set<string>();
     const members = raw.members.map(value => {
       const member = object(value);
-      const match = typeof member.address === 'string' && /^(?:eip155:(?:[0-9]+:)?)?(0x[a-fA-F0-9]{40})$/.exec(member.address);
-      if (!match || (member.role !== 'ADMIN' && member.role !== 'MEMBER')) throw new Error('Push returned an unsupported member list.');
-      const address = match[1].toLowerCase();
+      const address = parsePushIdentity(member.address);
+      if (!address || (member.role !== 'ADMIN' && member.role !== 'MEMBER')) throw new Error('Push returned an unsupported member list.');
       if (seen.has(address)) throw new Error('Push returned a duplicated member. Refresh the member list.');
       seen.add(address);
       // Do not copy SDK userInfo, encrypted keys or unselected profile fields.

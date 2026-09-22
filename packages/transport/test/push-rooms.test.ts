@@ -118,6 +118,12 @@ describe('source-scoped Push room adapter', () => {
     vi.mocked(f.client.participants).mockResolvedValue({ members: Array(2).fill({ address: owner, role: 'MEMBER' }) });
     await expect(f.rooms.members(id)).rejects.toThrow('duplicated member');
   });
+  it('preserves NFT and smart-wallet member identifiers without collapsing them into contract addresses', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const addresses = [`nft:eip155:1:${owner}:42:100`, `scw:eip155:10:${owner}`];
+    vi.mocked(f.client.participants).mockResolvedValue({ members: addresses.map(address => ({ address, role: 'MEMBER' })) });
+    expect((await f.rooms.members(id)).members.map(member => member.address)).toEqual(addresses);
+  });
   it('requires membership for private member lists and admin authority for pending lists', async () => {
     const f = setup(); await f.rooms.discover(); await f.rooms.enable();
     await expect(f.rooms.members(id, 1, true)).rejects.toThrow('administrator');

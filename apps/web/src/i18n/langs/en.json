@@ -509,5 +509,6 @@
   "push.refreshMembers": "Load or refresh members",
   "push.loadingMembers": "Loading members…",
   "push.memberPage": "Page {page} · Up to 20 members per page; this is not a total member count.",
-  "push.noMembersPage": "No members returned on this page."
+  "push.noMembersPage": "No members returned on this page.",
+  "push.sourceIdentity": "Push identity"
 }
