@@ -17,7 +17,7 @@ export function Settings(
 ) {
   const {
     identity, mode, hasInjectedWallet, walletConnectAvailable, isConnecting, ensProfile, walletError,
-    setHandle, reset, connectWallet, connectWalletConnect, disconnectWallet,
+    setHandle, resetHandle, reset, connectWallet, connectWalletConnect, disconnectWallet,
   } = useIdentity();
   const { orgs, recoverySnapshots, organizationStorageError, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, storageError, storageBusy, recoveryPaused, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices } = useSettingsPrefs();
@@ -33,9 +33,8 @@ export function Settings(
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
 
   const profileLookup = useMemo(() => {
-    const handle = identity.handle?.trim() ?? "";
-    return isEnsName(handle) ? handle : identity.address;
-  }, [identity.address, identity.handle]);
+    return identity.address;
+  }, [identity.address]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,9 +111,9 @@ export function Settings(
     };
   }, [resolverInput, t]);
 
-  const activeProfile = mode === "wallet" ? ensProfile ?? profileEns : profileEns;
-  const ensName = activeProfile?.name ?? (isEnsName(identity.handle ?? "") ? identity.handle : undefined);
-  const profileName = activeProfile?.displayName ?? ensName ?? identity.handle ?? shortAddr(identity.address);
+  const activeProfile = mode === "wallet" ? ensProfile : profileEns;
+  const ensName = activeProfile?.name;
+  const profileName = identity.handle?.trim() || shortAddr(identity.address);
   const profileAvatar = activeProfile?.address && activeProfile.avatar ? activeProfile.avatar : undefined;
   const ensManagerTarget = ensName ?? identity.address;
   const syncDescription = prefs.syncAcrossDevices
@@ -190,7 +189,7 @@ export function Settings(
           {t("settings.mode")} <span className="pill">{transportId}</span> {transportText}
         </p>
         <div className="grid2">
-          <Field label={t("settings.displayName")}><input className="input" value={identity.handle ?? ""} onChange={(e) => setHandle(e.target.value)} /></Field>
+          <Field label={t("settings.displayName")}><input className="input" maxLength={80} value={identity.handle ?? ""} onChange={(e) => setHandle(e.target.value)} /></Field>
           <Field label={t("settings.address")}><input className="input" value={identity.address} readOnly /></Field>
           <Field label={t("settings.language")}>
             <select className="input" value={lang} onChange={(e) => setLang(e.target.value as LangCode)}>
@@ -198,6 +197,8 @@ export function Settings(
             </select>
           </Field>
         </div>
+        <p className="muted">{t("settings.localProfileHelp")}</p>
+        {mode === "wallet" && <Button variant="ghost" onClick={resetHandle}>{t("settings.useEnsName")}</Button>}
         {walletError && <div className="muted status-line status-error">{translateStatus(t, walletError)}</div>}
         <div className="row-end">
           {mode === "wallet" ? (

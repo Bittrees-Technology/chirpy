@@ -1,5 +1,7 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "Your display name could not be saved. Restore browser storage access and try again.": "settings.profileSaveError",
+  "Use a display name of at most 80 characters without control characters.": "settings.profileLabelError",
   "Settings could not be saved or safely read. Existing browser data was kept. Restore storage access and reload before retrying.": "settings.storageError",
   "Sync stopped for this session, but the local preference could not be saved. Restore browser storage before reloading.": "status.syncOffUnsaved",
   "Sync authorizations were revoked, but the local preference could not be saved. Restore browser storage before reloading.": "status.syncRevokedUnsaved",

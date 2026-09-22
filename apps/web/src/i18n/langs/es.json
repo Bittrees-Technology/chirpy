@@ -510,5 +510,9 @@
   "push.loadingMembers": "Cargando miembros…",
   "push.memberPage": "Página {page} · Hasta 20 miembros por página; no es el total de miembros.",
   "push.noMembersPage": "No se devolvieron miembros en esta página.",
-  "push.sourceIdentity": "Identidad de Push"
+  "push.sourceIdentity": "Identidad de Push",
+  "settings.localProfileHelp": "Este nombre se guarda solo en este dispositivo. Cambiarlo no publica un perfil público ni modifica tu registro ENS. Déjalo vacío para mostrar aquí la dirección de tu cartera.",
+  "settings.useEnsName": "Usar nombre ENS",
+  "settings.profileSaveError": "No se pudo guardar tu nombre. Restablece el acceso al almacenamiento del navegador e inténtalo de nuevo.",
+  "settings.profileLabelError": "Usa un nombre de hasta 80 caracteres sin caracteres de control."
 }

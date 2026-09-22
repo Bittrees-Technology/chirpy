@@ -510,5 +510,9 @@
   "push.loadingMembers": "Loading members…",
   "push.memberPage": "Page {page} · Up to 20 members per page; this is not a total member count.",
   "push.noMembersPage": "No members returned on this page.",
-  "push.sourceIdentity": "Push identity"
+  "push.sourceIdentity": "Push identity",
+  "settings.localProfileHelp": "This display name is saved on this device only. Changing it does not publish a public profile or change your ENS record. Leave it blank to show your wallet address here.",
+  "settings.useEnsName": "Use ENS name",
+  "settings.profileSaveError": "Your display name could not be saved. Restore browser storage access and try again.",
+  "settings.profileLabelError": "Use a display name of at most 80 characters without control characters."
 }
