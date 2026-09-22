@@ -81,7 +81,7 @@ rejects changed originals, and derives bounded In-Reply-To and References header
 from the original rather than trusting client-supplied headers. Missing or unsupported
 message identifiers show an unthreaded-reply warning. Multiple reply recipients are
 not expanded automatically. New email clears any previous reply context.
-Conversation grouping, attachments and HTML rendering are not implemented.
+The Conversations view groups source reference chains across folders and keeps physical copies visible. The selected folder filters which conversations appear; related messages in other folders are included, with Trash excluded unless selected. Conversation members are paged newest first, and opening or replying uses the actual source folder. Changed membership invalidates old member cursors and clears a stale open conversation on refresh. No subject-only merging or wallet-identity verification is implied. Individual emails remain available. Source limits (100 folders, 10,000 messages, 8 MiB aggregate headers) return explicit errors instead of partial threads. Attachments and HTML rendering are not implemented.
 Older/newer page navigation uses source-bound cursors; Refresh returns to newest. Polling pauses on older pages. Moved or removed page anchors require Refresh; folders above 10,000 entries return an explicit limit rather than hiding older mail.
 The reader explicitly labels its bounded plain-text preview and links to Mail.
 

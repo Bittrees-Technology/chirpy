@@ -1,6 +1,6 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {createSiweMessage} from 'viem/siwe';
-import {connectMail,mailStatus,mailMessages,mailPage,mailMessage,mailReceipt,sendMail,replyAddress,MailClientError} from '../src/connectedMail';
+import {connectMail,mailStatus,mailMessages,mailPage,mailThreadPage,mailThread,mailMessage,mailReceipt,sendMail,replyAddress,MailClientError} from '../src/connectedMail';
 const mocks=vi.hoisted(()=>({provider:null as any}));
 vi.mock('../src/walletProviders',()=>({getActiveProvider:()=>mocks.provider}));
 const wallet='0x'+'1'.repeat(40);let storage:Map<string,string>;let requests:any[],fetcher:ReturnType<typeof vi.fn>;
@@ -75,4 +75,24 @@ it('accepts bounded source reply metadata and rejects malformed version or recip
  const message={id:'a'.repeat(64),from:'fixture@bittrees.org',subject:'Fixture',date:'Today',text:'Original',sourceVersion:'b'.repeat(64),replyTo:'reply@bittrees.org',threadedReply:true};
  fetcher.mockResolvedValueOnce(Response.json({message}));expect(await mailMessage(wallet,'INBOX',message.id)).toEqual(message);
  for(const change of [{sourceVersion:'invalid'},{replyTo:'a@example.org\r\nBcc:x@example.org'},{threadedReply:'yes'}]){fetcher.mockResolvedValueOnce(Response.json({message:{...message,...change}}));await expect(mailMessage(wallet,'INBOX',message.id)).rejects.toMatchObject({code:'failed'});}
+});
+it('validates conversation counts, versions, folder-qualified members and bounded cursors',async()=>{
+ const id='a'.repeat(64),version='b'.repeat(64),cursor='c'.repeat(64),member={id:'d'.repeat(64),folder:'Sent',from:'Fixture',subject:'😀'.repeat(200),date:'Today'};
+ fetcher.mockResolvedValueOnce(Response.json({threads:[{id,version,count:2,latest:member}],nextCursor:cursor}));
+ expect((await mailThreadPage(wallet,'INBOX')).threads[0].latest).toEqual(member);
+ fetcher.mockResolvedValueOnce(Response.json({id,version,count:2,messages:[member,{...member,folder:'INBOX'}],nextCursor:null}));
+ expect((await mailThread(wallet,'INBOX',id)).messages).toHaveLength(2);
+ for(const patch of [{id:'f'.repeat(64)},{version:'bad'},{count:0},{count:10001},{messages:[member,member]},{messages:[{...member,folder:'../escape'}]},{messages:[]},{nextCursor:cursor}]){
+  fetcher.mockResolvedValueOnce(Response.json({id,version,count:2,messages:[member],nextCursor:null,...patch}));await expect(mailThread(wallet,'INBOX',id,cursor)).rejects.toMatchObject({code:'failed'});
+ }
+ for(const threads of [[{id,version,count:1,latest:member},{id,version,count:1,latest:member}],[{id,version,count:'2',latest:member}]]){fetcher.mockResolvedValueOnce(Response.json({threads,nextCursor:null}));await expect(mailThreadPage(wallet,'INBOX')).rejects.toMatchObject({code:'failed'});}
+});
+it('conversation reads map changed sources and limits to actionable errors',async()=>{
+ for(const [status,code]of [[404,'pageChanged'],[409,'pageChanged'],[413,'pageLimit'],[403,'denied']] as const){fetcher.mockResolvedValueOnce(Response.json({error:'fixture'},{status}));await expect(mailThread(wallet,'INBOX','a'.repeat(64))).rejects.toMatchObject({code});}
+});
+
+it('rejects conversation responses that claim completeness while omitting members',async()=>{
+ const id='a'.repeat(64),version='b'.repeat(64),message={id:'d'.repeat(64),folder:'INBOX',from:'Fixture',subject:'Test',date:'Today'};
+ fetcher.mockResolvedValueOnce(Response.json({id,version,count:2,messages:[message],nextCursor:null}));await expect(mailThread(wallet,'INBOX',id)).rejects.toMatchObject({code:'failed'});
+ fetcher.mockResolvedValueOnce(Response.json({id,version,count:1,messages:[message],nextCursor:'c'.repeat(64)}));await expect(mailThread(wallet,'INBOX',id)).rejects.toMatchObject({code:'failed'});
 });

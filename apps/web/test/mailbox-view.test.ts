@@ -6,7 +6,7 @@ import {I18nProvider} from '../src/i18n';
 import * as mail from '../src/connectedMail';
 const state=vi.hoisted(()=>({identity:{address:'0x'+'1'.repeat(40)},mode:'wallet'}));
 vi.mock('../src/state',()=>({useIdentity:()=>state}));
-vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),sendMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
+vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailThreadPage:vi.fn(),mailThread:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),sendMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
 let container:HTMLDivElement,root:Root;
 const connection=()=>({mailbox:'fixture@bittrees.org',scopes:['read','send'] as ('read'|'send')[],expiresAt:new Date(Date.now()+3600000).toISOString()});
 const item={id:'a'.repeat(64),from:'Fixture <fixture@bittrees.org>',subject:'Acceptance fixture',date:'Today'};
@@ -139,4 +139,40 @@ it('disconnect and expiry abort background reads and cannot restore private cont
  vi.mocked(mail.mailPage).mockImplementationOnce(()=>new Promise(r=>resolve=r));await act(async()=>vi.advanceTimersByTimeAsync(45000));const disconnectSignal=vi.mocked(mail.mailPage).mock.lastCall![3]!;
  vi.mocked(mail.disconnectMail).mockResolvedValue(true);await click('Disconnect Mail');expect(disconnectSignal.aborted).toBe(true);
  await act(async()=>resolve({messages:[item],nextCursor:null}));expect(container.textContent).not.toContain(item.subject);expect(container.textContent).toContain('Mail disconnected');
+});
+const threadId='e'.repeat(64),threadVersion='f'.repeat(64),member={...item,folder:'Sent'};
+async function conversations(){
+ vi.mocked(mail.mailThreadPage).mockResolvedValue({threads:[{id:threadId,version:threadVersion,count:2,latest:member}],nextCursor:null});
+ vi.mocked(mail.mailThread).mockResolvedValue({id:threadId,version:threadVersion,count:2,messages:[member,{...member,folder:'INBOX'}],nextCursor:null});
+ await render();await act(async()=>{const select=container.querySelectorAll('select')[1];select.value='conversations';select.dispatchEvent(new Event('change',{bubbles:true}));});
+}
+const openConversation=()=>act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-list .mailbox-row')!.click());
+it('opens folder-qualified conversation copies and replies to the actual source folder',async()=>{
+ vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Conversation body',sourceVersion:'d'.repeat(64),replyTo:'reply@bittrees.org',threadedReply:true});
+ await conversations();await openConversation();expect(mail.mailMessage).toHaveBeenLastCalledWith(state.identity.address,'Sent',item.id,expect.any(AbortSignal));
+ expect(container.querySelectorAll('.mailbox-conversation .mailbox-row')).toHaveLength(2);
+ await click('Reply');await act(async()=>{const textarea=container.querySelector('textarea')!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textarea,'Reply fixture');textarea.dispatchEvent(new Event('input',{bubbles:true}));});
+ await act(async()=>container.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ expect(mail.sendMail).toHaveBeenCalledWith(state.identity.address,expect.objectContaining({reply:{folder:'Sent',id:item.id,version:'d'.repeat(64)}}),expect.any(AbortSignal));
+});
+it('pages complete conversation membership and rejects changed versions without reading stale members',async()=>{
+ await conversations();vi.mocked(mail.mailThread).mockResolvedValueOnce({id:threadId,version:threadVersion,count:26,messages:[member],nextCursor:'c'.repeat(64)});await openConversation();
+ vi.mocked(mail.mailThread).mockResolvedValueOnce({id:threadId,version:threadVersion,count:26,messages:[{...member,folder:'INBOX'}],nextCursor:null});
+ await click('Older messages');expect(mail.mailThread).toHaveBeenLastCalledWith(state.identity.address,'INBOX',threadId,'c'.repeat(64),expect.any(AbortSignal));expect(mail.mailMessage).toHaveBeenLastCalledWith(state.identity.address,'INBOX',item.id,expect.any(AbortSignal));
+ const reads=vi.mocked(mail.mailMessage).mock.calls.length;vi.mocked(mail.mailThread).mockResolvedValueOnce({id:threadId,version:'b'.repeat(64),count:26,messages:[member],nextCursor:null});await click('Newer messages');
+ // First-page refresh is allowed; only continued pages must preserve the snapshot.
+ expect(mail.mailMessage).toHaveBeenCalledTimes(reads+1);
+ vi.mocked(mail.mailThread).mockResolvedValueOnce({id:threadId,version:threadVersion,count:26,messages:[member],nextCursor:'c'.repeat(64)});await openConversation();
+ const before=vi.mocked(mail.mailMessage).mock.calls.length;vi.mocked(mail.mailThread).mockResolvedValueOnce({id:threadId,version:'b'.repeat(64),count:26,messages:[member],nextCursor:null});await click('Older messages');expect(mail.mailMessage).toHaveBeenCalledTimes(before);expect(container.textContent).toContain('This page changed');
+});
+it('conversation polling clears changed membership and current denial removes all private views',async()=>{
+ vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});await conversations();await openConversation();
+ vi.mocked(mail.mailThreadPage).mockResolvedValueOnce({threads:[{id:threadId,version:'b'.repeat(64),count:3,latest:member}],nextCursor:null});await act(async()=>vi.advanceTimersByTimeAsync(45000));
+ expect(container.querySelector('.mailbox-conversation')).toBeNull();expect(container.querySelector('pre')).toBeNull();expect(container.textContent).toContain('This conversation changed');
+ vi.mocked(mail.mailThreadPage).mockRejectedValueOnce(new mail.MailClientError('denied'));await act(async()=>vi.advanceTimersByTimeAsync(45000));expect(container.textContent).not.toContain(item.subject);expect(container.textContent).toContain('does not have permission');
+});
+it('late conversation results cannot appear after wallet changes',async()=>{
+ await conversations();let resolve!:(v:mail.MailThreadPage)=>void;vi.mocked(mail.mailThread).mockImplementationOnce(()=>new Promise(r=>resolve=r));await openConversation();
+ state.identity={address:'0x'+'2'.repeat(40)};vi.mocked(mail.mailStatus).mockResolvedValue(null);await render();
+ await act(async()=>resolve({id:threadId,version:threadVersion,count:1,messages:[member],nextCursor:null}));expect(container.textContent).not.toContain(item.subject);expect(mail.mailMessage).not.toHaveBeenCalled();
 });
