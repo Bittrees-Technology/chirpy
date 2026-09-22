@@ -8,7 +8,7 @@ It does not make email end-to-end encrypted or enable automatic forwarding.
 
 `CHAT_CONNECTED_MAIL_ENABLED=1` and an independent 32-byte AES-GCM key in
 `CHAT_CONNECTED_MAIL_KEY` are required. Existing server KV credentials are reused.
-No secret belongs in a VITE variable. Disconnect remains available while the feature is disabled, provided storage/key configuration remains present. Preview deployments always fail closed. This
+Use `CHAT_CONNECTED_MAIL_TEST_WALLETS` for a comma-separated acceptance allowlist. It gates challenges and every session use; removal of a wallet ends its Chat access, while disconnect remains possible. Clear the list only after launch acceptance. No secret belongs in a VITE variable. Disconnect remains available while the feature is disabled, provided storage/key configuration remains present. Preview deployments always fail closed. This
 first browser connection is restricted to `https://chat.bittrees.org`; native and
 old-origin cookie handoffs need separate acceptance. `MAINNET_RPC_URL` enables
 contract-wallet signature verification, with no retries and a bounded timeout.

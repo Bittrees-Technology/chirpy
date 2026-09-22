@@ -111,3 +111,12 @@ it('HTTP disconnect can clear access while disabled; failures never expose upstr
  await handler({method:'POST',query:{action:'disconnect'},headers:{host:'chat.bittrees.org',origin:CHAT_ORIGIN,'content-type':'application/json',cookie:'__Host-chat_mail_session='+p.session.token},body:{}},res);
  expect(config).toHaveBeenCalledWith('disconnect');expect(res.code).toBe(200);expect(res.body.sourceRevoked).toBe(false);expect(res.headers['Set-Cookie']).toContain('Max-Age=0');expect(JSON.stringify(res)).not.toContain('private-token');
 });
+
+ it('acceptance allowlist gates challenges, verification and existing sessions without preventing disconnect',async()=>{
+ const f=fixture(),p=await f.connected(),challenge=await f.api.challenge(wallet);f.config.testWallets=['0x'+'9'.repeat(40)];
+ await expect(f.api.challenge(wallet)).rejects.toMatchObject({status:403});
+ await expect(f.api.verify(challenge.token,{wallet,message:challenge.message,signature:await signer.signMessage({message:challenge.message})})).rejects.toMatchObject({status:401});
+ await expect(f.api.status(p.session.token,wallet)).rejects.toMatchObject({status:401});
+ await expect(f.api.operation(p.session.token,{wallet,action:'folders',input:{}})).rejects.toMatchObject({status:401});
+ expect(await f.api.disconnect(p.session.token)).toEqual({ok:true,sourceRevoked:true});
+});

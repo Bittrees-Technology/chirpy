@@ -15,8 +15,10 @@ export function connectedMailConfig(env=process.env,{allowDisabled=false}={}){
  if((env.CHAT_CONNECTED_MAIL_ENABLED!=='1'&&!allowDisabled)||(env.VERCEL_ENV&&env.VERCEL_ENV!=='production'))return null;
  try{
   const url=new URL(env.KV_REST_API_URL||env.UPSTASH_REDIS_REST_URL),key=env.CHAT_CONNECTED_MAIL_KEY,kvToken=env.KV_REST_API_TOKEN||env.UPSTASH_REDIS_REST_TOKEN;
+  const testWallets=String(env.CHAT_CONNECTED_MAIL_TEST_WALLETS||'').split(',').map(v=>v.trim().toLowerCase()).filter(Boolean);
+  if(testWallets.some(v=>!address(v)))return null;
   if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||!hex(key)||!kvToken)return null;
-  return {kvUrl:url.href,kvToken,key:Buffer.from(key,'hex'),prefix:'chat:connected-mail:v1:',rpc:env.MAINNET_RPC_URL||''};
+  return {kvUrl:url.href,kvToken,key:Buffer.from(key,'hex'),prefix:'chat:connected-mail:v1:',testWallets,rpc:env.MAINNET_RPC_URL||''};
  }catch{return null;}
 }
 export const CONNECTION_CAS=`
@@ -43,9 +45,10 @@ async function verifyWallet(config,wallet,message,signature){
  try{const url=new URL(config.rpc);if(url.protocol!=='https:')return false;return await createPublicClient({chain:mainnet,transport:http(config.rpc,{timeout:8000,retryCount:0})}).verifyMessage({address:wallet,message,signature});}catch{return false;}
 }
 export function createConnectedMail(config,{kv=connectionKv(config),request=fetch,verify=(wallet,message,signature)=>verifyWallet(config,wallet,message,signature),now=()=>Date.now()}={}){
+ const allowed=wallet=>!config.testWallets?.length||config.testWallets.includes(wallet);
  const key=(kind,token)=>config.prefix+kind+':'+hash(token);
  async function put(kind,token,value,ttl){const k=key(kind,token);if(await kv(['SET',k,encrypt(config,value,k),'PX',String(ttl),'NX'])!=='OK')throw new ConnectedMailError(503,'Start a new connection.');}
- async function session(token,wallet){if(!hex(token))throw denied();const k=key('session',token),raw=await kv(['GET',k]);if(!raw)throw denied();const value=decrypt(config,raw,k);if(!address(value.wallet)||value.expires<=now()||(wallet!==undefined&&value.wallet!==wallet))throw denied();return {k,raw,value};}
+ async function session(token,wallet){if(!hex(token))throw denied();const k=key('session',token),raw=await kv(['GET',k]);if(!raw)throw denied();const value=decrypt(config,raw,k);if(!address(value.wallet)||!allowed(value.wallet)||value.expires<=now()||(wallet!==undefined&&value.wallet!==wallet))throw denied();return {k,raw,value};}
  async function cas(record,value){if(Number(await kv(['EVAL',CONNECTION_CAS,'1',record.k,record.raw,encrypt(config,value,record.k),String(value.expires)]))!==1)throw new ConnectedMailError(409,'Mail connection changed. Refresh Chat.');}
  async function mail(action,input,token){
   const response=await request(MAIL_ORIGIN+'/api/integrations/chat/'+action,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json','User-Agent':'Chat-Mail-Relay/1.0',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(input),signal:AbortSignal.timeout(25000)});
@@ -60,13 +63,14 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
  return {
   async challenge(wallet){
    if(!address(wallet))throw new ConnectedMailError(400,'Choose a valid wallet.');
+   if(!allowed(wallet))throw new ConnectedMailError(403,'Connected Mail is available to test accounts only.');
    if(Number(await kv(['EVAL',CONNECTION_RATE,'1',config.prefix+'rate:'+hash(wallet)]))>10)throw new ConnectedMailError(429,'Wait before starting another Mail connection.');
    const token=random(),expires=now()+300000;
    const message=createSiweMessage({address:wallet,domain:'chat.bittrees.org',uri:CHAT_ORIGIN+'/api/mail/verify',version:'1',chainId:1,nonce:random(),issuedAt:new Date(now()),expirationTime:new Date(expires),statement:'Sign in to connect your mailbox to Chat. Mail will separately ask for read and send permission. No transaction is authorized.'});
    await put('challenge',token,{wallet,message,expires},300000);return {token,message};
   },
   async verify(token,input){
-   exactMailInput(input,['wallet','message','signature']);if(!hex(token)||!address(input.wallet))throw denied();
+   exactMailInput(input,['wallet','message','signature']);if(!hex(token)||!address(input.wallet)||!allowed(input.wallet))throw denied();
    const k=key('challenge',token),raw=await kv(['GETDEL',k]);if(!raw)throw denied();const challenge=decrypt(config,raw,k);
    if(challenge.expires<=now()||challenge.wallet!==input.wallet||challenge.message!==input.message||!await verify(input.wallet,challenge.message,input.signature)||challenge.expires<=now())throw denied();
    const sessionToken=random(),value={wallet:input.wallet,expires:now()+3600000,connection:null,pending:null};
