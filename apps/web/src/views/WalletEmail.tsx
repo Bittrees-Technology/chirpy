@@ -88,7 +88,7 @@ function WalletEmailSession() {
     finally{operation.current=null;if(!controller.signal.aborted)setBusy(false);}
   };
   const terminal=['accepted','stopped','denied','unknown','limited'].includes(status);
-  return <div className="card">
+  return <div className="card" data-insights-ignore="true">
     <h2>{t('mail.title')}</h2>
     <p>{t('mail.notice')}</p>
     {!enabled ? <p>{t('mail.disabled')}</p> : <>
