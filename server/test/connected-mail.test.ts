@@ -51,7 +51,7 @@ describe('Connected Mail session and relay',()=>{
   expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(f.calls.filter(c=>c.url.endsWith('/exchange'))).toHaveLength(1);
  });
  it('consumes uncertain exchanges without replay and rejects invalid grants',async()=>{
-  for(const changed of [{wallet:'0x'+'2'.repeat(40)},{scopes:['admin']},{audience:'https://evil.test'},{expiresAt:'invalid'},{mailbox:'other@example.com'}]){
+  for(const changed of [{unexpectedContent:'must not persist'},{wallet:'0x'+'2'.repeat(40)},{scopes:['admin']},{audience:'https://evil.test'},{expiresAt:'invalid'},{mailbox:'other@example.com'}]){
    const f=fixture(),p=await f.pending();Object.assign(f.grant,changed);await expect(f.api.callback(p.session.token,p.input)).rejects.toMatchObject({status:502});expect(f.calls.at(-1).url).toMatch(/disconnect$/);
    await expect(f.api.callback(p.session.token,p.input)).rejects.toMatchObject({status:401});
   }
