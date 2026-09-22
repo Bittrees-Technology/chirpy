@@ -72,6 +72,8 @@ queueing and delivery. Mercado keeps its own sessions, deal grants and staff rol
 There is no public email-to-wallet lookup, browser-accessible binding write, key
 export path or automatic migration of app permissions in this implementation.
 
+Storage and provider requests reject HTTP redirects, so an endpoint redirect cannot forward private commands or email bodies to another destination. A provider redirect leaves the existing job retryable under its original idempotency key and bounded retry policy.
+
 ## Delivery and failure semantics
 
 Each signature includes the service, action, sending wallet, request ID, recipient,

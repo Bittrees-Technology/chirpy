@@ -1,3 +1,4 @@
+import { redirectFixture } from './helpers/mail-redirect-fixture.js';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -137,6 +138,16 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     expect(await redis(['GET',`${config.prefix}quota:wallet:${wallet}`])).toBe('1');
     expect(await redis(['GET',`${key}:payload`])).not.toContain(c.text);
     expect(await redis(['GET',key])).not.toContain(c.to);
+  });
+  it.each([307,308])('does not forward email through HTTP %i redirects and preserves a retryable job',async(code)=>{
+    const fixture=await redirectFixture(code);
+    try {
+      const service=createMailService(config,redis,(_url,init)=>fetch(fixture.url,init));
+      await service.execute(c);await service.drain();
+      expect(fixture.requests()).toEqual(['/source']);
+      expect((await status()).status).toBe('queued');
+      expect(await redis(['GET',`${key}:payload`])).not.toBeNull();
+    } finally { await fixture.close(); }
   });
   it('one worker claims a job; acceptance purges content and preserves status',async()=>{
     const sent:any[]=[];const provider=async(_url,options)=>{sent.push(JSON.parse(options.body));await new Promise(r=>setTimeout(r,30));return {ok:true,json:async()=>({id:'provider-1'})};};
