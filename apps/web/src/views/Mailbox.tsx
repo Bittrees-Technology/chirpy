@@ -66,9 +66,9 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
    <Button disabled={busy||!checkedSent} onClick={()=>{try{clearMailReceipt(wallet);setReceipt(null);setReceiptBroken(false);setCheckedSent(false);setDraft(emptyDraft());setNotice('newDraft');}catch{setError('storage');}}}>{t('mailbox.clearPending')}</Button>
   </div>}
   {!canonical?<div className="mailbox-empty"><h2>{t('mailbox.canonicalTitle')}</h2><p>{t('mailbox.canonicalHint')}</p><a className="btn btn-primary" href="https://chat.bittrees.org/?mail=connected">{t('mailbox.openChat')}</a></div>:mode!=='wallet'?<div className="mailbox-empty"><h2>{t('mailbox.walletTitle')}</h2><p>{t('mailbox.walletHint')}</p><Button onClick={onOpenSettings}>{t('mailbox.settings')}</Button></div>:!connection&&!busy?<div className="mailbox-empty">
-   <h2>{t(phase==='unavailable'||phase==='denied'?'mailbox.unavailable':'mailbox.connectTitle')}</h2><p>{t(phase==='unavailable'||phase==='denied'?'mailbox.unavailableHint':'mailbox.connectHint')}</p>
+   <h2>{t(phase==='denied'?'mailbox.deniedTitle':phase==='unavailable'?'mailbox.unavailable':'mailbox.connectTitle')}</h2><p>{t(phase==='denied'?'mailbox.deniedHint':phase==='unavailable'?'mailbox.unavailableHint':'mailbox.connectHint')}</p>
    {phase!=='unavailable'&&phase!=='denied'&&<Button variant="primary" onClick={()=>void run(async(signal,current)=>{const url=await connectMail(wallet,authenticated,signal);if(current())window.location.assign(url);})}>{t('mailbox.connect')}</Button>}
-   {authenticated&&<Button onClick={()=>void run(async(signal,current)=>{await disconnectMail(signal);if(current()){setAuthenticated(false);setPhase('signedOut');}})}>{t('mailbox.resetConnection')}</Button>}
+   {(authenticated||phase==='denied')&&<Button onClick={()=>void run(async(signal,current)=>{await disconnectMail(signal);if(current()){setAuthenticated(false);setPhase('signedOut');}})}>{t('mailbox.resetConnection')}</Button>}
   </div>:connection?<div className="mailbox-content">
    {canRead?<aside className="mailbox-list"><Field label={t('mailbox.folder')}><select className="input" value={folder} disabled={busy} onChange={e=>{const target=e.target.value;void run(async(signal,current)=>{setComposing(false);await load(target,signal,current);});}}>{folders.map(f=><option key={f} value={f}>{t('mailbox.folder.'+f,f)}</option>)}</select></Field>
     <p className="mailbox-list-hint">{t('mailbox.recent')}</p>
@@ -82,7 +82,7 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
      <Field label={t('mailbox.subject')}><input className="input" value={draft.subject} maxLength={200} disabled={busy||pending} onChange={e=>setDraft({...draft,subject:e.target.value})}/></Field>
      <Field label={t('mailbox.message')}><textarea className="input" rows={12} value={draft.text} required disabled={busy||pending} onChange={e=>setDraft({...draft,text:e.target.value})}/></Field>
      <p>{t('mailbox.draftHint')}</p><Button type="submit" variant="primary" disabled={busy||pending||!canSend||!validMailDraft(draft)}>{t('mailbox.send')}</Button>
-    </form>:message?<article><h2>{message.subject||t('mailbox.noSubject')}</h2><p>{message.from}</p><time>{message.date}</time><pre className="mailbox-body">{message.text}</pre><Button disabled={busy||!canSend||pending||!replyAddress(message.from)} onClick={reply}>{t('mailbox.reply')}</Button></article>:<div className="mailbox-empty"><h2>{t('mailbox.select')}</h2><p>{t(canRead?'mailbox.selectHint':'mailbox.sendOnly')}</p></div>}
+    </form>:message?<article><h2>{message.subject||t('mailbox.noSubject')}</h2><p>{message.from}</p><time>{message.date}</time><p className="mailbox-notice">{t('mailbox.previewLimit')} <a href="https://mail.bittrees.org/" target="_blank" rel="noreferrer">{t('mailbox.openMailbox')}</a></p><pre className="mailbox-body">{message.text}</pre><Button disabled={busy||!canSend||pending||!replyAddress(message.from)} onClick={reply}>{t('mailbox.reply')}</Button></article>:<div className="mailbox-empty"><h2>{t('mailbox.select')}</h2><p>{t(canRead?'mailbox.selectHint':'mailbox.sendOnly')}</p></div>}
    </div>
   </div>:null}
  </section>;

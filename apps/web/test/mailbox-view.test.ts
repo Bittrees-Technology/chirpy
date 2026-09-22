@@ -58,3 +58,10 @@ it('send-only consent does not request folders or messages',async()=>{
  vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),scopes:['send']});await render();
  expect(mail.mailFolders).not.toHaveBeenCalled();expect(mail.mailMessages).not.toHaveBeenCalled();expect(container.textContent).toContain('allows sending only');
 });
+
+it('revoked connections offer an explicit reset before reconnecting',async()=>{
+ vi.mocked(mail.mailStatus).mockRejectedValue(new mail.MailClientError('denied'));vi.mocked(mail.disconnectMail).mockResolvedValue(true);await render();
+ expect(container.textContent).toContain('does not have permission');
+ await click('Clear this connection attempt');expect(mail.disconnectMail).toHaveBeenCalledTimes(1);
+ expect([...container.querySelectorAll('button')].some(b=>b.textContent==='Connect Mail')).toBe(true);
+});
