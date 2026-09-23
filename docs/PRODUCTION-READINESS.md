@@ -512,3 +512,8 @@ Archive3, restore preview and durable undo preserve the full metadata and format
 On23September2026, the manually activated production acceptance passed against commit `8950231370991e6bf56719d81572f3e6be75a5d4`. Two isolated Chromium browsers used the deployed applications and real sync storage with one newly generated synthetic wallet. Legacy settings upgraded to format2 on Chirpy and loaded in Chat; deletion and unblock markers survived the second browser's offline receipt-preference edit. Old-format overwrite and revoked-device write requests were rejected. Revocation paused the browser while preserving local settings and remote ciphertext, and final cleanup revoked all test grants.
 
 The repeatable procedure and scope are in [SYNC-FORMAT-UPGRADE.md](SYNC-FORMAT-UPGRADE.md#deployed-cross-origin-acceptance). No member wallet, Mail account, Brave session or message network was used. This closes the desktop-browser production-origin encrypted-settings scenario only; physical devices, native wallets, archive transfers and actual messaging history remain required.
+
+
+## Deployed Governance local-data recovery
+
+Governance PR24 removed the XMTP-activation prerequisite for local export. The deployed Governance and Chat applications passed synthetic contacts/notes export and restore, explicit preference choices, wrong-passphrase rejection, pre-restore backup and undo on23September2026. Original source values were unchanged and no application network writes occurred. [DEPLOYED-RECOVERY-ACCEPTANCE.md](DEPLOYED-RECOVERY-ACCEPTANCE.md) records the exact versions, repeatable opt-in test and remaining device/Research/message-history limits.
