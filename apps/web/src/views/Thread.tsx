@@ -48,6 +48,8 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const multipleFileReply = Boolean(selectedReply && (selectedFiles?.length ?? 0) > 1);
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [consentPending, setConsentPending] = useState(false);
+  const consentScope = useRef<object>({});
+  useEffect(() => { consentScope.current = {}; setConsentPending(false); return () => { consentScope.current = {}; }; }, [draftKey]);
   const [joinPending, setJoinPending] = useState(false);
   const [memberAddress, setMemberAddress] = useState("");
   const [memberRole, setMemberRole] = useState<"MEMBER" | "ADMIN">("MEMBER");
@@ -93,6 +95,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     else setHasNewMessages(true);
   }, [latestMessageId, conversationKey]);
   useEffect(() => { setReply(null); setAttachment(null); setFileReading(false); setJoinStatus(null); }, [draftKey]);
+  useEffect(() => { if (activeConversation?.blocked) setReply(null); }, [activeConversation?.blocked, draftKey]);
   useEffect(() => {
     if (pushRoom && (pushStatus !== 'ready' || !pushRoom.canSend)) { setReply(null); setAttachment(null); setFileReading(false); }
   }, [pushStatus, pushRoom?.canSend, draftKey]);
@@ -135,12 +138,15 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const isAdmin = isRoom && activeConversation.isAdmin === true;
   const configurationError = isRoom && activeConversation.configurationError === true;
   const postingBlocked = Boolean(pushRoom && (pushStatus !== "ready" || !pushRoom.canSend)) || configurationError || (readOnly && !isAdmin);
-  const needsConsent = !isRoom && (activeConversation.pending || activeConversation.blocked);
+  const supportsConsent = !pushRoom && (!isRoom || activeConversation.consentSupported === true);
+  const needsConsent = supportsConsent && (activeConversation.pending || activeConversation.blocked);
   const changeConsent = async (state: "allowed" | "denied") => {
+    if (consentPending) return;
+    const scope = consentScope.current;
     setConsentPending(true);
-    try { await setConversationConsent(state); setJoinStatus(null); }
-    catch (error) { setJoinStatus({ ok: false, message: error instanceof Error ? error.message : "Consent update failed. Try again." }); }
-    finally { setConsentPending(false); }
+    try { await setConversationConsent(state); if (consentScope.current === scope) setJoinStatus(null); }
+    catch (error) { if (consentScope.current === scope) setJoinStatus({ ok: false, message: error instanceof Error ? error.message : "Consent update failed. Try again." }); }
+    finally { if (consentScope.current === scope) setConsentPending(false); }
   };
   const isGatedRoom = !pushRoom && isRoom && Boolean(activeConversation.gate?.rules.length);
   const isMember = activeConversation.peers.some((peer) => peer.toLowerCase() === identity.address.toLowerCase());
@@ -179,7 +185,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
               : shortAddr(activeConversation.peers.find((p) => p !== identity.address) ?? activeConversation.peers[0])}
           </div>
         </div>
-        {!configurationError && ((isRoom && policy) || isGatedRoom) ? (
+        {!needsConsent && !configurationError && ((isRoom && policy) || isGatedRoom) ? (
           <div className="thread-actions">
             {isGatedRoom && !isMember && (
               <Button variant="primary" disabled={joinPending} onClick={requestJoin}>
@@ -194,7 +200,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           </div>
         ) : null}
       </header>
-      {isRoom && !pushRoom && <RoomMembers key={draftKey} conversation={activeConversation} />}
+      {isRoom && !pushRoom && !activeConversation.blocked && <RoomMembers key={draftKey} conversation={activeConversation} />}
       {pushRoom && <div className="join-banner">
         <span>{t("push.provenance")}</span>
         {pushStatus !== "ready" ? <Button disabled={pushStatus === "enabling"} onClick={() => { void enablePushRooms().catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed") })); }}>{t("push.connect")}</Button> : <>
@@ -228,13 +234,14 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       {historyError && <div className="error-banner" role="alert">{translateStatus(t, historyError)}</div>}
       {configurationError && <div className="error-banner" role="alert">{t("thread.invalidRoom", "Room configuration is invalid or unsupported. Ask an administrator to repair it.")}</div>}
 
-      {!isRoom && peerAddress?.toLowerCase() !== selfAddress && <div className="join-banner dm-controls">
-        {!needsConsent && activeConversation.lastReadReceiptAt && <span data-testid="peer-receipt" title={t("thread.receiptMeaning", "The peer sent a read receipt at this time. It does not identify an exact message.")}>
+      {supportsConsent && (isRoom || peerAddress?.toLowerCase() !== selfAddress) && <div className="join-banner dm-controls">
+        {!isRoom && !needsConsent && activeConversation.lastReadReceiptAt && <span data-testid="peer-receipt" title={t("thread.receiptMeaning", "The peer sent a read receipt at this time. It does not identify an exact message.")}>
           {t("thread.lastReceipt", "Last read receipt")}: <time dateTime={new Date(activeConversation.lastReadReceiptAt).toISOString()}>{new Date(activeConversation.lastReadReceiptAt).toLocaleString(lang)}</time>
         </span>}
         {activeConversation.blocked ? t("thread.blockedNote", "This conversation is blocked. Messages and receipts are hidden.") : activeConversation.pending ? t("thread.requestNote", "Message request. Accept to reply; no read receipts are sent before acceptance.") : null}
         {needsConsent && <Button disabled={consentPending} onClick={() => void changeConsent("allowed")}>{activeConversation.blocked ? t("thread.unblock", "Unblock conversation") : t("thread.accept", "Accept request")}</Button>}
-        {!needsConsent && <label>
+        {isRoom && <span>{t("thread.groupConsentNote", "Blocking hides this conversation; it does not remove you from the room.")}</span>}
+        {!isRoom && !needsConsent && <label>
           {t("thread.receipts", "Send read receipts")}
           <select disabled={storageBusy || !!storageError || recoveryPaused} aria-label={t("thread.receipts", "Send read receipts")} value={String(receiptOverride(prefs.readReceiptOverrides, activeConversation.id) ?? "inherit")}
             onChange={(event) => setChatReadReceipts(activeConversation.id, event.target.value === "inherit" ? undefined : event.target.value === "true")}>

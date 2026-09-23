@@ -8,14 +8,14 @@ const state = (inboxId: string, address: string) => ({ inboxId, accountIdentifie
 function setup() {
   const t = new XmtpTransport(PERSONAL_ORG, { address: self }, null) as any;
   t.status = 'ready';
-  t.sdk = { ConversationType: { Group: 'group' }, ContentType: { Text: 'text', Reply: 'reply' }, SortDirection: { Descending: 'desc' },
+  t.sdk = { ConsentState: { Unknown: 0, Allowed: 1, Denied: 2 }, ConversationType: { Group: 'group' }, ContentType: { Text: 'text', Reply: 'reply' }, SortDirection: { Descending: 'desc' },
     IdentifierKind: { Ethereum: 0 }, ReactionAction: { Added: 'added', Removed: 'removed' }, ReactionSchema: { Unicode: 'unicode' },
     isText: message => typeof message.content === 'string', isTextReply: () => false, isReply: () => false };
   const reaction = { senderInboxId: 'former', sentAtNs: 3n, content: { content: '👍', action: 'added' } };
   const raw = ['member', 'former', 'unknown'].map((senderInboxId, i) => ({ id: `m${i}`, conversationId: 'room', senderInboxId, sentAtNs: BigInt(i + 1), content: `message ${i}`, reactions: i === 0 ? [reaction] : [] }));
   const fetch = vi.fn(async (ids: string[]) => ids.flatMap(id => id === 'member' ? [state(id, peer)] : id === 'former' ? [state(id, former)] : []).reverse());
   const client = { inboxId: 'self', preferences: { fetchInboxStates: fetch }, conversations: { getMessageById: vi.fn().mockResolvedValue(raw[0]) } };
-  const group = { id: 'room', name: 'Room', sync: vi.fn(), messages: vi.fn().mockResolvedValue(raw), sendReaction: vi.fn(),
+  const group = { consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Room', sync: vi.fn(), messages: vi.fn().mockResolvedValue(raw), sendReaction: vi.fn(),
     members: vi.fn().mockResolvedValue([{ inboxId: 'self' }, { inboxId: 'member' }]), isSuperAdmin: async () => true };
   t.client = client; t.conversations.set('room', group); t.peerByConversation.set('room', 'wrong-DM-cache');
   t.roomMeta.set('room', { gate: { combine: 'any', rules: [] }, policy: { mode: 'active' } });

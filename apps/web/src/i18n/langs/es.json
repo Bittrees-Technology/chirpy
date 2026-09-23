@@ -712,5 +712,7 @@
   "roomMembers.gated": "Las salas restringidas requieren admisión mediante el servicio de acceso.",
   "roomMembers.duplicate": "Esa cartera ya es miembro de la sala.",
   "roomMembers.unavailable": "No está disponible la opción de añadir miembros.",
-  "status.historyWalletChanged": "La cartera ha cambiado. Vuelve a cargar la conversación."
+  "status.historyWalletChanged": "La cartera ha cambiado. Vuelve a cargar la conversación.",
+  "thread.groupConsentNote": "Bloquear oculta esta conversación; no te elimina de la sala.",
+  "status.consentUpdatePending": "Ya hay una actualización de consentimiento en curso."
 }

@@ -534,16 +534,20 @@ export class XmtpTransport implements Transport {
   }
 
   private async mapRoomConversation(conversation: XmtpConversation): Promise<Conversation> {
+    const current = this.conversationSession();
+    const sdk = await this.loadSdk();
+    const initialConsent = await conversation.consentState();
+    current();
     this.conversations.set(conversation.id, conversation);
 
     const group = conversation as XmtpConversation & { name?: string; description?: string };
     const meta = parseRoomMeta(group.description, this.org.policy);
     this.roomMeta.set(conversation.id, meta);
 
-    const peers = await this.addressesForMembers(conversation).catch(() => []);
+    const peers = initialConsent === sdk.ConsentState.Denied ? [] : await this.addressesForMembers(conversation).catch(() => []);
     let lastMessage: ChatMessage | undefined;
     try {
-      const sdk = await this.loadSdk();
+      if (initialConsent === sdk.ConsentState.Denied) throw new Error("Blocked conversation");
       const [last] = await conversation.messages({ contentTypes: [sdk.ContentType.Text, sdk.ContentType.Reply], direction: sdk.SortDirection.Descending, limit: 1n });
       if (last) {
         const addresses = await this.roomAddresses(messageInboxIds([last]));
@@ -560,20 +564,28 @@ export class XmtpTransport implements Transport {
     }
 
     const isAdmin = await this.isCurrentUserAdmin(conversation).catch(() => false);
+    const unread = initialConsent === sdk.ConsentState.Denied ? 0 : await this.unreadCount(conversation);
+    const consent = await conversation.consentState();
+    current();
+    const blocked = consent === sdk.ConsentState.Denied;
+    const pending = !blocked && consent !== sdk.ConsentState.Allowed;
     return {
       id: conversation.id,
       kind: "room",
       title: group.name || "Room",
       description: meta.description,
-      peers,
+      peers: blocked ? [] : peers,
+      consentSupported: true,
+      pending,
+      blocked,
       namespace: meta.namespace,
       gate: meta.gate,
       policy: meta.policy,
       isAdmin,
-      canAddMembers: isAdmin && !meta.invalid && !hasGate(meta.gate) && meta.namespace === this.org.namespace,
+      canAddMembers: !pending && !blocked && isAdmin && !meta.invalid && !hasGate(meta.gate) && meta.namespace === this.org.namespace,
       configurationError: meta.invalid === true,
-      lastMessage,
-      unread: await this.unreadCount(conversation),
+      lastMessage: blocked ? undefined : lastMessage,
+      unread: blocked ? 0 : unread,
     };
   }
 
@@ -732,9 +744,8 @@ export class XmtpTransport implements Transport {
         let existing = scoped.find((c) => c.id === room.id);
         if (!existing) {
           const received = next.get(room.id);
-          existing = received?.configurationError
-            ? { ...room, configurationError: true, policy: received.policy, description: received.description }
-            : { ...room };
+          // A directory may supply the namespace, but cannot erase local consent.
+          existing = received ? { ...room, ...received, namespace: room.namespace, gate: room.gate } : { ...room };
           scoped.push(existing);
         } else existing.gate = room.gate;
         existing.canAddMembers = false;
@@ -769,16 +780,23 @@ export class XmtpTransport implements Transport {
   async listMessagePage(conversationId: string, before?: string) {
     const conversation = this.conversations.get(conversationId);
     if (!conversation || this.status !== "ready") return { messages: [], olderCursor: undefined };
+    const current = this.conversationSession();
     try {
       const sdk = await this.loadSdk();
-      if (!this.isRoomConversation(sdk, conversation) && await conversation.consentState() === sdk.ConsentState.Denied) return { messages: [], olderCursor: undefined };
+      if (await conversation.consentState() === sdk.ConsentState.Denied) return { messages: [], olderCursor: undefined };
+      current();
       await conversation.sync();
+      if (await conversation.consentState() === sdk.ConsentState.Denied) return { messages: [], olderCursor: undefined };
+      current();
       const page = await readMessagePage((query) => conversation.messages({
         ...query, direction: sdk.SortDirection.Descending,
         contentTypes: [sdk.ContentType.Text, sdk.ContentType.Reply],
       }), before);
       const raw = page.messages;
       const addresses = this.isRoomConversation(sdk, conversation) ? await this.roomAddresses(messageInboxIds(raw)) : undefined;
+      const consent = await conversation.consentState();
+      current();
+      if (consent === sdk.ConsentState.Denied) return { messages: [], olderCursor: undefined };
       for (const message of raw) { this.messageCursors.delete(message.id); this.senderInboxByMessage.delete(message.id); }
       for (const message of raw) {
         if (sdk.isText(message) || sdk.isReply(message)) this.messageCursors.set(message.id, { conversationId, at: message.sentAtNs });
@@ -810,6 +828,7 @@ export class XmtpTransport implements Transport {
   async send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage> {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) throw new Error("Conversation not found.");
+    const current = this.conversationSession();
     await this.assertConversationAccepted(conversation);
     const text = body.trim();
     if (!text) throw new Error("Message cannot be empty.");
@@ -828,12 +847,15 @@ export class XmtpTransport implements Transport {
     if (opts?.replyTo) {
       const referenceInboxId = this.senderInboxByMessage.get(opts.replyTo);
       if (!referenceInboxId) throw new Error("Reply target is not loaded yet.");
+      const content = await sdk.encodeText(text);
+      await this.assertConversationAccepted(conversation); current();
       messageId = await conversation.sendReply({
-        content: await sdk.encodeText(text),
+        content,
         reference: opts.replyTo,
         referenceInboxId,
       });
     } else {
+      await this.assertConversationAccepted(conversation); current();
       messageId = await conversation.sendText(text);
     }
 
@@ -851,6 +873,7 @@ export class XmtpTransport implements Transport {
   async react(conversationId: string, messageId: string, emoji: string): Promise<void> {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) return;
+    const currentSession = this.conversationSession();
     await this.assertConversationAccepted(conversation);
     const room = this.roomMeta.get(conversationId);
     if (room) {
@@ -866,6 +889,7 @@ export class XmtpTransport implements Transport {
     if (!current || current.conversationId !== conversationId) throw new Error("Reaction target is no longer available.");
     const reactions = aggregateReactions(sdk, current.reactions ?? [], (inbox) => this.addressForInbox(conversationId, inbox));
     const had = reactions?.[emoji]?.some((address) => address.toLowerCase() === this.myAddress) ?? false;
+    await this.assertConversationAccepted(conversation); currentSession();
     await conversation.sendReaction({
       reference: messageId,
       referenceInboxId,
@@ -880,9 +904,11 @@ export class XmtpTransport implements Transport {
     const conversation = this.conversations.get(conversationId);
     const cursor = options?.throughMessageId ? this.messageCursors.get(options.throughMessageId) : undefined;
     if (!conversation || !cursor || cursor.conversationId !== conversationId) return;
+    const current = this.conversationSession();
     const sdk = await this.loadSdk();
     const room = this.isRoomConversation(sdk, conversation);
-    if (!room && await conversation.consentState() !== sdk.ConsentState.Allowed) return;
+    if (await conversation.consentState() !== sdk.ConsentState.Allowed || this.consentUpdates.has(conversationId)) return;
+    current();
     if (!this.readState.advance(conversationId, cursor.at)) return;
     this.invalidateConversation(conversationId);
     if (room || options?.sendReceipt !== true) return;
@@ -893,20 +919,42 @@ export class XmtpTransport implements Transport {
 
   private async assertConversationAccepted(conversation: XmtpConversation): Promise<void> {
     const sdk = await this.loadSdk();
-    if (this.isRoomConversation(sdk, conversation)) return;
-    if (await conversation.consentState() !== sdk.ConsentState.Allowed) {
+    if (await conversation.consentState() !== sdk.ConsentState.Allowed || this.consentUpdates.has(conversation.id)) {
       throw new Error("Accept or unblock this conversation before sending messages or reactions.");
     }
   }
 
-  async setConversationConsent(conversationId: string, state: "allowed" | "denied"): Promise<void> {
+  private consentUpdates = new Set<string>();
+
+  private conversationSession() {
+    const client = this.client;
+    return () => {
+      if (this.client !== client || this.status !== "ready") throw new Error("Wallet changed. Reload the conversation.");
+    };
+  }
+
+  async setConversationConsent(conversationId: string, state: "allowed" | "denied", isCurrent: () => boolean = () => true): Promise<void> {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) throw new Error("Conversation not found.");
-    const sdk = await this.loadSdk();
-    if (this.isRoomConversation(sdk, conversation)) throw new Error("Consent controls apply to direct messages.");
-    await conversation.updateConsentState(state === "allowed" ? sdk.ConsentState.Allowed : sdk.ConsentState.Denied);
-    this.consentRevision++;
-    this.invalidateConversation(conversationId);
+    const current = this.conversationSession();
+    const check = () => { current(); if (!isCurrent()) throw new Error("Wallet changed. Reload the conversation."); };
+    check();
+    if (this.consentUpdates.has(conversationId)) throw new Error("Consent update already in progress.");
+    this.consentUpdates.add(conversationId);
+    try {
+      const sdk = await this.loadSdk();
+      if (this.provider) {
+        const accounts = await this.provider.request({ method: "eth_accounts" });
+        if (!Array.isArray(accounts) || String(accounts[0]).toLowerCase() !== this.myAddress) throw new Error("Wallet changed. Reload the conversation.");
+      }
+      check();
+      await conversation.updateConsentState(state === "allowed" ? sdk.ConsentState.Allowed : sdk.ConsentState.Denied);
+      this.consentRevision++;
+      check();
+    } finally {
+      this.consentUpdates.delete(conversationId);
+      this.invalidateConversation(conversationId);
+    }
   }
 
   async startDm(address: string, handle?: string): Promise<Conversation> {
@@ -972,6 +1020,8 @@ export class XmtpTransport implements Transport {
     this.conversations.set(group.id, group);
     this.roomMeta.set(group.id, meta);
 
+    // Creating a room is explicit acceptance, unlike merely discovering an invitation.
+    if (await group.consentState() === sdk.ConsentState.Unknown) await group.updateConsentState(sdk.ConsentState.Allowed);
     const seedId = await group.sendText(`#${input.title} created.`);
     const mapped = await this.mapRoomConversation(group);
     this.invalidateConversation(group.id);
@@ -1043,6 +1093,7 @@ export class XmtpTransport implements Transport {
       // Membership and SDK permission checks fail closed; never reuse a cached UI role.
       if (!members.some(member => member.inboxId === client.inboxId) || !await this.isCurrentUserAdmin(group)) throw new Error("Admins only.");
       await checkWallet();
+      await this.assertConversationAccepted(group); assertCurrent();
       await group.addMembers([inboxId]);
       this.invalidateConversation(conversationId);
       assertCurrent();
@@ -1096,6 +1147,7 @@ export class XmtpTransport implements Transport {
   async setRoomPolicy(conversationId: string, policy: Policy): Promise<void> {
     const conversation = this.conversations.get(conversationId);
     if (!conversation || !this.roomMeta.has(conversationId)) return;
+    const currentSession = this.conversationSession();
     if (this.roomMeta.get(conversationId)?.invalid) throw new Error(INVALID_ROOM_METADATA);
     if (!await this.isCurrentUserAdmin(conversation)) throw new Error("Admins only.");
 
@@ -1108,6 +1160,7 @@ export class XmtpTransport implements Transport {
     if (!group.updateDescription) throw new Error("Room policy updates are unavailable.");
     const encodedMeta = roomMetaDescription(next);
     if (parseRoomMeta(encodedMeta, this.org.policy).invalid) throw new Error(INVALID_ROOM_METADATA);
+    await this.assertConversationAccepted(conversation); currentSession();
     await group.updateDescription(encodedMeta);
     this.roomMeta.set(conversationId, next);
     this.invalidateConversation(conversationId);

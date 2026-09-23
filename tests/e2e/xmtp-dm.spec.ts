@@ -73,7 +73,12 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await pageA.locator('.room-members summary').click();
       await sendMessage(pageA, 'group message after adding B');
       await pageB.locator('.nav-item', { hasText: 'Rooms' }).click();
+      await pageB.getByRole('button', { name: 'Requests', exact: true }).click();
       await openConversationWithMessage(pageB, 'group message after adding B');
+      await expect(pageB.locator('.composer-input')).toHaveCount(0);
+      await pageB.getByRole('button', { name: 'Accept request', exact: true }).click();
+      await expect(pageB.locator('.composer-input')).toBeVisible();
+      await pageB.getByRole('button', { name: 'Inbox', exact: true }).click();
       await expect(pageB.locator('.msg-body', { hasText: 'group message after adding B' })).toBeVisible({ timeout: 120_000 });
       await expect(pageB.getByRole('button', { name: 'Add member', exact: true })).toHaveCount(0);
       await sendMessage(pageB, 'group reply from B');
@@ -90,6 +95,17 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await expect(replyRow.locator('.profile-wallet')).not.toContainText('Group member');
       await expect(replyRow.locator('.profile-wallet')).toHaveAttribute('title', walletB.toLowerCase());
       labels.set(walletB.toLowerCase(), 'Group member');
+
+      // Block hides the existing group without silently removing membership.
+      await pageB.getByRole('button', { name: 'Block conversation', exact: true }).click();
+      await expect(pageB.locator('.msg-body')).toHaveCount(0);
+      await expect(pageB.locator('.composer-input')).toHaveCount(0);
+      await pageB.getByRole('button', { name: 'Blocked', exact: true }).click();
+      await expect(pageB.locator('.list-item', { hasText: 'dev acceptance room' })).toBeVisible();
+      await pageB.getByRole('button', { name: 'Unblock conversation', exact: true }).click();
+      await expect(pageB.locator('.msg-body', { hasText: 'group reply from B' })).toBeVisible();
+      await pageB.getByRole('button', { name: 'Block conversation', exact: true }).click();
+      await expect(pageB.locator('.composer-input')).toHaveCount(0);
 
 
       // A separate browser context has no XMTP database or application storage.
@@ -111,7 +127,16 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
         // The imported accepted consent makes the recovered DM usable without accepting again.
         await expect(freshPage.locator('.composer-input')).toBeVisible();
         await freshPage.locator('.nav-item', { hasText: 'Rooms' }).click();
+        if (wallet === walletB) {
+          await freshPage.getByRole('button', { name: 'Blocked', exact: true }).click();
+          await freshPage.locator('.list-item', { hasText: 'dev acceptance room' }).click({ timeout: 120_000 });
+          await expect(freshPage.locator('.msg-body')).toHaveCount(0);
+          await expect(freshPage.locator('.composer-input')).toHaveCount(0);
+          await freshPage.getByRole('button', { name: 'Unblock conversation', exact: true }).click();
+          await freshPage.getByRole('button', { name: 'Inbox', exact: true }).click();
+        }
         await openConversationWithMessage(freshPage, 'group reply from B');
+        await expect(freshPage.locator('.composer-input')).toBeVisible();
         await expect(freshPage.locator('.msg-body', { hasText: 'group message after adding B' })).toBeVisible({ timeout: 120_000 });
         await expect(freshPage.locator('.msg-body', { hasText: 'group reply from B' })).toBeVisible({ timeout: 120_000 });
         await freshPage.locator('.room-members summary').click();

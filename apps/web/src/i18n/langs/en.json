@@ -712,5 +712,7 @@
   "roomMembers.gated": "Gated rooms require admission through the gate service.",
   "roomMembers.duplicate": "That wallet is already a room member.",
   "roomMembers.unavailable": "Room member additions are unavailable.",
-  "status.historyWalletChanged": "Wallet changed. Reload the conversation."
+  "status.historyWalletChanged": "Wallet changed. Reload the conversation.",
+  "thread.groupConsentNote": "Blocking hides this conversation; it does not remove you from the room.",
+  "status.consentUpdatePending": "Consent update already in progress."
 }

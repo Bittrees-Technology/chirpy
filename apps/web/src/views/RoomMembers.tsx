@@ -15,7 +15,7 @@ export function RoomMembers({ conversation }: { conversation: Conversation }) {
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const busy = useRef(false); const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const canAdd = conversation.canAddMembers === true && conversation.isAdmin === true && !conversation.configurationError && !conversation.gate?.rules.length;
+  const canAdd = !conversation.pending && !conversation.blocked && conversation.canAddMembers === true && conversation.isAdmin === true && !conversation.configurationError && !conversation.gate?.rules.length;
   return <details className="join-banner room-members" onToggle={event => setExpanded(event.currentTarget.open)}>
     <summary>{t('roomMembers.title')}</summary>
     <ul aria-label={t('roomMembers.title')}>{conversation.peers.map(peer => <li key={peer}>{profiles.get(peer.toLowerCase())?.label && <span>{profiles.get(peer.toLowerCase())!.label} · </span>}<code>{peer}</code></li>)}</ul>

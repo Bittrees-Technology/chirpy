@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Conversation } from "@app/transport";
-import { useChat, useIdentity } from "../state";
+import { useChat, useIdentity, useOrgs } from "../state";
 import { Avatar, Empty, fmtTime } from "../ui";
 import { useEnsProfiles } from "../useEns";
 import { usePublicProfiles, publicName } from "../usePublicProfiles";
@@ -23,10 +23,12 @@ export function ConversationColumn(
   const { conversations, activeId, select, startDm, pushSource, setPushSource, pushStatus, pushLoading, pushError, enablePushRooms, refreshPushRooms } = useChat();
   const { identity, mode: identityMode } = useIdentity();
   const { t, lang } = useI18n();
+  const { activeOrg } = useOrgs();
   const [inboxView, setInboxView] = useState<"inbox" | "requests" | "blocked">("inbox");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { setInboxView("inbox"); setPage(0); }, [mode, pushSource, identity.address, identityMode, activeOrg.namespace]);
   const selfAddress = identity.address.toLowerCase();
   const isRooms = mode === "rooms";
   const peerOf = (conversation: Conversation) =>
@@ -39,7 +41,7 @@ export function ConversationColumn(
   const savedConversation = conversations.find(isSelfConversation);
   const items = conversations.filter((conversation) =>
     conversation.kind === (isRooms ? "room" : "dm") && !isSelfConversation(conversation) &&
-    (isRooms || (inboxView === "blocked" ? conversation.blocked : inboxView === "requests" ? conversation.pending && !conversation.blocked : !conversation.blocked && !conversation.pending)));
+    (inboxView === "blocked" ? conversation.blocked : inboxView === "requests" ? conversation.pending && !conversation.blocked : !conversation.blocked && !conversation.pending));
   const normalizedQuery = query.trim().toLowerCase();
   const filteredItems = useMemo(() => {
     if (!normalizedQuery) return items;
@@ -128,7 +130,7 @@ export function ConversationColumn(
           <button className="btn btn-ghost btn-sm" onClick={() => onLocalData("contacts")}>{t("local.contacts")}</button>
           <button className="btn btn-ghost btn-sm" onClick={() => onLocalData("notes")}>{t("local.notes")}</button>
         </div>}
-        {!isRooms && <div className="list-actions" role="group" aria-label={t("list.inboxView", "Conversation filter")}>
+        {(!isRooms || !pushSource) && <div className="list-actions" role="group" aria-label={t("list.inboxView", "Conversation filter")}>
           {(["inbox", "requests", "blocked"] as const).map((view) => <button key={view} className="btn btn-ghost btn-sm" aria-pressed={inboxView === view} onClick={() => { setInboxView(view); setPage(0); }}>{t(`list.${view}`, view === "inbox" ? "Inbox" : view === "requests" ? "Requests" : "Blocked")}</button>)}
         </div>}
         <input

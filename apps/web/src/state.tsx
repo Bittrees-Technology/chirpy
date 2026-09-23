@@ -1230,12 +1230,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [activeId, reloadConversations]);
 
   const setConversationConsent = useCallback(async (state: "allowed" | "denied") => {
-    const transport = transportRef.current;
-    if (!activeId || !transport) throw new Error("Messaging is reconnecting. Try again shortly.");
-    await transport.setConversationConsent(activeId, state);
+    const transport = transportRef.current; const id = activeIdRef.current;
+    if (!id || !transport || parsePushConversationId(id)) throw new Error("Messaging is reconnecting. Try again shortly.");
+    const scope = memberScopeRef.current;
+    const isCurrent = () => transportRef.current === transport && activeIdRef.current === id && memberScopeRef.current === scope;
+    await transport.setConversationConsent(id, state, isCurrent);
+    if (!isCurrent()) return;
+    if (state === "denied") {
+      ++messageLoadRef.current;
+      setMessages([]); resetHistory();
+      setConversations(current => current.map(c => c.id === id ? { ...c, pending: false, blocked: true, lastMessage: undefined, unread: 0 } : c));
+    }
     await reloadConversations();
-    await reloadMessages(activeId);
-  }, [activeId, reloadConversations, reloadMessages]);
+    if (isCurrent()) await reloadMessages(id);
+  }, [reloadConversations, reloadMessages, resetHistory]);
 
   const enablePushRooms = useCallback(async () => {
     await push.enable();

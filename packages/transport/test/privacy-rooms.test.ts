@@ -6,7 +6,7 @@ function transport(namespace = "acme") { return new XmtpTransport({ ...PERSONAL_
 afterEach(() => vi.unstubAllGlobals());
 describe("receipt privacy", () => {
   it("sends no receipt unless explicitly enabled and never sends room receipts", async () => {
-    const t = transport(); const sendReadReceipt = vi.fn();
+    const t = transport(); t.status = "ready"; const sendReadReceipt = vi.fn();
     t.sdk = { ConsentState: { Allowed: 1 }, ConversationType: { Group: "group" } };
     t.messageCursors.set("seen", { conversationId: "dm", at: 1n });
     t.conversations.set("dm", { sendReadReceipt, consentState: async () => 1 });
