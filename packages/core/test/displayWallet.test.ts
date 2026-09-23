@@ -2,9 +2,10 @@ import { expect, it } from 'vitest';
 import { displayWalletSignMessage, selectDisplayWallet, validDisplayWalletCommand, validDisplayWalletRecord } from '../src/displayWallet';
 const a = '0x' + '1'.repeat(40), b = '0x' + '2'.repeat(40), other = '0x' + '3'.repeat(40), inbox = 'a'.repeat(64);
 const service = 'https://chat.example/api/profile?kind=display-wallet';
+const now = 1790000000000; // One clock for construction and validation at millisecond boundaries.
 const record = (patch = {}) => ({ version: 1, wallet: a, network: 'dev', inboxId: inbox, displayWallet: b, revision: 1, updatedAt: 10, ...patch });
 const empty = (wallet = b) => record({ wallet, inboxId: null, displayWallet: null, revision: 0, updatedAt: 0 });
-const command = (patch = {}) => ({ version: 1, service, wallet: a, network: 'dev', inboxId: inbox, displayWallet: b, revision: 0, expiresAt: Date.now() + 60000, ...patch });
+const command = (patch = {}) => ({ version: 1, service, wallet: a, network: 'dev', inboxId: inbox, displayWallet: b, revision: 0, expiresAt: now + 60000, ...patch });
 it('selects a currently linked display wallet only from a current linked author and matching inbox/network', () => {
   expect(selectDisplayWallet([record(), empty()], inbox, 'dev', [a, b])).toBe(b);
   expect(selectDisplayWallet([record({ inboxId: 'b'.repeat(64) }), empty()], inbox, 'dev', [a, b])).toBeUndefined();
@@ -32,8 +33,10 @@ it.each([
   expect(selectDisplayWallet(records, inbox, 'dev', [a, b])).toBeUndefined();
 });
 it('bounds schemas, clocks, identifiers, networks and replay revisions', () => {
-  expect(validDisplayWalletCommand(command(), service)).toBe(true);
-  for (const patch of [{ service: 'https://other.example' }, { expiresAt: Date.now() - 1 }, { expiresAt: Date.now() + 300001 }, { network: 'local' }, { inboxId: null }, { inboxId: 'bad' }, { wallet: 'bad' }, { displayWallet: '' }, { revision: -1 }, { revision: Number.MAX_SAFE_INTEGER - 1 }, { extra: 'private' }]) expect(validDisplayWalletCommand(command(patch), service)).toBe(false);
+  expect(validDisplayWalletCommand(command(), service, now)).toBe(true);
+  expect(validDisplayWalletCommand(command({ expiresAt: now + 300000 }), service, now)).toBe(true);
+  expect(validDisplayWalletCommand(command({ expiresAt: now }), service, now)).toBe(false);
+  for (const patch of [{ service: 'https://other.example' }, { expiresAt: now - 1 }, { expiresAt: now + 300001 }, { network: 'local' }, { inboxId: null }, { inboxId: 'bad' }, { wallet: 'bad' }, { displayWallet: '' }, { revision: -1 }, { revision: Number.MAX_SAFE_INTEGER - 1 }, { extra: 'private' }]) expect(validDisplayWalletCommand(command(patch), service, now)).toBe(false);
   expect(validDisplayWalletRecord(empty(a), a, 'dev')).toBe(true);
   expect(validDisplayWalletRecord(record({ revision: Number.MAX_SAFE_INTEGER - 1 }), a, 'dev')).toBe(true);
   for (const patch of [{ revision: 0 }, { inboxId: null }, { updatedAt: 0 }, { updatedAt: Infinity }, { revision: Number.MAX_SAFE_INTEGER }, { displayWallet: '' }]) expect(validDisplayWalletRecord(record(patch), a, 'dev')).toBe(false);
