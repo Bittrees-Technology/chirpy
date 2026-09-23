@@ -53,7 +53,15 @@ again. Live multi-client/native acceptance and operator policies remain separate
 from synthetic browser/Redis evidence. No profile name is a unique account handle,
 search directory, contact consent or verification badge.
 
-Invalid stored records fail closed and emit `chat_profile_storage_invalid` with
+The original Lua writer could omit `label` when saving null. Compatibility reads
+recognize only the exact four-field version-1 record with the correct wallet, a
+positive safe-integer revision and a positive safe-integer timestamp. It is shown
+as withdrawn (`label: null`) without changing storage. A subsequent owner-signed
+edit compares the original raw bytes and advances the retained revision before
+writing the current five-field format. Extra fields, invalid values and arbitrary
+malformed records are not recovered. No name is reconstructed or republished.
+
+Other invalid stored records fail closed and emit `chat_profile_storage_invalid` with
 fixed schema-validity booleans and a bounded label type category. Diagnostics do
 not log names, wallet addresses, signatures, stored keys/values or parser errors.
 Preserve the affected record and replay fence while investigating; do not reset a

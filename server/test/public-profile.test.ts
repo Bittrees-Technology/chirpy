@@ -71,7 +71,7 @@ it('verifies contract signatures only against the configured Ethereum mainnet an
 
 it('logs only fixed schema diagnostics for invalid storage without leaking stored values or identity',async()=>{
  const config=publicProfileConfig(),key=config.prefix+wallet;
- const invalid={version:1,wallet,revision:2,updatedAt:123};records.set(key,JSON.stringify(invalid));
+ const invalid={version:1,wallet,revision:0,updatedAt:123};records.set(key,JSON.stringify(invalid));
  expect((await call({},'GET')).code).toBe(503);
  expect(console.error).toHaveBeenLastCalledWith('chat_profile_storage_invalid',{reason:'schema',object:true,fields:false,version:true,wallet:true,revision:true,labelKind:'missing',label:false,updatedAt:true});
  records.set(key,JSON.stringify({...invalid,label:'Private test name',unexpectedPrivateKey:'Private test value'}));
@@ -80,4 +80,20 @@ it('logs only fixed schema diagnostics for invalid storage without leaking store
  const logs=JSON.stringify(vi.mocked(console.error).mock.calls);
  for(const forbidden of [wallet,'Private test name','Private test value','unexpectedPrivateKey'])expect(logs).not.toContain(forbidden);
  expect(records.get(key)).toBe('malformed Private test name');
+});
+
+it('reads the exact legacy missing-null withdrawal without writing and admits only a fresh owner-authorized revision',async()=>{
+ const config=publicProfileConfig(),key=config.prefix+wallet,raw=JSON.stringify({version:1,wallet,revision:2,updatedAt:123});records.set(key,raw);
+ const loaded=await call({},'GET');expect(loaded.code).toBe(200);expect(loaded.body.profiles[0]).toEqual({version:1,wallet,revision:2,updatedAt:123,label:null});expect(records.get(key)).toBe(raw);
+ expect((await call(await signed(command({revision:1,label:'Old publication'})))).code).toBe(409);
+ expect((await call(await signed(command({revision:2,label:'Unauthorized'}),other))).code).toBe(401);expect(records.get(key)).toBe(raw);
+ expect((await call(await signed(command({revision:2,label:null})))).code).toBe(200);
+ expect((await call({},'GET')).body.profiles[0]).toMatchObject({revision:3,label:null});expect(JSON.parse(records.get(key)!)).toMatchObject({revision:3,label:null});
+ expect(console.error).not.toHaveBeenCalled();
+});
+it('does not generalize legacy withdrawal recovery to invalid versions, identities, revisions, timestamps, labels or extra fields',async()=>{
+ const config=publicProfileConfig(),key=config.prefix+wallet,legacy={version:1,wallet,revision:2,updatedAt:123};
+ for(const patch of [{version:2},{wallet:other.address.toLowerCase()},{revision:0},{revision:-1},{revision:1.5},{revision:Number.MAX_SAFE_INTEGER},{revision:'2'},{updatedAt:0},{updatedAt:-1},{updatedAt:1.5},{updatedAt:'123'},{label:false},{label:{}},{label:[]},{label:''},{extra:'not a legacy record'}]){
+  const raw=JSON.stringify({...legacy,...patch});records.set(key,raw);expect((await call({},'GET')).code).toBe(503);expect((await call(await signed(command({revision:2,label:null})))).code).toBe(503);expect(records.get(key)).toBe(raw);
+ }
 });

@@ -21,6 +21,16 @@ describe.skipIf(!container)('real Redis public profile authority',()=>{
   const raw=await kv(['GET',key]);expect(raw).toContain('"label":null');expect(raw).toContain('"revision":9007199254740982');
   expect(await api.read(wallet)).toEqual(withdrawn.profile);expect(await api.write(command)).toEqual({status:'conflict'});
  });
+ it('recovers only the old missing-null shape while fencing stale and concurrent authorized writes against exact old bytes',async()=>{
+  const config={service,prefix:'chat:profiles:test:'+randomBytes(8).toString('hex')+':'},key=config.prefix+wallet,api=createPublicProfiles(config,kv);
+  const raw=JSON.stringify({version:1,wallet,revision:2,updatedAt:123});keys.add(key);await kv(['SET',key,raw]);
+  expect(await api.readMany([wallet])).toEqual([{version:1,wallet,revision:2,updatedAt:123,label:null}]);expect(await kv(['GET',key])).toBe(raw);
+  const command={version:1,wallet,service,revision:2,label:null,expiresAt:Date.now()+60000};
+  expect(await api.write({...command,revision:1,label:'Old publication'})).toEqual({status:'conflict'});
+  const results=await Promise.all([api.write(command),api.write({...command,label:'New name'})]);expect(results.map(r=>r.status).sort()).toEqual(['conflict','saved']);
+  expect((await api.read(wallet)).revision).toBe(3);expect(await kv(['TTL',key])).toBe(-1);
+  expect(await api.write({...command,label:'Old recovered revision'})).toEqual({status:'conflict'});
+ });
  it('uses Redis time to reject a signature that expires after verification without changing storage',async()=>{
   const key='chat:profiles:test:'+randomBytes(8).toString('hex');
   const result=await kv(['EVAL',PROFILE_CAS,'1',key,'',String(Date.now()-1),JSON.stringify({version:1,wallet,revision:1,label:'Too late'})]);expect(result).toEqual([-2]);expect(await kv(['GET',key])).toBeNull();
