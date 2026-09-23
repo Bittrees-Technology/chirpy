@@ -660,5 +660,8 @@
   "push.fileHint": "Hasta 1 MB. Los archivos no se analizan ni se abren automáticamente.",
   "push.downloadFailed": "No se pudo preparar el archivo. Inténtalo de nuevo.",
   "push.externalMedia": "Contenido externo: abre otro sitio web",
-  "push.replyUnavailable": "El mensaje original no está en esta página"
+  "push.replyUnavailable": "El mensaje original no está en esta página",
+  "mailbox.download.checking": "Verificando {filename} antes de guardar…",
+  "mailbox.download.preparing": "Preparando {filename} ({bytes} bytes)…",
+  "mailbox.downloadProgress": "Progreso de descarga del archivo adjunto"
 }

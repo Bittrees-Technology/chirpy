@@ -660,5 +660,8 @@
   "push.fileHint": "Up to 1 MB. Files are not scanned or opened automatically.",
   "push.downloadFailed": "The file could not be prepared. Try again.",
   "push.externalMedia": "External media — opens another website",
-  "push.replyUnavailable": "Original message is not on this page"
+  "push.replyUnavailable": "Original message is not on this page",
+  "mailbox.download.checking": "Checking {filename} before saving…",
+  "mailbox.download.preparing": "Preparing {filename} ({bytes} bytes)…",
+  "mailbox.downloadProgress": "Attachment download progress"
 }

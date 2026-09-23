@@ -215,3 +215,10 @@ it('relays exact bounded files only under sending authority and leaves small HTT
  expect((await call('challenge',{wallet,padding:'x'.repeat(65537)})).code).toBe(413);
  const read=fixture();read.grant.scopes=['read'];const q=await read.connected();await expect(read.api.operation(q.session.token,input)).rejects.toMatchObject({status:403});expect(read.calls).toHaveLength(1);
 });
+
+it('complete attachment reads require read scope and discard a result after disconnection',async()=>{
+ const f=fixture(),p=await f.connected(),input={wallet,action:'attachmentFile',input:{folder:'INBOX',id:'a'.repeat(64),version:'b'.repeat(64),part:'1.2'}};
+ await f.api.operation(p.session.token,input);expect(f.calls.at(-1).body).toEqual(input);
+ const onlySend=fixture();onlySend.grant.scopes=['send'];const q=await onlySend.connected();await expect(onlySend.api.operation(q.session.token,input)).rejects.toMatchObject({status:403});
+ let once=true;f.onRequest(async()=>{if(once){once=false;await f.api.disconnect(p.session.token);}});await expect(f.api.operation(p.session.token,input)).rejects.toMatchObject({status:401});
+});

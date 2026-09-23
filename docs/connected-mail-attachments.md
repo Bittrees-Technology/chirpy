@@ -6,4 +6,6 @@ The browser, Chat relay, Mail authority service and SMTP connector validate the 
 
 A send snapshots the draft and reserves its request ID before dispatch. An uncertain send retains the existing Check Sent recovery flow and never automatically repeats. Source receipts bind file names and bytes as well as recipients, body and reply context. This does not enable wallet forwarding or change Mail grants.
 
-Larger file support, native-device acceptance and live production attachment delivery remain separate verification requirements. Synthetic tests do not prove those outcomes.
+Downloads request the complete file once, up to 256 KiB, instead of one queued request per 12 KiB chunk. Mail stores large encrypted responses briefly in private object storage with a job-bound encrypted pointer. Current grant authority is checked before and after reading the result; Chat verifies message version, file metadata, byte count and SHA-256 before saving. The progress display describes preparation and verification without inventing a percentage. Cancellation or a wallet change prevents a late result from downloading.
+
+Deploy the updated Acer connector and attachment reader first, then Mail, then Chat. Older clients retain their existing chunk API. No automatic retry is added. Larger file support and native-device acceptance remain separate requirements; synthetic tests alone do not prove production delivery.

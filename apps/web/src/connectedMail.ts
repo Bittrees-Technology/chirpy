@@ -111,21 +111,18 @@ export async function mailAttachments(wallet:string,folder:string,id:string,vers
  const items=data.attachments.map(attachmentItem) as MailAttachment[];
  if(new Set(items.map(item=>item.id)).size!==items.length)throw new MailClientError('failed');return items;
 }
-export async function downloadMailAttachment(wallet:string,folder:string,id:string,version:string,selection:MailAttachment,signal?:AbortSignal){
- const item=attachmentItem(selection);if(!item.downloadable||item.bytes===null)throw new MailClientError('failed');
- const bytes=new Uint8Array(item.bytes);let offset=0,expectedHash='';
- do{
-  const data=await attachmentOperation(wallet,folder,id,version,item.id,offset,signal),returned=attachmentItem(data.attachment);
-  if(JSON.stringify(returned)!==JSON.stringify(item)||data.offset!==offset||!messageId(data.sha256)||expectedHash&&expectedHash!==data.sha256||typeof data.data!=='string'||data.data.length>16384)throw new MailClientError('failed');
-  let decoded:string;try{decoded=atob(data.data);if(btoa(decoded)!==data.data)throw Error();}catch{throw new MailClientError('failed');}
-  const length=Math.min(attachmentChunkBytes,item.bytes-offset),next=offset+length<item.bytes?offset+length:null;
-  if(decoded.length!==length||data.nextOffset!==next)throw new MailClientError('failed');
-  bytes.set(Uint8Array.from(decoded,c=>c.charCodeAt(0)),offset);expectedHash=data.sha256;offset+=length;
-  if(next===null)break;
- }while(offset<item.bytes);
+export type MailDownloadProgress={phase:'preparing'|'checking';bytes:number};
+export async function downloadMailAttachment(wallet:string,folder:string,id:string,version:string,selection:MailAttachment,signal?:AbortSignal,onProgress?:(progress:MailDownloadProgress)=>void){
+ const item=attachmentItem(selection);if(!item.downloadable||item.bytes===null||!validMailFolder(folder)||!messageId(id)||!messageId(version))throw new MailClientError('failed');
+ signal?.throwIfAborted();onProgress?.({phase:'preparing',bytes:item.bytes});
+ const data=await operation(wallet,'attachmentFile',{folder,id,version,part:item.id},signal),returned=attachmentItem(data.attachment);
+ if(data.id!==id||data.sourceVersion!==version||data.transfer!=='complete'||data.maxAttachmentBytes!==attachmentMaxBytes||JSON.stringify(returned)!==JSON.stringify(item)||!messageId(data.sha256)||typeof data.data!=='string'||data.data.length>349528)throw new MailClientError('failed');
+ let decoded:string;try{decoded=atob(data.data);if(btoa(decoded)!==data.data)throw Error();}catch{throw new MailClientError('failed');}
+ if(decoded.length!==item.bytes)throw new MailClientError('failed');
+ const bytes=Uint8Array.from(decoded,c=>c.charCodeAt(0));signal?.throwIfAborted();onProgress?.({phase:'checking',bytes:item.bytes});
  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
- await assertMailWallet(wallet);signal?.throwIfAborted();if(digest!==expectedHash)throw new MailClientError('failed');
- // The UI creates a download only after this completes and its view/session is current.
+ await assertMailWallet(wallet);signal?.throwIfAborted();if(digest!==data.sha256)throw new MailClientError('failed');
+ // No browser download is created until the entire bounded file is authenticated.
  return {filename:item.filename,bytes};
 }
 export type MailDraft={to:string;subject:string;text:string;attachments?:OutgoingAttachment[];reply?:{folder:string;id:string;version:string}};
