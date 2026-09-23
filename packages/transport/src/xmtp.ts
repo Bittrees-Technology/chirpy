@@ -1022,6 +1022,8 @@ export class XmtpTransport implements Transport {
 
     // Creating a room is explicit acceptance, unlike merely discovering an invitation.
     if (await group.consentState() === sdk.ConsentState.Unknown) await group.updateConsentState(sdk.ConsentState.Allowed);
+    await this.assertConversationAccepted(group);
+    if (this.client !== client || this.status !== 'ready') throw new Error("Wallet changed. Reload the conversation.");
     const seedId = await group.sendText(`#${input.title} created.`);
     const mapped = await this.mapRoomConversation(group);
     this.invalidateConversation(group.id);

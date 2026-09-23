@@ -133,3 +133,32 @@ it('does not publish a stale allowed snapshot held by a slow directory read afte
   expect(t.publishedRooms).toHaveBeenCalledTimes(2);
   expect(group.updateConsentState).toHaveBeenCalledExactlyOnceWith(2);
 });
+
+it.each([0, 1, 2])('explicit room creation accepts only unknown consent and never overrides denied state %s', async initial => {
+  const { t, group, client } = setup(initial);
+  Object.assign(t.sdk, { GroupPermissionsOptions: { Default: 'default' } });
+  Object.assign(client.conversations, { createGroup: vi.fn().mockResolvedValue(group) });
+  Object.assign(group, { updateName: vi.fn(), addSuperAdmin: vi.fn().mockResolvedValue(undefined) });
+  const created = t.createRoom({ title: 'New group', gate: { combine: 'any', rules: [] } });
+  if (initial === 2) {
+    await expect(created).rejects.toThrow('Accept or unblock'); expect(group.sendText).not.toHaveBeenCalled();
+  } else {
+    expect(await created).toMatchObject({ pending: false, blocked: false }); expect(group.sendText).toHaveBeenCalledOnce();
+  }
+  if (initial === 0) expect(group.updateConsentState).toHaveBeenCalledExactlyOnceWith(1);
+  else expect(group.updateConsentState).not.toHaveBeenCalled();
+});
+it('blocked administrators cannot change the room policy', async () => {
+  const { t, group } = setup(2);
+  await expect(t.setRoomPolicy('group', { mode: 'read-only' })).rejects.toThrow('Accept or unblock');
+  expect(group.updateDescription).not.toHaveBeenCalled();
+});
+
+it('explicitly includes denied groups in full and fallback SDK listing so they remain available to unblock', async () => {
+  const { t, client, group } = setup(2);
+  client.conversations.list.mockImplementation(async options => options?.consentStates?.includes(2) ? [group] : []);
+  const [blocked] = await t.listConversations(); expect(blocked.blocked).toBe(true);
+  expect(client.conversations.list).toHaveBeenCalledWith({ consentStates: [0, 1, 2] });
+  await t.setConversationConsent('group', 'allowed');
+  expect((await t.listConversations())[0]).toMatchObject({ blocked: false, pending: false });
+});
