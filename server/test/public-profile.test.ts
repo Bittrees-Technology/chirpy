@@ -9,7 +9,7 @@ const service='https://chat.example/api/profile';
 const command=(patch={})=>({version:1 as const,service,wallet,revision:0,label:'My name',expiresAt:Date.now()+60000,...patch});
 let records:Map<string,string>;
 beforeEach(()=>{
- resetRateLimits();records=new Map();vi.stubEnv('VERCEL_ENV','production');vi.stubEnv('CHIRPY_SYNC_SERVICE_URL','https://chat.example/api/usersync');vi.stubEnv('KV_REST_API_URL','https://kv.example');vi.stubEnv('KV_REST_API_TOKEN','synthetic');vi.stubEnv('MAINNET_RPC_URL','');
+ vi.spyOn(console,'error').mockImplementation(()=>{});resetRateLimits();records=new Map();vi.stubEnv('VERCEL_ENV','production');vi.stubEnv('CHIRPY_SYNC_SERVICE_URL','https://chat.example/api/usersync');vi.stubEnv('KV_REST_API_URL','https://kv.example');vi.stubEnv('KV_REST_API_TOKEN','synthetic');vi.stubEnv('MAINNET_RPC_URL','');
  vi.stubGlobal('fetch',vi.fn(async(_url,init)=>{const cmd=JSON.parse(init.body);let result;
   if(cmd[0]==='GET')result=records.get(cmd[1])??null;
   else if(cmd[0]==='MGET')result=cmd.slice(1).map(k=>records.get(k)??null);
@@ -67,4 +67,17 @@ it('verifies contract signatures only against the configured Ethereum mainnet an
  chain='0x89';calls.length=0;expect(await verifyProfileSignature(config,command(),'0x1234')).toBe(false);expect(calls).toEqual(['eth_chainId']);
  chain='0x1';valid='0x0';expect(await verifyProfileSignature(config,command(),'0x1234')).toBe(false);
  vi.mocked(fetch).mockRejectedValue(Error('unavailable'));expect(await verifyProfileSignature(config,command(),'0x1234')).toBe(false);
+});
+
+it('logs only fixed schema diagnostics for invalid storage without leaking stored values or identity',async()=>{
+ const config=publicProfileConfig(),key=config.prefix+wallet;
+ const invalid={version:1,wallet,revision:2,updatedAt:123};records.set(key,JSON.stringify(invalid));
+ expect((await call({},'GET')).code).toBe(503);
+ expect(console.error).toHaveBeenLastCalledWith('chat_profile_storage_invalid',{reason:'schema',object:true,fields:false,version:true,wallet:true,revision:true,labelKind:'missing',label:false,updatedAt:true});
+ records.set(key,JSON.stringify({...invalid,label:'Private test name',unexpectedPrivateKey:'Private test value'}));
+ expect((await call({},'GET')).code).toBe(503);
+ records.set(key,'malformed Private test name');expect((await call({},'GET')).code).toBe(503);
+ const logs=JSON.stringify(vi.mocked(console.error).mock.calls);
+ for(const forbidden of [wallet,'Private test name','Private test value','unexpectedPrivateKey'])expect(logs).not.toContain(forbidden);
+ expect(records.get(key)).toBe('malformed Private test name');
 });

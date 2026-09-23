@@ -12,12 +12,21 @@ describe.skipIf(!container)('real Redis public profile authority',()=>{
   expect((await api.write({...command,revision:1,label:null})).status).toBe('saved');expect((await api.write(command)).status).toBe('conflict');
   expect(await api.read(wallet)).toMatchObject({revision:2,label:null});expect(await kv(['TTL',config.prefix+wallet])).toBe(-1);expect(await kv(['GET',config.prefix+wallet])).not.toContain('Public name');
  });
+ it('preserves JSON null, escaped labels and the full safe-integer revision through Redis storage',async()=>{
+  const config={service,prefix:'chat:profiles:test:'+randomBytes(8).toString('hex')+':'},key=config.prefix+wallet,api=createPublicProfiles(config,kv);
+  keys.add(key);await kv(['SET',key,JSON.stringify({version:1,wallet,revision:9007199254740980,label:null,updatedAt:1})]);
+  const label='Literal "quote" \\ slash 🐦 %1',command={version:1,wallet,service,revision:9007199254740980,label,expiresAt:Date.now()+60000};
+  const saved=await api.write(command);expect(saved).toMatchObject({status:'saved',profile:{label,revision:9007199254740981}});
+  const withdrawn=await api.write({...command,revision:9007199254740981,label:null});expect(withdrawn).toMatchObject({status:'saved',profile:{label:null,revision:9007199254740982}});
+  const raw=await kv(['GET',key]);expect(raw).toContain('"label":null');expect(raw).toContain('"revision":9007199254740982');
+  expect(await api.read(wallet)).toEqual(withdrawn.profile);expect(await api.write(command)).toEqual({status:'conflict'});
+ });
  it('uses Redis time to reject a signature that expires after verification without changing storage',async()=>{
   const key='chat:profiles:test:'+randomBytes(8).toString('hex');
-  const result=await kv(['EVAL',PROFILE_CAS,'1',key,'',String(Date.now()-1),JSON.stringify({version:1,wallet,revision:1,label:'Too late',updatedAt:0})]);expect(result).toEqual([-2]);expect(await kv(['GET',key])).toBeNull();
+  const result=await kv(['EVAL',PROFILE_CAS,'1',key,'',String(Date.now()-1),JSON.stringify({version:1,wallet,revision:1,label:'Too late'})]);expect(result).toEqual([-2]);expect(await kv(['GET',key])).toBeNull();
  });
  it('compares the exact stored record and never overwrites another committed edit',async()=>{
   const key='chat:profiles:test:'+randomBytes(8).toString('hex'),current=JSON.stringify({version:1,wallet,revision:1,label:null,updatedAt:1});await kv(['SET',key,current]);keys.add(key);
-  expect(await kv(['EVAL',PROFILE_CAS,'1',key,'',String(Date.now()+60000),JSON.stringify({version:1,wallet,revision:1,label:'Stale',updatedAt:0})])).toEqual([0]);expect(await kv(['GET',key])).toBe(current);
+  expect(await kv(['EVAL',PROFILE_CAS,'1',key,'',String(Date.now()+60000),JSON.stringify({version:1,wallet,revision:1,label:'Stale'})])).toEqual([0]);expect(await kv(['GET',key])).toBe(current);
  });
 });

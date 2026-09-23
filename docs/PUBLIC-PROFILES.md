@@ -24,7 +24,9 @@ contract wallets require `MAINNET_RPC_URL` verification. API/schema, byte bounds
 origin and signature checks precede writes. Redis compares the exact validated
 prior record and checks expiry using Redis time in the same transaction as the
 revision increment. Conflicting requests require reloading/review, not a silent
-retry. Failed acknowledgements are reported as uncertain until a fresh read.
+retry. Storage preserves the validated JSON fields verbatim and appends only the
+Redis timestamp; it does not round-trip nullable names or integer revisions through
+Lua JSON codecs. Failed acknowledgements are reported as uncertain until a fresh read.
 
 Withdrawal replaces the published name with null and retains a permanent revision
 marker. Never delete this marker as routine cleanup or restore an older record:
@@ -50,3 +52,9 @@ request already received by the server: reload the current profile before trying
 again. Live multi-client/native acceptance and operator policies remain separate
 from synthetic browser/Redis evidence. No profile name is a unique account handle,
 search directory, contact consent or verification badge.
+
+Invalid stored records fail closed and emit `chat_profile_storage_invalid` with
+fixed schema-validity booleans and a bounded label type category. Diagnostics do
+not log names, wallet addresses, signatures, stored keys/values or parser errors.
+Preserve the affected record and replay fence while investigating; do not reset a
+profile to revision zero to make a malformed record readable.
