@@ -669,11 +669,11 @@
   "restore.nameBlank": "Show my wallet address without a name",
   "restore.localName": "Restore my private display-name choice on this device",
   "push.chooseReply": "Choose an original message in this room to reply to.",
-  "push.attachFile": "Attach file",
-  "push.preparingFile": "Preparing file…",
+  "push.attachFile": "Attach files",
+  "push.preparingFile": "Preparing files…",
   "push.removeFile": "Remove file",
   "push.fileReplyHint": "Reply with this file. Captions are available when sending without a reply.",
-  "push.fileSendLimit": "One file up to 1 MB. Add an optional caption below.",
+  "push.fileSendLimit": "Up to 6 files, 1 MB each. Add an optional caption. Files are sent together in one message.",
   "push.fileTooLarge": "Choose a file of at most 1 MB.",
   "push.fileInvalid": "The selected file is invalid. Choose it again.",
   "push.fileReadFailed": "The selected file could not be read. Choose it again.",
@@ -692,5 +692,8 @@
   "push.reactionEvent": "Reacted with {emoji}",
   "push.reactionLimit": "This reaction history snapshot reached its limit. Return to latest messages.",
   "push.chooseReaction": "Choose a supported Push reaction.",
-  "push.chooseReactionOriginal": "Choose an original message in this room to react to."
+  "push.chooseReactionOriginal": "Choose an original message in this room to react to.",
+  "push.selectedFiles": "Selected files",
+  "push.multipleFileReply": "Replies support one file. Remove extra files or cancel the reply.",
+  "push.fileCountLimit": "Choose at most 6 files, up to 1 MB each."
 }

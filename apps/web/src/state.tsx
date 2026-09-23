@@ -984,7 +984,7 @@ interface ChatCtx {
   requestHistorySync: () => Promise<void>;
   select: (id: string | null) => void;
   markRead: (throughMessageId: string) => Promise<void>;
-  send: (body: string, replyTo?: string, file?: PushAttachment) => Promise<void>;
+  send: (body: string, replyTo?: string, files?: PushAttachment[]) => Promise<void>;
   react: (messageId: string, emoji: string) => Promise<void>;
   startDm: (address: string, handle?: string) => Promise<void>;
   createRoom: (input: StartRoomInput) => Promise<void>;
@@ -1154,16 +1154,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     // SDK background sync and the normal stream/poll refresh pick up the archive later.
   }, []);
 
-  const send = useCallback(async (body: string, replyTo?: string, file?: PushAttachment) => {
-    if (!activeId || (!body.trim() && !file)) return;
+  const send = useCallback(async (body: string, replyTo?: string, files?: PushAttachment[]) => {
+    if (!activeId || (!body.trim() && !files?.length)) return;
     if (parsePushConversationId(activeId)) {
       const rooms = getPushAdapter(); if (!rooms) throw new Error('Push rooms are reconnecting.');
-      await rooms.send(activeId, body, { replyTo, file });
+      await rooms.send(activeId, body, { replyTo, files });
       if (getPushAdapter() !== rooms) throw new Error('Room connection changed. Check history before retrying.');
       if (activeIdRef.current === activeId) { resetHistory(); await reloadMessages(activeId); }
       return;
     }
-    if (file) throw new Error("File sending is available in Push rooms only.");
+    if (files?.length) throw new Error("File sending is available in Push rooms only.");
     if (!transportRef.current) throw new Error("Messaging is reconnecting. Try again shortly.");
     const transport = transportRef.current;
     await transport.send(activeId, body, { replyTo });

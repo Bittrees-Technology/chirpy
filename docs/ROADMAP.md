@@ -14,7 +14,7 @@ The [production readiness ledger](PRODUCTION-READINESS.md) records implementatio
 - Public support and security reporting paths.
 - Chat branding and dual-domain serving with preserved compatibility identifiers.
 - Reviewed encrypted application-data recovery and user-controlled public/private profile labels.
-- Original-protocol Push room integration, bounded history/membership, text/file/reply composition and explicit PNG/JPEG previews and native add-only reactions.
+- Original-protocol Push room integration, bounded history/membership, text/file/reply composition (up to six files per standalone message) and explicit PNG/JPEG previews and native add-only reactions.
 - Connected Mail inbox/conversations, scoped duration choices, read/send/reply, formatted previews and bounded attachments.
 - Disabled wallet↔email bridge authority, queues, source/sender workers, health and recovery foundations.
 

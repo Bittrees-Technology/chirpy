@@ -410,7 +410,7 @@ for (const caption of ['', 'A caption for the selected file']) {
     const { readFile } = await import('node:fs/promises');
     const bytes = Buffer.from(Array.from({ length: 262144 }, (_, i) => i % 256));
     await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
-    await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'chosen.bin', mimeType: 'application/octet-stream', buffer: bytes });
+    await page.getByLabel('Attach files', { exact: true }).setInputFiles({ name: 'chosen.bin', mimeType: 'application/octet-stream', buffer: bytes });
     await expect(page.locator('.push-file-compose')).toContainText('chosen.bin');
     await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeEnabled();
     if (caption) await page.getByRole('textbox', { name: 'Write a message' }).fill(caption);
@@ -441,21 +441,21 @@ for (const caption of ['', 'A caption for the selected file']) {
 }
 test('enforces the file boundary before reading, supports removal, and allows choosing the same file again', async ({ page }) => {
   await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
-  await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'too-large.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(1000001) });
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles({ name: 'too-large.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(1000001) });
   await expect(page.getByRole('alert')).toContainText('at most 1 MB'); await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   const maximum = { name: 'max.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(1000000, 31) };
-  await page.getByLabel('Attach file', { exact: true }).setInputFiles(maximum);
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles(maximum);
   await expect(page.locator('.push-file-compose strong')).toHaveText('max.bin');
   await page.getByRole('textbox', { name: 'Write a message' }).fill('Keep this caption');
   await page.getByRole('button', { name: 'Remove file', exact: true }).click();
   await expect(page.locator('.push-file-compose strong')).toHaveCount(0); await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('Keep this caption');
-  await page.getByLabel('Attach file', { exact: true }).setInputFiles(maximum);
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles(maximum);
   await page.getByRole('button', { name: 'Send', exact: true }).click(); await expect(page.locator('.push-file-compose strong')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send').length)).toBe(1);
 });
 test('a rejected file send retains the selection and caption without automatic retry', async ({ page }) => {
   await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
-  await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'retry.txt', mimeType: 'text/plain', buffer: Buffer.from('test') });
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles({ name: 'retry.txt', mimeType: 'text/plain', buffer: Buffer.from('test') });
   await expect(page.locator('.push-file-compose strong')).toHaveText('retry.txt');
   await page.getByRole('textbox', { name: 'Write a message' }).fill('Kept caption');
   await page.evaluate(() => { (window as any).__pushFixture.failSend = true; });
@@ -472,8 +472,8 @@ for (const change of ['source', 'wallet', 'permission']) {
       const original = File.prototype.arrayBuffer;
       File.prototype.arrayBuffer = function () { return new Promise<ArrayBuffer>((resolve, reject) => { (window as any).__releaseFile = () => original.call(this).then(resolve, reject); }); };
     });
-    await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'private.bin', mimeType: 'application/octet-stream', buffer: Buffer.from('private') });
-    await expect(page.getByRole('button', { name: 'Preparing file…', exact: true })).toBeVisible();
+    await page.getByLabel('Attach files', { exact: true }).setInputFiles({ name: 'private.bin', mimeType: 'application/octet-stream', buffer: Buffer.from('private') });
+    await expect(page.getByRole('button', { name: 'Preparing files…', exact: true })).toBeVisible();
     if (change === 'source') await page.getByLabel('Include existing rooms').selectOption('research');
     if (change === 'wallet') await page.evaluate(other => { const s = (window as any).__pushFixture; s.address = other; s.emit('accountsChanged', [other]); }, other);
     if (change === 'permission') {
@@ -512,7 +512,7 @@ for (const first of ['reply', 'file']) {
     const bytes = Buffer.from(Array.from({ length: 256 }, (_, i) => i));
     await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
     if (first === 'reply') await page.getByRole('button', { name: 'Reply', exact: true }).click();
-    await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'reply.bin', mimeType: 'application/octet-stream', buffer: bytes });
+    await page.getByLabel('Attach files', { exact: true }).setInputFiles({ name: 'reply.bin', mimeType: 'application/octet-stream', buffer: bytes });
     await expect(page.locator('.push-file-compose strong')).toHaveText('reply.bin');
     if (first === 'file') await page.getByRole('button', { name: 'Reply', exact: true }).click();
     await expect(page.locator('.reply-banner')).toContainText('Preserved Push history');
@@ -540,7 +540,7 @@ test('explains caption limits without dropping the selected file, reply, or text
   await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Reply', exact: true }).click();
   await page.getByRole('textbox', { name: 'Write a message' }).fill('Do not lose this caption');
-  await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'captioned.txt', mimeType: 'text/plain', buffer: Buffer.from('file') });
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles({ name: 'captioned.txt', mimeType: 'text/plain', buffer: Buffer.from('file') });
   await expect(page.getByRole('status').filter({ hasText: 'File replies cannot include a caption' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
   await page.getByRole('textbox', { name: 'Write a message' }).press('Enter');
@@ -557,7 +557,7 @@ test('explains caption limits without dropping the selected file, reply, or text
 test('retains a rejected file reply for an explicit retry and clears it on lost access', async ({ page }) => {
   await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Reply', exact: true }).click();
-  await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'private-reply.txt', mimeType: 'text/plain', buffer: Buffer.from('private') });
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles({ name: 'private-reply.txt', mimeType: 'text/plain', buffer: Buffer.from('private') });
   await expect(page.locator('.push-file-compose strong')).toHaveText('private-reply.txt');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Choose an original message');
@@ -729,3 +729,174 @@ test('discards a retired reaction completion without retrying into the replaceme
  expect(await page.evaluate(()=>(window as any).__pushFixture.calls.filter((c:any)=>c.kind==='send').length)).toBe(1);
  await expect(page.getByText('The reaction could not be confirmed.',{exact:false})).toHaveCount(0);
 });
+
+for (const caption of ['', 'A caption for both files']) {
+  test(`sends multiple files in one message ${caption ? 'with' : 'without'} a caption and downloads exact copies`, async ({ page }, testInfo) => {
+    const { readFile } = await import('node:fs/promises');
+    const files = [
+      { name: 'first.bin', mimeType: 'application/octet-stream', buffer: Buffer.from(Array.from({ length: 262144 }, (_, i) => i % 256)) },
+      { name: 'second.txt', mimeType: 'text/plain', buffer: Buffer.from('Second file, distinct exact bytes.\n') },
+    ];
+    await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+    await page.getByLabel('Attach files', { exact: true }).setInputFiles(files);
+    await expect(page.locator('.push-file-compose strong')).toHaveText(files.map(file => file.name));
+    if (caption) await page.getByRole('textbox', { name: 'Write a message' }).fill(caption);
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    for (const button of await page.locator('.push-file-selection button').all()) expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await page.screenshot({ path: testInfo.outputPath('push-multiple-files-mobile.png') });
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(page.locator('.push-file-compose strong')).toHaveCount(0);
+    const calls = await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send'));
+    expect(calls).toHaveLength(1); expect(calls[0].owner).toBe(owner); expect(calls[0].room).toBe(group);
+    const payload = calls[0].extra; expect(payload.type).toBe('Composite'); expect(payload.content).toHaveLength(files.length + (caption ? 1 : 0));
+    if (caption) expect(payload.content[0]).toEqual({ type: 'Text', content: caption });
+    payload.content.slice(caption ? 1 : 0).forEach((part: any, index: number) => {
+      const file = JSON.parse(part.content); expect(part.type).toBe('File'); expect(file.name).toBe(files[index].name);
+      expect(Buffer.from(file.content.split(',')[1], 'base64').equals(files[index].buffer)).toBe(true);
+    });
+    await page.evaluate(({ payload, message }) => {
+      (window as any).__pushFixture.pages.latest = [{ ...message, messageType: 'Composite', messageObj: {
+        content: payload.content.map((part: any) => ({ messageType: part.type, messageObj: { content: part.content } })),
+      } }];
+    }, { payload, message: row('QmMultipleUploadedFiles') });
+    await page.getByRole('button', { name: 'Refresh messages', exact: true }).click();
+    await expect(page.locator('.push-attachment strong')).toHaveText(files.map(file => file.name));
+    for (const file of files) {
+      const pending = page.waitForEvent('download');
+      await page.locator('.push-attachment').filter({ has: page.getByText(file.name, { exact: true }) }).getByRole('button', { name: 'Download file', exact: true }).click();
+      const download = await pending, destination = testInfo.outputPath(file.name); await download.saveAs(destination);
+      expect((await readFile(destination)).equals(file.buffer)).toBe(true);
+    }
+  });
+}
+test('adds and removes individual files without collapsing matching filenames or losing the caption', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  const file = (text: string) => ({ name: 'same.txt', mimeType: 'text/plain', buffer: Buffer.from(text) });
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles(file('first'));
+  await expect(page.locator('.push-file-compose strong')).toHaveCount(1);
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles(file('second'));
+  await expect(page.locator('.push-file-compose strong')).toHaveText(['same.txt', 'same.txt']);
+  await page.getByRole('textbox', { name: 'Write a message' }).fill('Keep caption');
+  await page.getByRole('button', { name: 'Remove file: same.txt (1)', exact: true }).click();
+  await expect(page.locator('.push-file-compose strong')).toHaveText('same.txt');
+  await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('Keep caption');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.locator('.push-file-compose strong')).toHaveCount(0);
+  const sent = await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send'));
+  expect(sent).toHaveLength(1);
+  expect(Buffer.from(JSON.parse(sent[0].extra.content[1].content).content.split(',')[1], 'base64').toString()).toBe('second');
+});
+test('rejects an entire invalid batch before reading and preserves prior files after a later read failure', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  const prior = { name: 'prior.txt', mimeType: 'text/plain', buffer: Buffer.from('keep') };
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles(prior);
+  await expect(page.locator('.push-file-compose strong')).toHaveText('prior.txt');
+  await page.evaluate(() => {
+    const original = File.prototype.arrayBuffer; (window as any).__fileReads = [];
+    File.prototype.arrayBuffer = function () {
+      (window as any).__fileReads.push(this.name);
+      if (this.name === 'unreadable.txt') return Promise.reject(new Error('Synthetic read failure'));
+      return original.call(this);
+    };
+  });
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles([prior, { ...prior, name: 'large.bin', buffer: Buffer.alloc(1_000_001) }]);
+  await expect(page.getByRole('alert')).toContainText('at most 1 MB');
+  expect(await page.evaluate(() => (window as any).__fileReads)).toEqual([]);
+  await expect(page.locator('.push-file-compose strong')).toHaveText('prior.txt');
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles([{ ...prior, name: 'new.txt' }, { ...prior, name: 'unreadable.txt' }]);
+  await expect(page.getByRole('alert')).toContainText('Synthetic read failure');
+  expect(await page.evaluate(() => (window as any).__fileReads)).toEqual(['new.txt', 'unreadable.txt']);
+  await expect(page.locator('.push-file-compose strong')).toHaveText('prior.txt');
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send'))).toEqual([]);
+});
+test('enforces six files for initial and additional selections without changing the accepted selection', async ({ page }, testInfo) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  const files = Array.from({ length: 7 }, (_, index) => ({ name: index ? `${index}.txt` : 'long-' + 'a'.repeat(100) + '.txt', mimeType: 'text/plain', buffer: Buffer.from(`file ${index}`) }));
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles(files);
+  await expect(page.getByRole('alert')).toContainText('at most 6 files'); await expect(page.locator('.push-file-compose strong')).toHaveCount(0);
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles(files.slice(0, 6));
+  await expect(page.locator('.push-file-compose strong')).toHaveText(files.slice(0, 6).map(file => file.name));
+  await page.setViewportSize({ width: 390, height: 667 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const membersBox = await page.locator('.push-members').boundingBox();
+  const membersLabel = await page.locator('.push-members summary').boundingBox();
+  expect(membersBox!.y + membersBox!.height).toBeGreaterThanOrEqual(membersLabel!.y + membersLabel!.height);
+  const sendBox = await page.getByRole('button', { name: 'Send', exact: true }).boundingBox();
+  expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(600);
+  const selection = page.getByRole('list', { name: 'Selected files', exact: true });
+  expect(await selection.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+  await expect(page.getByText('Selected files (6/6)', { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('push-six-files-mobile.png') });
+  await page.getByRole('button', { name: 'Attach files', exact: true }).focus();
+  for (let index = 0; index < 6; index++) await page.keyboard.press('Tab');
+  const lastRemoval = selection.getByRole('button').last();
+  await expect(lastRemoval).toBeFocused();
+  const lastBox = await lastRemoval.boundingBox(), listBox = await selection.boundingBox();
+  expect(lastBox!.y).toBeGreaterThanOrEqual(listBox!.y);
+  expect(lastBox!.y + lastBox!.height).toBeLessThanOrEqual(listBox!.y + listBox!.height + 1);
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles(files[6]);
+  await expect(page.getByRole('alert')).toContainText('at most 6 files'); await expect(page.locator('.push-file-compose strong')).toHaveCount(6);
+  await page.getByRole('button', { name: 'Send', exact: true }).click(); await expect(page.locator('.push-file-compose strong')).toHaveCount(0);
+  const calls = await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send'));
+  expect(calls).toHaveLength(1); expect(calls[0].extra.content).toHaveLength(6);
+});
+for (const first of ['reply', 'files']) {
+  test(`preserves multiple files and a reply when selecting ${first} first until the conflict is resolved`, async ({ page }) => {
+    await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+    if (first === 'reply') await page.getByRole('button', { name: 'Reply', exact: true }).click();
+    await page.getByLabel('Attach files', { exact: true }).setInputFiles(['first', 'second'].map(name => ({ name: `${name}.txt`, mimeType: 'text/plain', buffer: Buffer.from(name) })));
+    await expect(page.locator('.push-file-compose strong')).toHaveCount(2);
+    if (first === 'files') await page.getByRole('button', { name: 'Reply', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Replies support one file' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+    await page.getByRole('textbox', { name: 'Write a message' }).press('Enter');
+    expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send'))).toEqual([]);
+    await expect(page.locator('.reply-banner')).toContainText('Preserved Push history'); await expect(page.locator('.push-file-compose strong')).toHaveCount(2);
+    await page.evaluate(message => { (window as any).__pushFixture.pages.QmLatestMessage = [message]; }, row());
+    if (first === 'reply') await page.getByRole('button', { name: 'Cancel reply', exact: true }).click();
+    else await page.getByRole('button', { name: 'Remove file: second.txt (2)', exact: true }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click(); await expect(page.locator('.push-file-compose strong')).toHaveCount(0);
+    const calls = await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send'));
+    expect(calls).toHaveLength(1); expect(calls[0].extra.type).toBe(first === 'reply' ? 'Composite' : 'Reply');
+  });
+}
+test('keeps every file and caption after an uncertain combined send with no automatic retry', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.getByLabel('Attach files', { exact: true }).setInputFiles(['first', 'second'].map(name => ({ name: `${name}.txt`, mimeType: 'text/plain', buffer: Buffer.from(name) })));
+  await expect(page.locator('.push-file-compose strong')).toHaveCount(2);
+  await page.getByRole('textbox', { name: 'Write a message' }).fill('Kept combined caption');
+  await page.evaluate(() => { (window as any).__pushFixture.failSend = true; });
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Refresh history or membership before retrying');
+  await expect(page.locator('.push-file-compose strong')).toHaveText(['first.txt', 'second.txt']);
+  await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('Kept combined caption');
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send').length)).toBe(1);
+});
+for (const change of ['source', 'wallet', 'permission']) {
+  test(`discards a whole batch during its second file read after a ${change} change`, async ({ page }) => {
+    await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+    await page.evaluate(() => {
+      const original = File.prototype.arrayBuffer;
+      File.prototype.arrayBuffer = function () {
+        if (this.name !== 'second.txt') return original.call(this);
+        return new Promise<ArrayBuffer>((resolve, reject) => { (window as any).__releaseBatch = () => original.call(this).then(resolve, reject); });
+      };
+    });
+    await page.getByLabel('Attach files', { exact: true }).setInputFiles(['first', 'second', 'third'].map(name => ({ name: `${name}.txt`, mimeType: 'text/plain', buffer: Buffer.from(name) })));
+    await expect.poll(() => page.evaluate(() => typeof (window as any).__releaseBatch)).toBe('function');
+    await expect(page.locator('.push-file-compose strong')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+    if (change === 'source') await page.getByLabel('Include existing rooms').selectOption('research');
+    if (change === 'wallet') await page.evaluate(other => { const s = (window as any).__pushFixture; s.address = other; s.emit('accountsChanged', [other]); }, other);
+    if (change === 'permission') {
+      await page.evaluate(() => { (window as any).__pushFixture.permissions.chat = false; });
+      await page.getByRole('button', { name: 'Refresh messages', exact: true }).click();
+      await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveCount(0);
+    }
+    await page.evaluate(() => (window as any).__releaseBatch());
+    await expect(page.locator('.push-file-compose')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send'))).toEqual([]);
+  });
+}

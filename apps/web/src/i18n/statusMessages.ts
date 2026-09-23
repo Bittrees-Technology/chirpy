@@ -5,6 +5,8 @@ const keys: Record<string, string> = {
   "Choose an original message in this room to react to.": "push.chooseReactionOriginal",
   "This Push history page exceeds the display limit. No messages were replaced.": "push.historyBudget",
   "File replies cannot include a caption. Clear the caption or cancel the reply.": "push.fileReplyCaption",
+  "Choose at most 6 files, up to 1 MB each.": "push.fileCountLimit",
+  "Replies support one file. Remove extra files or cancel the reply.": "push.multipleFileReply",
   "Choose a file of at most 1 MB.": "push.fileTooLarge",
   "The selected file is invalid. Choose it again.": "push.fileInvalid",
   "The selected file could not be read. Choose it again.": "push.fileReadFailed",

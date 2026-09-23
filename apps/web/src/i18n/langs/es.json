@@ -669,11 +669,11 @@
   "restore.nameBlank": "Mostrar mi dirección de billetera sin nombre",
   "restore.localName": "Restaurar mi elección de nombre privado en este dispositivo",
   "push.chooseReply": "Elige un mensaje original de esta sala al que responder.",
-  "push.attachFile": "Adjuntar archivo",
-  "push.preparingFile": "Preparando archivo…",
+  "push.attachFile": "Adjuntar archivos",
+  "push.preparingFile": "Preparando archivos…",
   "push.removeFile": "Quitar archivo",
   "push.fileReplyHint": "Responde con este archivo. Las descripciones están disponibles al enviar sin responder.",
-  "push.fileSendLimit": "Un archivo de hasta 1 MB. Puedes añadir una descripción debajo.",
+  "push.fileSendLimit": "Hasta 6 archivos, de 1 MB cada uno. Añade un texto opcional. Los archivos se envían juntos en un mensaje.",
   "push.fileTooLarge": "Elige un archivo de como máximo 1 MB.",
   "push.fileInvalid": "El archivo seleccionado no es válido. Vuelve a elegirlo.",
   "push.fileReadFailed": "No se pudo leer el archivo seleccionado. Vuelve a elegirlo.",
@@ -692,5 +692,8 @@
   "push.reactionEvent": "Reaccionó con {emoji}",
   "push.reactionLimit": "Esta vista de reacciones alcanzó su límite. Vuelve a los mensajes recientes.",
   "push.chooseReaction": "Elige una reacción compatible con Push.",
-  "push.chooseReactionOriginal": "Elige un mensaje original de esta sala al que reaccionar."
+  "push.chooseReactionOriginal": "Elige un mensaje original de esta sala al que reaccionar.",
+  "push.selectedFiles": "Archivos seleccionados",
+  "push.multipleFileReply": "Las respuestas admiten un archivo. Elimina los archivos adicionales o cancela la respuesta.",
+  "push.fileCountLimit": "Selecciona hasta 6 archivos, de 1 MB cada uno."
 }
