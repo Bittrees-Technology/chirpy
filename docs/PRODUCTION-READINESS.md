@@ -438,3 +438,12 @@ Maximum-size browser tests cover selection/removal, exact downloads, hash reject
 ## Email keyboard navigation
 
 Opening an email moves focus to the subject heading; new composition focuses the recipient and replies focus the body. Current message/conversation rows expose selection through `aria-current`. Focus requests belong to the opened message and original control; late reads do not interrupt a different focused control or inactive tab. Polling never creates a focus request, and cancelled/superseded reads retain existing authority checks. Browser regressions cover individual and conversation views, keyboard activation, replies, delayed reads, polling and cancellation. Wider screen-reader/physical-device acceptance remains outstanding.
+
+
+## Unreadable encrypted settings preservation
+
+The settings reader validates the encrypted envelope, wallet, encoding and supported payload version before merging. It rejects malformed or unknown fields instead of silently filtering them, while retaining arbitrary valid legacy saved-message fields and optional receipt-map defaults. A remote read records a snapshot-specific revision; an explicit validated merge uses that exact snapshot. Reading ciphertext does not advance the default revision for unrelated local writes.
+
+Failed remote reads/decryption/validation discard this session's in-memory write authority and pending timer. Local edits remain available; re-enablement must successfully reread compatible data. Signed writes recheck session and local revision immediately before dispatch. This is a local pause, not a claim of server-side grant revocation. Existing revocation controls remain available.
+
+Tests exercise actual encrypted future/corrupt records during enablement and active sync, later local edits, reload/re-enable, exact source revisions, malformed envelopes, signing races and preservation of legacy note fields. Key derivation, wire version, storage namespaces and service identity are unchanged. Deletion/tombstone semantics are still outstanding; deploying a new format will also require an explicit compatibility/old-client rollout boundary.

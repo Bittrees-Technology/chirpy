@@ -177,6 +177,7 @@
   "status.syncConnect": "Conecta una cartera antes de activar la sincronización cifrada.",
   "status.syncConflict": "Otro dispositivo ha vuelto a cambiar los datos sincronizados. Intenta activar la sincronización de nuevo.",
   "status.syncUnsaved": "No se ha guardado la sincronización cifrada. Inténtalo de nuevo; los datos locales se han conservado.",
+  "status.syncReadPaused": "La sincronización cifrada está en pausa porque no se han podido leer los datos remotos de forma segura. Se han conservado los datos locales y remotos. Actualiza Chat o restablece el acceso y vuelve a activar la sincronización.",
   "status.syncUndecryptable": "No se han podido descifrar los datos sincronizados. Los datos remotos se han conservado.",
   "status.revokeUnconfirmed": "La sincronización se ha detenido localmente; no se ha confirmado la revocación.",
   "status.revokeConnect": "Conecta una cartera para revocar dispositivos sincronizados.",

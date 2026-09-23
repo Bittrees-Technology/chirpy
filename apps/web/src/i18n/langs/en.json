@@ -177,6 +177,7 @@
   "status.syncConnect": "Connect a wallet before enabling encrypted sync.",
   "status.syncConflict": "Another device changed sync again. Try enabling sync again.",
   "status.syncUnsaved": "Encrypted sync was not saved. Try again; local data has been kept.",
+  "status.syncReadPaused": "Encrypted sync is paused because remote data could not be safely read. Local and remote data were kept. Update Chat or restore access, then re-enable sync.",
   "status.syncUndecryptable": "Encrypted sync could not be decrypted. Remote data has been preserved.",
   "status.revokeUnconfirmed": "Sync stopped locally; revocation was not confirmed.",
   "status.revokeConnect": "Connect a wallet to revoke sync devices.",

@@ -1,5 +1,6 @@
+import {decryptSettingsPayload,SyncReadError,SYNC_READ_PAUSED} from "./syncPayload";
 import { loadSettings, saveSettings, withSettingsLock, assertNoRecoveryPending, recoveryMarkerKey, SettingsStorageError, SETTINGS_STORAGE_ERROR, type SettingsPrefs } from "./settingsStorage";
-import { normalizeReceiptOverrides, receiptOverride, receiptPreferenceKey } from "./receiptPreferences";
+import { receiptOverride, receiptPreferenceKey } from "./receiptPreferences";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   PERSONAL_ORG, parseOrg, type Identity, type OrgConfig, type Policy,
@@ -457,15 +458,6 @@ const SETTINGS_PREFS_KEY = "chat:settingsPrefs:v1";
 const SETTINGS_SYNC_BLOB_KEY = "chat:settingsSyncBlob:v1";
 const SETTINGS_SYNC_AUTH_SIG_PREFIX = "chirpy.sync.authSig.";
 
-function normalizeSettingsPrefs(value: Partial<SettingsPrefs> | null | undefined): SettingsPrefs {
-  return {
-    readReceiptsDefault: value?.readReceiptsDefault === true,
-    readReceiptOverrides: normalizeReceiptOverrides(value?.readReceiptOverrides),
-    syncAcrossDevices: value?.syncAcrossDevices === true,
-    blocked: Array.isArray(value?.blocked) ? value.blocked.filter((address) => typeof address === "string" && /^0x[a-fA-F0-9]{40}$/.test(address)).map((address) => address.toLowerCase()) : [],
-  };
-}
-
 const textEncoder = new TextEncoder();
 const bytesToHex = (bytes: Uint8Array) =>
   `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
@@ -481,13 +473,6 @@ const bytesToBase64 = (bytes: Uint8Array) => {
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
   return btoa(binary);
 };
-const base64ToBytes = (value: string) => {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-};
-
 async function deriveSyncKey(signature: string, address: string): Promise<CryptoKey> {
   if (!crypto.subtle) throw new Error("Secure browser crypto is unavailable.");
   const signatureKey = await crypto.subtle.importKey("raw", hexToBytes(signature), "HKDF", false, ["deriveKey"]);
@@ -569,21 +554,6 @@ async function encryptSettingsPayload(
   updatedAt = Date.now(),
 ): Promise<EncryptedSyncBlob> {
   return encryptSyncPayload(payloadFromPrefs(prefs, savedMessages, updatedAt), key, address);
-}
-
-async function decryptSettingsPayload(blob: EncryptedSyncBlob, key: CryptoKey): Promise<SettingsSyncPayload> {
-  const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: base64ToBytes(blob.iv) },
-    key,
-    base64ToBytes(blob.ciphertext),
-  );
-  const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as SettingsSyncPayload;
-  return {
-    version: 1,
-    settingsPrefs: normalizeSettingsPrefs(parsed.settingsPrefs),
-    savedMessages: Array.isArray(parsed.savedMessages) ? parsed.savedMessages.filter((m) => typeof m?.id === "string") : [],
-    updatedAt: Number(parsed.updatedAt) || blob.updatedAt || Date.now(),
-  };
 }
 
 export function SettingsPrefsProvider({ children }: { children: React.ReactNode }) {
@@ -683,25 +653,42 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
     authSigRef.current = authorization;
   }, []);
 
+  const pushCurrentBlob = useCallback((key:CryptoKey,address:string,auth:SyncAuthorization,blob:EncryptedSyncBlob,basedOn?:EncryptedSyncBlobSnapshot) => {
+    const revision=prefsRevisionRef.current;
+    return pushBlob(address,auth,blob,basedOn,()=>sessionActiveRef.current&&!storageFailedRef.current&&syncKeyRef.current===key&&authSigRef.current===auth&&prefsRevisionRef.current===revision);
+  }, []);
+
   const pullMergePushOnce = useCallback(async (
     key: CryptoKey,
     address: string,
     localPrefs: SettingsPrefs,
     authSig?: SyncAuthorization | null,
     repush = true,
-  ): Promise<{ prefs: SettingsPrefs; blob: EncryptedSyncBlob; merged: boolean; ensureCurrent: () => void } | null> => {
+  ): Promise<{ prefs: SettingsPrefs; blob: EncryptedSyncBlob; merged: boolean; basedOn: EncryptedSyncBlobSnapshot; ensureCurrent: () => void } | null> => {
     const guard = guardPrefsRevision();
     const ensureCurrent = () => {
       guard();
       if (syncKeyRef.current !== key) throw new Error("Sync authorization expired. Re-enable sync with your wallet.");
     };
     ensureCurrent();
-    const remoteBlob = await pullRemoteBlob(address);
-    ensureCurrent();
-    if (!remoteBlob) return null;
+    let remoteBlob:EncryptedSyncBlobSnapshot|null,remotePayload:SettingsSyncPayload|undefined;
     try {
-      const remotePayload = await decryptSettingsPayload(remoteBlob as EncryptedSyncBlob, key);
-      ensureCurrent();
+      remoteBlob = await pullRemoteBlob(address);
+      if (remoteBlob) remotePayload = await decryptSettingsPayload(remoteBlob, key, address);
+    } catch {
+      // Clear authority synchronously, before another timer or local edit can write.
+      // A late failure from an old wallet/session must not pause its replacement.
+      if(sessionActiveRef.current&&syncKeyRef.current===key){
+        syncKeyRef.current=null;syncAddressRef.current=null;authSigRef.current=null;authSigAddressRef.current=null;
+        pullOnSessionKeyRef.current=false;
+        if(pushTimerRef.current){window.clearTimeout(pushTimerRef.current);pushTimerRef.current=null;}
+        setSyncState(state=>({...state,hasSessionKey:false,isEncrypting:false,error:SYNC_READ_PAUSED}));
+      }
+      throw new SyncReadError();
+    }
+    ensureCurrent();
+    if(!remoteBlob||!remotePayload)return null;
+    try {
       const localPayload = payloadFromPrefs(localPrefs, savedMessagesRef.current, prefsUpdatedAtRef.current);
       const mergedPayload = mergePayload(localPayload, remotePayload);
       const mergedBlob = await encryptSyncPayload(mergedPayload, key, address);
@@ -709,8 +696,8 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       savedMessagesRef.current = mergedPayload.savedMessages;
       prefsUpdatedAtRef.current = mergedPayload.updatedAt;
       LS.set(blobKey, mergedBlob);
-      if (repush && authSig) void pushBlob(address, authSig, mergedBlob);
-      return { prefs: mergedPayload.settingsPrefs, blob: mergedBlob, merged: true, ensureCurrent };
+      if (repush && authSig) void pushCurrentBlob(key, address, authSig, mergedBlob, remoteBlob);
+      return { prefs: mergedPayload.settingsPrefs, blob: mergedBlob, merged: true, basedOn: remoteBlob, ensureCurrent };
     } catch {
       ensureCurrent();
       throw new Error("Encrypted sync could not be decrypted. Remote data has been preserved.");
@@ -733,20 +720,20 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
         pushTimerRef.current = window.setTimeout(() => {
           pushTimerRef.current = null;
           if (cancelled || storageFailedRef.current || syncKeyRef.current !== key) return;
-          pushBlob(address, authSig, blob).then(async (result) => {
+          pushCurrentBlob(key, address, authSig, blob).then(async (result) => {
             if (cancelled || storageFailedRef.current || syncKeyRef.current !== key) return;
             if (result.ok) { setSyncState((s) => ({ ...s, error: undefined })); return; }
             if (!result.stale) throw new Error("Sync write failed");
             const merged = await pullMergePushOnce(key, address, prefs, authSig, false);
             if (!merged || cancelled) return;
-            const retry = await pushBlob(address, authSig, merged.blob);
+            const retry = await pushCurrentBlob(key, address, authSig, merged.blob, merged.basedOn);
             if (!retry.ok) throw new Error("Sync conflict; retry required");
             if (!cancelled) {
               await setPrefs(merged.prefs, merged.ensureCurrent);
               merged.ensureCurrent();
               setSyncState((s) => ({ ...s, walletAddress: merged.blob.address, encryptedAt: merged.blob.updatedAt, hasSessionKey: true }));
             }
-          }).catch(() => setSyncState((s) => ({ ...s, error: "Sync failed. Local changes are saved on this device; retry sync when available." })));
+          }).catch(() => { if(syncKeyRef.current===key)setSyncState((s) => ({ ...s, error: "Sync failed. Local changes are saved on this device; retry sync when available." })); });
         }, 1500);
       })
       .catch(() => {
@@ -809,7 +796,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       await setPrefs(merged.prefs, merged.ensureCurrent);
       merged.ensureCurrent();
       setSyncState((s) => ({ ...s, walletAddress: merged.blob.address, encryptedAt: merged.blob.updatedAt, hasSessionKey: true }));
-    }).catch(() => setSyncState((s) => ({ ...s, error: "Remote sync could not be read. Local data is unchanged." })));
+    }).catch(() => { if(syncKeyRef.current===key)setSyncState((s) => ({ ...s, error: "Remote sync could not be read. Local data is unchanged." })); });
   }, [getAuthSig, prefs, pullMergePushOnce, syncState.hasSessionKey]);
 
   useEffect(() => {
@@ -869,6 +856,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
         const authSig = await createSyncAuthorization(address, (message) => { ensureCurrent(); return signSyncMessage(address, message); });
         ensureCurrent();
         const nextPrefs = { ...prefs, syncAcrossDevices: true };
+        pullOnSessionKeyRef.current=false;
         syncKeyRef.current = key;
         syncAddressRef.current = address;
         storeAuthSig(address, authSig);
@@ -877,12 +865,12 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
         const blob = remoteMerged?.blob ?? await encryptSettingsPayload(mergedPrefs, key, address, savedMessagesRef.current);
         ensureCurrent();
         LS.set(blobKey, blob);
-        const pushed = await pushBlob(address, authSig, blob);
+        const pushed = await pushCurrentBlob(key, address, authSig, blob, remoteMerged?.basedOn);
         ensureCurrent();
         if (!pushed.ok && pushed.stale) {
           const latest = await pullMergePushOnce(key, address, mergedPrefs, authSig, false);
           if (latest) {
-            const retry = await pushBlob(address, authSig, latest.blob);
+            const retry = await pushCurrentBlob(key, address, authSig, latest.blob, latest.basedOn);
             ensureCurrent();
             if (!retry.ok) throw new Error("Another device changed sync again. Try enabling sync again.");
             await setPrefs(latest.prefs, ensureCurrent);

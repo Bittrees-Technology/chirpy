@@ -12,7 +12,10 @@ export interface SyncAuthorization {
   grant: SyncDeviceGrant & { signature: string };
   sign: (message: string) => Promise<`0x${string}`>;
 }
+// Only an empty-store read or an acknowledged write advances the default write base.
+// Observing ciphertext must not authorize replacing it before it has been decrypted and merged.
 const revisions = new Map<string, number>();
+const snapshots = new WeakMap<EncryptedSyncBlobSnapshot, {address:string;revision:number;service:string;epoch:number}>();
 const contexts = new Map<string, { service: string; epoch: number }>();
 type WalletSign = (message: string) => Promise<string>;
 function serviceUrl() { return syncEndpoint().service; }
@@ -22,11 +25,14 @@ export async function pullRemoteBlob(address: string): Promise<EncryptedSyncBlob
   const response = await fetch(`${syncEndpoint().requestUrl}?address=${encodeURIComponent(address)}`, { credentials: "omit", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error("Unable to read encrypted sync. Try again when storage is available.");
   const result = await response.json();
-  const blob = result?.blob ? JSON.parse(result.blob) as EncryptedSyncBlobSnapshot : null;
+  if (result?.blob !== null && (typeof result?.blob !== "string" || !result.blob || result.blob.length > 400_000)) throw new Error("Invalid encrypted sync record.");
+  const blob = result.blob === null ? null : JSON.parse(result.blob) as EncryptedSyncBlobSnapshot;
+  if (result.blob !== null && (!blob || typeof blob !== "object" || Array.isArray(blob))) throw new Error("Invalid encrypted sync record.");
   const revision = result?.revision;
   if (!Number.isSafeInteger(revision) || revision < 0) throw new Error("Invalid sync revision.");
   if (result.authVersion !== 2 || result.service !== serviceUrl() || !Number.isSafeInteger(result.epoch) || result.epoch < 0) throw new Error("Sync service authorization is unavailable or has the wrong origin.");
-  revisions.set(key, revision);
+  if (blob === null) revisions.set(key, revision);
+  else snapshots.set(blob, {address:key,revision,service:result.service,epoch:result.epoch});
   contexts.set(key, { service: result.service, epoch: result.epoch });
   return blob;
 }
@@ -40,14 +46,18 @@ export async function createSyncAuthorization(address: string, walletSign: Walle
   // The generated key is retained only in this closure, never written to browser storage.
   return { grant: { ...grant, signature }, sign: (message) => device.signMessage({ message }) };
 }
-export async function pushBlob(address: string, authorization: SyncAuthorization, enc: EncryptedSyncBlobSnapshot): Promise<PushBlobResult> {
+export async function pushBlob(address: string, authorization: SyncAuthorization, enc: EncryptedSyncBlobSnapshot, basedOn?: EncryptedSyncBlobSnapshot, isCurrent:()=>boolean=()=>true): Promise<PushBlobResult> {
   const key = address.toLowerCase();
-  const expectedRevision = revisions.get(key);
+  if (!isCurrent()) return { ok: false };
+  const snapshot = basedOn === undefined ? undefined : snapshots.get(basedOn);
+  if (basedOn !== undefined && (!snapshot || snapshot.address !== key || snapshot.service !== serviceUrl() || snapshot.epoch !== authorization.grant.epoch)) return { ok: false, stale: true };
+  const expectedRevision = basedOn === undefined ? revisions.get(key) : snapshot?.revision;
   if (expectedRevision === undefined) return { ok: false, stale: true };
   if (authorization.grant.address !== key || authorization.grant.service !== serviceUrl() || authorization.grant.expiresAt <= Date.now()) return { ok: false };
   try {
     const blob = JSON.stringify(enc);
     const signature = await authorization.sign(syncWriteMessage(authorization.grant, expectedRevision, keccak256(stringToHex(blob))));
+    if (!isCurrent()) return { ok: false };
     const response = await fetch(syncEndpoint().requestUrl, { credentials: "omit", redirect: "error", method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "write", address, authorization: authorization.grant, signature, blob, expectedRevision }), signal: AbortSignal.timeout(10_000) });
     if (!response.ok) return { ok: false, stale: response.status === 409 };
     const result = await response.json();
