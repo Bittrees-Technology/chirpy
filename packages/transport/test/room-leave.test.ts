@@ -83,3 +83,18 @@ it('refuses sending and administration if the SDK reports pending removal or can
   group.isPendingRemoval.mockRejectedValue(new Error('check unavailable'));
   await expect(t.assertConversationAccepted(group)).rejects.toThrow();
 });
+
+it('never claims restored incomplete membership is a completed leave and scopes evidence to its client', async () => {
+  const { t, group, client } = setup();
+  group.members.mockResolvedValue([{ inboxId: 'peer' }]);
+  expect(await t.roomLeaveState(group, 'inactive')).toBe('unavailable');
+  t.rememberLeaveRequest(client, 'room');
+  expect(await t.roomLeaveState(group, 'inactive')).toBe('removed');
+  t.client = { ...client };
+  expect(await t.roomLeaveState(group, 'inactive')).toBe('unavailable');
+  t.client = client;
+  group.members.mockResolvedValue([{ inboxId: 'self' }, { inboxId: 'peer' }]);
+  expect(await t.roomLeaveState(group, 'active')).toBe('available');
+  group.members.mockResolvedValue([{ inboxId: 'peer' }]);
+  expect(await t.roomLeaveState(group, 'inactive')).toBe('unavailable');
+});

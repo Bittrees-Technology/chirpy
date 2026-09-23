@@ -257,6 +257,7 @@ export class XmtpTransport implements Transport {
   private historyRequest: Promise<void> | null = null;
   private historyRequestedAt: number | null = null;
   private leaveRequests = new Set<string>();
+  private observedLeaveRequests = new WeakMap<XmtpClient, Set<string>>();
 
   constructor(
     private org: OrgConfig,
@@ -519,16 +520,28 @@ export class XmtpTransport implements Transport {
       (await group.isAdmin?.(myInboxId).catch(() => false) ?? false);
   }
 
+  private rememberLeaveRequest(client: XmtpClient, id: string) {
+    let requests = this.observedLeaveRequests.get(client);
+    if (!requests) { requests = new Set(); this.observedLeaveRequests.set(client, requests); }
+    requests.add(id);
+    while (requests.size > 1000) requests.delete(requests.values().next().value!);
+  }
+
   private async roomLeaveState(conversation: XmtpConversation, deviceAccess: Conversation['deviceAccess']): Promise<NonNullable<Conversation['leaveState']>> {
     try {
       if (!('isPendingRemoval' in conversation)) return 'unavailable';
+      const client = this.requireClient();
       const members = await conversation.members();
-      const self = this.requireInboxId();
-      if (!members.some(member => member.inboxId === self)) return deviceAccess === 'inactive' ? 'removed' : 'unavailable';
+      const self = client.inboxId;
+      if (!self || this.client !== client) return 'unavailable';
+      // A restored installation can have neither active access nor a complete
+      // roster. Only a leave request witnessed by this client supports completion.
+      if (!members.some(member => member.inboxId === self)) return deviceAccess === 'inactive' && this.observedLeaveRequests.get(client)?.has(conversation.id) ? 'removed' : 'unavailable';
       if (deviceAccess !== 'active') return 'unavailable';
       const pending = await conversation.isPendingRemoval();
-      if (pending === true) return 'pending';
+      if (pending === true) { this.rememberLeaveRequest(client, conversation.id); return 'pending'; }
       if (pending !== false) return 'unavailable';
+      if (!this.leaveRequests.has(conversation.id)) this.observedLeaveRequests.get(client)?.delete(conversation.id);
       const owner = await conversation.isSuperAdmin(self);
       if (owner === true) return 'owner';
       if (owner !== false) return 'unavailable';
@@ -1005,6 +1018,7 @@ export class XmtpTransport implements Transport {
       if (await group.consentState() !== sdk.ConsentState.Allowed || this.consentUpdates.has(conversationId)) throw new Error('Accept or unblock this conversation before sending messages or reactions.');
       check();
       await group.requestRemoval();
+      this.rememberLeaveRequest(client, conversationId);
       this.consentRevision++; // Drain any inbox snapshot taken before the leave request.
       check();
     } finally { this.leaveRequests.delete(conversationId); this.invalidateConversation(conversationId); }
