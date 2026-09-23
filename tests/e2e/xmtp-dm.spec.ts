@@ -57,6 +57,24 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await expect(pageA.locator(".list-item", { hasText: "receipt acceptance message" })).toBeVisible();
       await expect.poll(() => pageA.evaluate(() => (window as any).__xmtpReads.targeted)).toBeGreaterThan(0);
       await expect.poll(() => pageB.evaluate(() => (window as any).__xmtpReads.targeted)).toBeGreaterThan(0);
+      await pageA.locator('.nav-item', { hasText: 'Rooms' }).click();
+      await pageA.getByRole('button', { name: '+ Room', exact: true }).click();
+      await pageA.getByLabel('Room name').fill('dev acceptance room');
+      await pageA.getByRole('button', { name: 'Create room', exact: true }).click();
+      await expect(pageA.locator('.thread-title')).toContainText('dev acceptance room', { timeout: 120_000 });
+      await pageA.locator('.room-members summary').click();
+      await pageA.getByLabel('Member wallet', { exact: true }).fill(walletB);
+      await pageA.getByRole('button', { name: 'Add member', exact: true }).click();
+      await expect(pageA.getByRole('status').filter({ hasText: 'Member added.' })).toBeVisible({ timeout: 120_000 });
+      await expect(pageA.getByRole('list', { name: 'Room members' }).getByText(walletB.toLowerCase(), { exact: true })).toBeVisible();
+      await pageA.locator('.room-members summary').click();
+      await sendMessage(pageA, 'group message after adding B');
+      await pageB.locator('.nav-item', { hasText: 'Rooms' }).click();
+      await openConversationWithMessage(pageB, 'group message after adding B');
+      await expect(pageB.locator('.msg-body', { hasText: 'group message after adding B' })).toBeVisible({ timeout: 120_000 });
+      await expect(pageB.getByRole('button', { name: 'Add member', exact: true })).toHaveCount(0);
+      await sendMessage(pageB, 'group reply from B');
+      await expect(pageA.locator('.msg-body', { hasText: 'group reply from B' })).toBeVisible({ timeout: 120_000 });
       // A separate browser context has no XMTP database or application storage.
       // Keep the old installation online; the same wallet alone is not recovery proof.
       const freshContext = await browser.newContext();
@@ -73,6 +91,14 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
         await expect(freshPage.locator('.msg-body', { hasText: 'hi from B' })).toBeVisible({ timeout: 120_000 });
         // The imported accepted consent makes the recovered DM usable without accepting again.
         await expect(freshPage.locator('.composer-input')).toBeVisible();
+        await freshPage.locator('.nav-item', { hasText: 'Rooms' }).click();
+        await openConversationWithMessage(freshPage, 'group reply from B');
+        await expect(freshPage.locator('.msg-body', { hasText: 'group message after adding B' })).toBeVisible({ timeout: 120_000 });
+        await expect(freshPage.locator('.msg-body', { hasText: 'group reply from B' })).toBeVisible({ timeout: 120_000 });
+        await freshPage.locator('.room-members summary').click();
+        await expect(freshPage.getByRole('list', { name: 'Room members' }).getByText(walletB.toLowerCase(), { exact: true })).toBeVisible();
+        await expect(freshPage.getByRole('button', { name: 'Add member', exact: true })).toBeDisabled();
+
       } finally { await freshContext.close(); }
       // Actual production gated-room acceptance still requires the configured gate and reviewed policy.
 

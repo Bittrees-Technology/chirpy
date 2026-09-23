@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures/wallet";
 
-test("synthetic wallet drives mock DM, room, and read-only policy", async ({ page, walletAddress }) => {
+test("synthetic wallet drives mock DM, room, and read-only policy", async ({ page, walletAddress }, testInfo) => {
   await page.goto("/");
 
   await page.locator(".nav-item", { hasText: "Settings" }).click();
@@ -31,6 +31,25 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await page.getByRole("button", { name: "Create room" }).click();
   await expect(page.locator(".thread-title", { hasText: "# e2e-room" })).toBeVisible();
 
+  await page.locator('.room-members summary').click();
+  await page.getByLabel('Member wallet', { exact: true }).fill('0x000000000000000000000000000000000000dEaD');
+  await page.setViewportSize({ width: 390, height: 667 });
+  await page.getByLabel('Member wallet', { exact: true }).focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Add member', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Add member', exact: true })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('room-members-mobile.png') });
+  await page.getByRole('button', { name: 'Add member', exact: true }).click();
+  await expect(page.getByRole('status', { exact: false }).filter({ hasText: 'Demo member added locally.' })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Room members' }).getByText('0x000000000000000000000000000000000000dead', { exact: true })).toBeVisible();
+  await page.getByLabel('Member wallet', { exact: true }).fill('0x000000000000000000000000000000000000dEaD');
+  await page.getByRole('button', { name: 'Add member', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('already a room member');
+  await expect(page.getByLabel('Member wallet', { exact: true })).toHaveValue('0x000000000000000000000000000000000000dEaD');
+  await page.locator('.room-members summary').click();
+  await page.setViewportSize({ width: 1280, height: 720 });
+
   await page.getByPlaceholder("Message #e2e-room").fill("room before freeze");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".msg-body", { hasText: "room before freeze" })).toBeVisible();
@@ -53,6 +72,7 @@ test("synthetic wallet drives mock DM, room, and read-only policy", async ({ pag
   await page.locator(".nav-item", { hasText: "Rooms" }).click();
   await page.locator(".list-item", { hasText: "e2e-room" }).click();
   await expect(page.getByRole("button", { name: "Resume member posting", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add member", exact: true })).toHaveCount(0);
   await expect(page.getByText("Member posting is paused in Chat. Other clients may still send messages.")).toBeVisible();
   await expect(page.getByPlaceholder("Message #e2e-room")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "React with 👍" }).first()).toBeDisabled();
