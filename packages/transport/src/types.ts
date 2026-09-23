@@ -70,6 +70,14 @@ export interface StartRoomInput {
   policy?: Partial<Policy>;
 }
 
+export interface DisplayWalletContext {
+  wallet: string;
+  network: 'dev' | 'production';
+  inboxId: string;
+  wallets: string[];
+  automaticWallet?: string;
+}
+
 export type TransportStatus = "idle" | "enabling" | "ready" | "error";
 
 /** The interface the UI talks to. Backed by MockTransport today, XmtpTransport later. */
@@ -85,6 +93,8 @@ export interface Transport {
   enable?(opts?: { revokeStale?: boolean }): Promise<void>;
   /** Ask an existing online installation for history; resolution only confirms the request. */
   requestHistorySync?(): Promise<void>;
+  getDisplayWalletContext?(): Promise<DisplayWalletContext>;
+  refreshDisplayWallets?(): void;
   listConversations(): Promise<Conversation[]>;
   listMessages(conversationId: string): Promise<ChatMessage[]>;
   listMessagePage(conversationId: string, before?: string): Promise<MessagePage>;

@@ -3,6 +3,7 @@ import { serializeOrg } from "@app/core";
 import { useChat, useIdentity, useOrgs, useSettingsPrefs } from "../state";
 import { Avatar, Button, Field, Modal, Toggle, shortAddr } from "../ui";
 import { download } from "./dialogs";
+import { DisplayWallet } from "./DisplayWallet";
 import { PublicProfile } from "./PublicProfile";
 import { DisplayNameInput } from "./DisplayNameInput";
 import { UpdateCard } from "./UpdateCard";
@@ -177,6 +178,7 @@ export function Settings(
       </section>
 
       <PublicProfile />
+      <DisplayWallet />
 
       <section className="card">
         <h2>{t("settings.account")}</h2>

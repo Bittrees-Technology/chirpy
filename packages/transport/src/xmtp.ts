@@ -1,4 +1,5 @@
-import { InboxIdentities, inboxWallets, messageInboxIds } from "./inboxIdentities.js";
+import { DisplayWalletChoices, type DisplayWalletReader } from './displayWalletChoices.js';
+import { InboxIdentities, inboxWallets, linkedInboxWallets, messageInboxIds } from "./inboxIdentities.js";
 import { INVALID_ROOM_METADATA, MAX_ROOM_DESCRIPTION_LENGTH, ROOM_META_VERSION, parseRoomMeta, type RoomMeta } from "./roomMetadata.js";
 import { readMessagePage } from "./messagePage.js";
 import { mapConversations } from "./mapConversations.js";
@@ -236,6 +237,9 @@ export class XmtpTransport implements Transport {
   private roomMeta = new Map<string, RoomMeta>();
   private readonly peerCacheScope: string;
   private peerByConversation: Map<string, string>;
+  private displayPeerByConversation = new Map<string, string>();
+  private displayRevision = 0;
+  private displayChoices?: DisplayWalletChoices;
   private peerInboxByConversation = new Map<string, string>();
   private senderInboxByMessage = new Map<string, string>();
   private reader: ChainReader | null = null;
@@ -263,6 +267,7 @@ export class XmtpTransport implements Transport {
     private org: OrgConfig,
     private identity: Identity,
     private provider: Eip1193Provider | null,
+    private displayReader?: DisplayWalletReader,
   ) {
     this.myAddress = identity.address.toLowerCase();
     this.peerCacheScope = `${xmtpEnv()}:${this.myAddress}`;
@@ -452,8 +457,37 @@ export class XmtpTransport implements Transport {
     return ids.length;
   }
 
+  async getDisplayWalletContext() {
+    const client = this.requireClient(), sdk = await this.loadSdk(), inboxId = this.requireInboxId();
+    const states = await client.preferences.fetchInboxStates([inboxId]);
+    if (this.client !== client || this.status !== 'ready') throw new Error('Wallet changed. Reload display choices.');
+    const wallets = Array.isArray(states) && states.length === 1 ? linkedInboxWallets(states, inboxId, sdk.IdentifierKind.Ethereum) : undefined;
+    if (!wallets?.includes(this.myAddress)) throw new Error('Current linked wallets could not be verified.');
+    return { wallet: this.myAddress, network: xmtpEnv() as 'dev' | 'production', inboxId, wallets, automaticWallet: inboxWallets(states, [inboxId], sdk.IdentifierKind.Ethereum).get(inboxId) };
+  }
+
+  refreshDisplayWallets() {
+    if (this.client) roomIdentityResolvers.delete(this.client);
+    this.displayRevision++; this.displayChoices = undefined; this.displayPeerByConversation.clear();
+    this.fullRefreshRequired = true; this.consentRevision++; this.changeCallback?.();
+  }
+
   private async resolvePeer(conversation: XmtpConversation) {
     const id = conversation.id;
+    // Public display choices expire and may be withdrawn/unlinked. Never seed
+    // them from, or persist them into, the legacy permanent peer cache.
+    if (this.displayReader) {
+      try {
+        const client = this.requireClient();
+        const peerInboxId = await (conversation as XmtpConversation & { peerInboxId(): Promise<string> }).peerInboxId();
+        this.peerInboxByConversation.set(id, peerInboxId);
+        const selected = (await this.roomAddresses([peerInboxId])).get(peerInboxId);
+        if (this.client !== client || this.status !== 'ready') return undefined;
+        this.displayPeerByConversation.delete(id);
+        if (selected) this.displayPeerByConversation.set(id, selected);
+        return selected;
+      } catch { this.displayPeerByConversation.delete(id); return undefined; }
+    }
     const cached = this.peerByConversation.get(id);
     if (cached) return cached;
 
@@ -483,6 +517,7 @@ export class XmtpTransport implements Transport {
     const client = this.client;
     if (client && inboxId === client.inboxId) return this.myAddress;
     if (roomAddresses) return roomAddresses.get(inboxId) ?? inboxId;
+    if (this.displayReader) return this.peerInboxByConversation.get(conversationId) === inboxId ? this.displayPeerByConversation.get(conversationId) ?? inboxId : inboxId;
     if (this.peerInboxByConversation.get(conversationId) === inboxId) {
       return this.peerByConversation.get(conversationId) ?? inboxId;
     }
@@ -494,14 +529,15 @@ export class XmtpTransport implements Transport {
   }
 
   private async roomAddresses(inboxIds: string[]) {
-    const client = this.requireClient(); const sdk = await this.loadSdk();
+    const client = this.requireClient(), displayRevision = this.displayRevision; const sdk = await this.loadSdk();
     let resolver = roomIdentityResolvers.get(client);
     if (!resolver) {
-      resolver = new InboxIdentities(ids => client.preferences.fetchInboxStates(ids), sdk.IdentifierKind.Ethereum);
+      if (this.displayReader && !this.displayChoices) this.displayChoices = new DisplayWalletChoices(this.displayReader, xmtpEnv());
+      resolver = new InboxIdentities(ids => client.preferences.fetchInboxStates(ids), sdk.IdentifierKind.Ethereum, Date.now, this.displayChoices, xmtpEnv());
       roomIdentityResolvers.set(client, resolver);
     }
     const addresses = await resolver.resolve(inboxIds.filter(id => id !== client.inboxId));
-    if (this.client !== client || this.status !== 'ready') throw new Error("Wallet changed. Reload the conversation.");
+    if (this.client !== client || this.status !== 'ready' || this.displayRevision !== displayRevision) throw new Error("Wallet changed. Reload the conversation.");
     if (client.inboxId) addresses.set(client.inboxId, this.myAddress);
     return addresses;
   }
@@ -773,6 +809,7 @@ export class XmtpTransport implements Transport {
       for (const conversation of updates) next.set(conversation.id, conversation);
       for (const id of next.keys()) if (!this.conversations.has(id)) next.delete(id);
       this.mappedConversations = next;
+      for (const id of this.displayPeerByConversation.keys()) if (!this.conversations.has(id)) this.displayPeerByConversation.delete(id);
       const scoped = [...next.values()].filter((c) => c.kind === "dm" || c.namespace === this.org.namespace ||
         (!c.namespace && this.org.namespace === "personal"));
       let directory: Conversation[] = [];
@@ -839,7 +876,7 @@ export class XmtpTransport implements Transport {
         contentTypes: [sdk.ContentType.Text, sdk.ContentType.Reply],
       }), before);
       const raw = page.messages;
-      const addresses = this.isRoomConversation(sdk, conversation) ? await this.roomAddresses(messageInboxIds(raw)) : undefined;
+      const addresses = this.displayReader || this.isRoomConversation(sdk, conversation) ? await this.roomAddresses(messageInboxIds(raw)) : undefined;
       const consent = await conversation.consentState();
       current();
       if (consent === sdk.ConsentState.Denied) return { messages: [], olderCursor: undefined };

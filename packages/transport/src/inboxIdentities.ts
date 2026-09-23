@@ -1,3 +1,5 @@
+import { selectDisplayWallet, type DisplayNetwork } from '../../core/src/displayWallet.js';
+import type { DisplayWalletChoices } from './displayWalletChoices.js';
 /** Display-only identity resolution. Never use a resolved wallet as message authority. */
 const MAX_IDS = 1000;
 const CAPACITY = 2500;
@@ -35,13 +37,23 @@ export function inboxWallets(states: unknown, requested: readonly string[], ethe
   return found;
 }
 
+/** Only SDK-returned identity states belong here, never profile-service claims. */
+export function linkedInboxWallets(states: unknown, inboxId: string, ethereumKind: unknown): string[] | undefined {
+  if (!Array.isArray(states) || states.length > 1000 || ethereumKind === undefined || ethereumKind === null) return;
+  const matches = states.filter(state => record(state) && state.inboxId === inboxId);
+  if (matches.length !== 1 || !Array.isArray(matches[0].accountIdentifiers) || matches[0].accountIdentifiers.length > 100) return;
+  const wallets = new Set<string>();
+  for (const id of matches[0].accountIdentifiers) if (record(id) && id.identifierKind === ethereumKind && typeof id.identifier === 'string' && ETH.test(id.identifier)) wallets.add(id.identifier.toLowerCase());
+  return [...wallets].sort();
+}
+
 /** Per-client, memory-only cache; bounds batching, parallelism, queued identities and lifetime. */
 export class InboxIdentities {
   private cache = new Map<string, { at: number; address?: string }>();
   private pending = new Map<string, Promise<string | undefined>>();
   private queue: Array<() => void> = [];
   private active = 0;
-  constructor(private fetchStates: (ids: string[]) => Promise<unknown>, private ethereumKind: unknown, private now = Date.now) {}
+  constructor(private fetchStates: (ids: string[]) => Promise<unknown>, private ethereumKind: unknown, private now = Date.now, private choices?: DisplayWalletChoices, private network: DisplayNetwork = 'production') {}
 
   private schedule<T>(task: () => Promise<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -82,7 +94,19 @@ export class InboxIdentities {
     for (let offset = 0; offset < missing.length; offset += BATCH) {
       const batch = missing.slice(offset, offset + BATCH);
       const request = this.schedule(async () => {
-        try { return inboxWallets(await this.fetchStates(batch), batch, this.ethereumKind); }
+        try {
+          const states = await this.fetchStates(batch);
+          const defaults = inboxWallets(states, batch, this.ethereumKind);
+          if (!this.choices || !Array.isArray(states) || states.length > batch.length) return defaults;
+          const links = new Map(batch.map(id => [id, linkedInboxWallets(states, id, this.ethereumKind)]));
+          const choices = await this.choices.resolve([...links.values()].flatMap(wallets => wallets ?? []));
+          for (const [id, wallets] of links) {
+            if (!wallets?.length) continue;
+            const selected = selectDisplayWallet(wallets.map(wallet => choices.get(wallet)), id, this.network, wallets);
+            if (selected) defaults.set(id, selected);
+          }
+          return defaults;
+        }
         catch { return new Map<string, string>(); } // Failed lookup must not hide readable history or reuse expired identity.
       });
       // A slow lookup must not block history. Keep its underlying work in the same

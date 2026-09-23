@@ -1,3 +1,4 @@
+import type { DisplayWalletReader } from './displayWalletChoices.js';
 import type { Identity, OrgConfig } from "@app/core";
 import { MockTransport } from "./mock.js";
 import { XmtpTransport } from "./xmtp.js";
@@ -24,8 +25,9 @@ export function createTransport(
   org: OrgConfig,
   identity: Identity,
   provider?: Eip1193Provider | null,
+  displayReader?: DisplayWalletReader,
 ): Transport {
-  return mode === "xmtp" ? new XmtpTransport(org, identity, provider ?? null) : new MockTransport(org, identity);
+  return mode === "xmtp" ? new XmtpTransport(org, identity, provider ?? null, displayReader) : new MockTransport(org, identity);
 }
 
 export { PUSH_FILE_BYTES, PUSH_MAX_FILES, preparePushFile } from "./pushMedia.js";

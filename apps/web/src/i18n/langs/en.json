@@ -759,5 +759,21 @@
   "ownership.self": "You already own this room.",
   "ownership.unknown": "Unknown ownership action.",
   "ownership.retryHint": "An interrupted request may already have completed. Refresh the room before retrying; appointing an existing owner is safe to repeat.",
-  "ownership.changed": "Room authority changed. Refresh before changing ownership."
+  "ownership.changed": "Room authority changed. Refresh before changing ownership.",
+  "displayWallet.title": "Public display wallet",
+  "displayWallet.enable": "Enable messaging to choose a linked display wallet.",
+  "displayWallet.notice": "Choose the linked wallet and public profile other Chat members see. This does not change message delivery, room roles or your wallet links.",
+  "displayWallet.current": "Current display wallet",
+  "displayWallet.select": "Display wallet",
+  "displayWallet.automatic": "Automatic (recovery wallet when available)",
+  "displayWallet.preview": "Public preview",
+  "displayWallet.nameHint": "To edit this wallet’s public name, connect that wallet and use Public profile above.",
+  "displayWallet.latest": "The latest valid choice from a linked wallet is used across devices. Other members may see updates after their next refresh.",
+  "displayWallet.consent": "Publish this display choice and its inbox association publicly.",
+  "displayWallet.save": "Publish display choice",
+  "displayWallet.reload": "Reload display choice",
+  "displayWallet.working": "Checking linked wallets or waiting for your signature…",
+  "displayWallet.failed": "Display choices could not be loaded. Reload before editing.",
+  "displayWallet.uncertain": "Reload to check the current choice. An interrupted save may already have completed.",
+  "displayWallet.saved": "Choice saved. The current shared choice is shown above."
 }
