@@ -22,7 +22,7 @@ Deployment and rollback requirements:
 - Treat rollback to an API older than this safeguard as unsupported after any wallet upgrades: it exposes a separate stale legacy view. Keeping this API boundary during a frontend rollback protects the upgraded copy; older clients must pause instead of pretending their edits synchronized.
 - Review retained legacy ciphertext against the operator's retention policy. No automatic deletion or retention promise is introduced here.
 
-Validation uses real Redis transactions, including an old-handler legacy write after upgrade, concurrent modification between read and commit, expired upgrades, corrupted storage, permanent-key retention and exact large revisions. Isolated browser tests also exercise synthetic wallet/device signatures and actual encryption across two devices. Production-origin and physical-device acceptance remain separate launch requirements.
+Validation uses real Redis transactions, including an old-handler legacy write after upgrade, concurrent modification between read and commit, expired upgrades, corrupted storage, permanent-key retention and exact large revisions. Isolated browser tests also exercise synthetic wallet/device signatures and actual encryption across two devices. The deployed Chirpy-to-Chat synthetic browser acceptance below covers these settings on the production origins. Physical devices, native clients and actual XMTP history remain separate launch requirements.
 
 ## Client model and encryption
 
@@ -49,3 +49,21 @@ Before remote upgrade, the client can merge the older encrypted local cache and 
 Previously synchronized legacy items are shown separately in Settings with a confirmed delete control. Legacy blocked-address preferences also have a scoped removal control; this does not change XMTP protocol consent. Local contacts/notes and the XMTP Saved Messages conversation are outside this encrypted-settings payload.
 
 Encrypted recovery archive3 preserves all markers, the minimum format and an optional known private-name choice. Restore separately offers legacy-item/deletion-history import, receipt preferences and blocked addresses. Declining an import preserves existing metadata. Before/after/undo journals retain full data, and undo records explicit later intent while keeping sync off and the minimum format intact. Archive1/2 imports remain supported. Unknown or inconsistent records pause processing and preserve the original bytes.
+
+
+## Deployed cross-origin acceptance
+
+The manual production test uses two isolated Chromium contexts against the deployed Chirpy and Chat applications and the real sync API/storage. It does not replace either application or intercept sync responses. Only the two app origins are allowed through the browser network guard; unrelated analytics, RPC and messaging services are blocked. The disposable wallet signs only the exact settings key-derivation message and validated canonical sync grants. It cannot register an XMTP installation, send a message, connect a mailbox, publish a profile or sign a transaction. No member wallet or Brave session is used.
+
+Run only after reviewing the deployed commit and authorizing synthetic production writes:
+
+```sh
+CHAT_PRODUCTION_SYNC_ACCEPTANCE=1 CHAT_EXPECTED_SHA=<full-deployed-commit> \
+  pnpm exec playwright test --config playwright.production-sync.config.ts
+```
+
+The configuration and test both refuse execution without the explicit activation and full commit. This test is outside ordinary CI/browser discovery, has no automatic retry and checks both domains' deployment commits before and after the scenario. It creates a fresh wallet in memory, verifies that it has no existing sync record, and seeds a valid encrypted legacy record containing synthetic data only. The deployed UI then upgrades both browsers and exercises saved-item deletion, unblock markers, an offline receipt-preference edit and cross-origin convergence. Direct negative requests prove the upgraded record rejects an old-format overwrite (426) and a revoked device write (403). Wallet revocation pauses the active browser without changing its saved state or encrypted cloud data.
+
+The cleanup closes only its own isolated contexts and revokes all generated sync grants, even if an assertion fails. Only cleanup honors rate-limit backoff, for at most three waits of up to60seconds; normal acceptance steps fail on rate limits. The wallet address is logged before any write, and the result is logged even when cleanup fails. A failed cleanup fails the test and must be investigated; it is not success. Private keys are never written to disk, and traces/videos are disabled. The production store retains small encrypted synthetic records and authorization epochs according to the existing retention model; cleanup does not delete or bypass the permanent format floor. Logs include the synthetic wallet and the tested commit, never its key.
+
+Verified 23 September 2026 against deployed commit `8950231370991e6bf56719d81572f3e6be75a5d4`: actual cross-origin settings upgrade, deletion/unblock continuity, offline merge, format-floor rejection and revocation passed. This evidence is specific to encrypted settings in desktop Chromium. It does not establish real-wallet handoffs, native/physical-device support, local contacts/notes export, XMTP messages/groups/consent/history, Push room access or overall launch readiness.
