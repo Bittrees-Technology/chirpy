@@ -106,3 +106,10 @@ Outgoing drafts support up to four selected files totaling 1 MiB, including repl
 Formatted preview is an explicit read request bound to the selected folder, message and source version. Mail returns at most 16 KiB UTF-8/24 KiB JSON-escaped HTML plus an explicit shortened flag. Chat uses pinned DOMPurify 3.4.15 with a formatting-only tag allowlist and no email-supplied attributes, then renders the result only in a sandboxed srcdoc frame with no sandbox permissions, no referrer, and default-src none CSP. Email CSS, remote resources, links, forms, scripts, SVG/MathML and custom elements are removed. Plain text remains the default; unsupported sanitization fails closed. No claim of original-layout parity, remote image loading or full-message rendering is made.
 
 Chat now explicitly requests Mail transfer version 2, deployed in Mail v54 and its matching Acer connector before the client opt-in. Legacy clients retain their original 256 KiB file and 512 KiB message contract. Current browser fixtures exercise a complete 1 MiB send/download; live 1 MiB acceptance remains separate from the previously approved 256 KiB round trip.
+
+
+### Formatted preview browser acceptance
+
+Isolated wallet/browser fixtures exercise the real formatting sanitizer and sandboxed `srcdoc` renderer in both ordinary web mode and with the native CSP applied. They verify readable basic formatting, an opaque frame that cannot read its parent, no active elements/attributes or external resource requests, plain-text return, shortened/missing-body notices, source identity/version/size rejection, and late responses after cancellation or wallet changes. The native-policy CI job includes these scenarios. No sanitizer bypass or CSP relaxation is used.
+
+This is browser-policy evidence with synthetic content. It does not establish packaged native mailbox availability, contract-wallet handoff, physical-device behavior or live rich-mail acceptance; those remain separate launch checks.
