@@ -1,5 +1,5 @@
 import { upgradeSyncPayloadV1 } from '../../apps/web/src/versionedSync';
-import {test,expect} from './fixtures/wallet';
+import {dismissAnalyticsConsent,test,expect} from './fixtures/wallet';
 import {webcrypto} from 'node:crypto';
 import {stringToHex,hexToBytes} from 'viem';
 
@@ -14,7 +14,7 @@ test('a newer encrypted snapshot pauses sync, survives local edits and reload, a
   if(request.expectedRevision!==record.revision)return route.fulfill({status:409,json:{stale:true}});
   record={blob:request.blob,revision:record.revision+1};return route.fulfill({json:{ok:true,revision:record.revision,minPayloadVersion:2}});
  });
- await page.goto('/');await page.getByRole('button',{name:'Decline',exact:true}).click();
+ await page.goto('/');await dismissAnalyticsConsent(page);
  await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();
  await page.getByRole('button',{name:'Connect wallet',exact:true}).click();
  const message=`Chirpy: enable encrypted sync\nAddress: ${walletAddress}\nThis is a gas-free signature used only to derive your sync key.`;

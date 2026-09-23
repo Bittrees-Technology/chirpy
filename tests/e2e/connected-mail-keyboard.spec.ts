@@ -1,4 +1,4 @@
-import {test,expect} from './fixtures/wallet';
+import {dismissAnalyticsConsent,test,expect} from './fixtures/wallet';
 
 for (const view of ['messages','conversations'] as const) {
  test(`email ${view} support keyboard reading and composing without delayed focus theft`,async({page,walletAddress})=>{
@@ -18,7 +18,7 @@ for (const view of ['messages','conversations'] as const) {
    if(action==='message')return route.fulfill({json:{message:{...summary,text:'Synthetic keyboard fixture.',sourceVersion:version,replyTo:summary.from,threadedReply:true}}}).catch(()=>{});
    return route.fulfill({status:400,json:{error:'Unexpected fixture action'}});
   });
-  await page.goto('/');await page.getByRole('button',{name:'Decline',exact:true}).click();
+  await page.goto('/');await dismissAnalyticsConsent(page);
   const navigation=page.getByRole('navigation',{name:'Primary'});
   await navigation.getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();await navigation.getByRole('button',{name:/Email/}).click();
   const newEmail=page.getByRole('button',{name:'New email',exact:true});

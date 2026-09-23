@@ -1,4 +1,4 @@
-import {test,expect} from './fixtures/wallet';
+import {dismissAnalyticsConsent,test,expect} from './fixtures/wallet';
 
 test('connected email sends the selected binary file once and guards uncertain delivery',async({page,walletAddress},testInfo)=>{
  const wallet=walletAddress.toLowerCase();const sends:any[]=[];let uncertain=false;
@@ -13,7 +13,7 @@ test('connected email sends the selected binary file once and guards uncertain d
   if(body.action==='send'){sends.push(body.input);return route.fulfill({status:uncertain?503:200,json:uncertain?{error:'Uncertain'}:{ok:true}});}
   return route.fulfill({status:400,json:{error:'Unexpected fixture action'}});
  });
- await page.goto('/');await page.getByRole('button',{name:'Decline',exact:true}).click();
+ await page.goto('/');await dismissAnalyticsConsent(page);
  await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();
  await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Email/}).click();await page.getByRole('button',{name:'New email',exact:true}).click();
  await page.getByLabel('To',{exact:true}).fill('fixture@bittrees.org');await page.getByLabel('Subject',{exact:true}).fill('Synthetic files');await page.getByLabel('Message',{exact:true}).fill('Synthetic attachment acceptance.');

@@ -1,4 +1,4 @@
-import {test,expect,injectSyntheticWallet} from './fixtures/wallet';
+import {dismissAnalyticsConsent,test,expect,injectSyntheticWallet} from './fixtures/wallet';
 import {generatePrivateKey} from 'viem/accounts';
 import {readFile} from 'node:fs/promises';
 
@@ -10,7 +10,7 @@ test('encrypted email request backup restores on a fresh device without sending 
   let posts=0;
   for(const context of [source,target])await context.route('**/api/mail',route=>{if(route.request().method()==='POST')posts++;return route.fulfill({status:503,json:{enabled:false}});});
   const from=await source.newPage(),to=await target.newPage();
-  for(const page of [from,to]){await page.goto('/');await page.getByRole('button',{name:'Decline',exact:true}).click();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();}
+  for(const page of [from,to]){await page.goto('/');await dismissAnalyticsConsent(page);await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();}
   await from.evaluate(({wallet,a,b})=>localStorage.setItem(`chat:wallet-email-receipts:v1:${encodeURIComponent(new URL('/api/mail',location.href).href)}:${wallet}`,JSON.stringify({version:1,active:a,receipts:[{id:a,digest:'f'.repeat(64),createdAt:Date.now()},{id:b,digest:null,createdAt:null}]})),{wallet,a,b});
   await from.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Channels/}).click();await expect(from.getByText('Forwarding is not activated on this service yet.')).toBeVisible();
   await from.getByText('Back up or restore email request IDs',{exact:true}).click();await from.getByLabel('Email recovery passphrase',{exact:true}).fill(password);await from.getByLabel('Confirm recovery passphrase',{exact:true}).fill(password);
