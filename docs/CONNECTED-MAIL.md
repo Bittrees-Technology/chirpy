@@ -12,8 +12,7 @@ Use `CHAT_CONNECTED_MAIL_TEST_WALLETS` for a comma-separated acceptance allowlis
 first browser connection is restricted to `https://chat.bittrees.org`; native and
 old-origin cookie handoffs need separate acceptance. `MAINNET_RPC_URL` enables
 contract-wallet signature verification, with no retries and a bounded timeout.
-The source Mail flag `MAIL_CHAT_ENABLED` must remain disabled until the full
-callback, mailbox UI and consenting end-to-end tests are ready.
+The source Mail flag `MAIL_CHAT_ENABLED` is a separate deployment control. Enable it only for an explicitly configured acceptance rollout after callback and mailbox tests; a successful pilot does not authorize unrestricted launch.
 
 ## Browser contract
 
@@ -21,8 +20,7 @@ All routes are under `/api/mail/:action`, separate from the existing `/api/mail`
 forwarding endpoint. Every POST requires Chat's exact Origin except the callback,
 which requires Mail's exact Origin. No cross-origin API or browser bearer flow is
 exposed. Host-only, Secure, HttpOnly, SameSite=Strict cookies identify this browser;
-raw session tokens never appear in JSON. Credentials expire after one hour and
-cannot be refreshed implicitly. Account switching must disconnect the old session.
+raw session tokens never appear in JSON. The preliminary wallet-authenticated session expires after one hour. Explicit Mail consent then sets the connection duration: 30 minutes, one hour, one day, seven days, 30 days (default), or Until revoked. Finite grants cannot exceed 30 days; persistent grants use `expiresAt: null`. Existing grants are not upgraded automatically. Account switching must disconnect the old session.
 
 1. POST `challenge` with `{wallet}` (normalized Ethereum address). Sign the returned
    exact SIWE message with that wallet; this is not a transaction.
@@ -44,7 +42,7 @@ cannot be refreshed implicitly. Account switching must disconnect the old sessio
    that Chat access ended but Mail revocation should be retried from Mail's screen.
 
 One-use challenges and sessions are stored under hashed opaque IDs in a separate
-Redis namespace with expiry. All authorization records are encrypted using their
+Redis namespace. Challenges and finite sessions expire; only explicitly persistent grants have no server-session TTL. Persistent browser cookies have a 400-day maximum renewed on authenticated activity; browser storage policy can still require reconnection. Source revocation and current authority remain enforced on every operation, so Until revoked is not a bypass of mailbox or factor checks. All authorization records are encrypted using their
 storage key as authenticated associated data. Atomic compare-and-swap prevents
 stale callbacks from reviving disconnected sessions. Expired and failed exchanges
 must start fresh; never replay an uncertain code exchange. Operation responses are
@@ -58,13 +56,9 @@ idempotency ledger preserves the exact ID and rejects conflicting/uncertain reus
 
 ## Remaining acceptance
 
-The server relay and Chat inbox/read/compose/reply controls are implemented.
-Production access remains restricted to explicitly configured acceptance wallets.
-The consent screen and automated tests alone do not complete email integration. Verify the server-to-Mail
-edge path, runtime key/configuration, browser cookie/callback behavior, consenting
-live read/send/receive/revoke, contract wallet and native handoffs. Verified
-wallet↔email routing, lifecycle/retention policy, monitoring and release gates remain
-separate tracked requirements in the local execution plan.
+The server relay, inbox/folders, conversations, read/compose/reply, bounded attachment sending/downloads and isolated formatted previews are implemented. The approved self-addressed pilot verified consent/callback, read/send/receive/reply, source revocation, read-only access, active Until-revoked access and a byte-exact 256 KiB attachment round trip. Complete-file downloads were accepted on the deployed Chat/Mail/Acer path. These tests cover the approved account and browser, not arbitrary accounts or devices.
+
+Production access remains restricted to configured acceptance wallets. Contract-wallet and native handoffs, account-change/device behavior, natural expiry timing, live multi-page/rich-mail acceptance and larger files remain open. Verified wallet↔email forwarding, operator retention/recovery, monitoring and combined release acceptance are separate requirements; see [REMAINING-WORK.md](REMAINING-WORK.md).
 
 ## Chat Email view
 
@@ -81,7 +75,7 @@ rejects changed originals, and derives bounded In-Reply-To and References header
 from the original rather than trusting client-supplied headers. Missing or unsupported
 message identifiers show an unthreaded-reply warning. Multiple reply recipients are
 not expanded automatically. New email clears any previous reply context.
-The Conversations view groups source reference chains across folders and keeps physical copies visible. The selected folder filters which conversations appear; related messages in other folders are included, with Trash excluded unless selected. Conversation members are paged newest first, and opening or replying uses the actual source folder. Changed membership invalidates old member cursors and clears a stale open conversation on refresh. No subject-only merging or wallet-identity verification is implied. Individual emails remain available. Source limits (100 folders, 10,000 messages, 8 MiB aggregate headers) return explicit errors instead of partial threads. Attachments and HTML rendering are not implemented.
+The Conversations view groups source reference chains across folders and keeps physical copies visible. The selected folder filters which conversations appear; related messages in other folders are included, with Trash excluded unless selected. Conversation members are paged newest first, and opening or replying uses the actual source folder. Changed membership invalidates old member cursors and clears a stale open conversation on refresh. No subject-only merging or wallet-identity verification is implied. Individual emails remain available. Source limits (100 folders, 10,000 messages, 8 MiB aggregate headers) return explicit errors instead of partial threads. Attachment controls and a restricted formatted preview are described below.
 Older/newer page navigation uses source-bound cursors; Refresh returns to newest. Polling pauses on older pages. Moved or removed page anchors require Refresh; folders above 10,000 entries return an explicit limit rather than hiding older mail.
 The reader explicitly labels its bounded plain-text preview and links to Mail.
 
@@ -103,6 +97,8 @@ to the source connector idempotency ledger. This is not cross-device draft or se
 coordination. Live integrated acceptance remains required before launch/forwarding.
 
 
-Attachment downloads use the existing explicit read grant. Chat requests an attachment index only when the user selects Show attachments, then fetches a selected file in 12 KiB chunks bound to the actual folder, message ID, source version and MIME part. Every chunk passes current source authority checks; late results are discarded after expiry, disconnect, wallet change or cancellation. The client verifies stable metadata and a whole-file SHA-256 before creating an explicit application/octet-stream download. No content is auto-opened or fetched remotely. Limits are 20 attachments, 256 KiB per downloadable file and 512 KiB per source message; oversized or attached multipart messages remain explicitly unsupported. HTML previews and outgoing attachments remain unfinished.
+Attachment downloads use the explicit read grant. Show attachments requests a bounded index; selecting a file requests its complete contents once, bound to the folder, message ID, source version and MIME part. Larger encrypted queue results use private object storage. Current source authority is rechecked, and Chat verifies metadata, decoded byte count and whole-file SHA-256 before an explicit application/octet-stream download. Expiry, disconnect, wallet change or cancellation discards late results. The older 12 KiB chunk API remains for compatible clients. No content opens or fetches remote resources automatically. Limits remain 20 indexed attachments, 256 KiB per download and 512 KiB per source message; unsupported multipart attachments and oversized messages return explicit errors.
 
-Formatted preview is an explicit read request bound to the selected folder, message and source version. Mail returns at most16KiBUTF8/24KiBJSON-escaped HTML plus an explicit shortened flag. Chat uses pinned DOMPurify3.4.15 with a formatting-only tag allowlist and no email-supplied attributes, then renders the result only in a sandboxed srcdoc frame with no sandbox permissions, no referrer, and default-src none CSP. Email CSS, remote resources, links, forms, scripts, SVG/MathML and custom elements are removed. Plain text remains the default; unsupported sanitization fails closed. No claim of original-layout parity, remote image loading, outgoing attachments or full-message rendering is made.
+Outgoing drafts support up to four selected files totaling 256 KiB, including replies. The draft/request-ID snapshot, independent relay/source/connector validation and source receipt bind filenames and bytes to the intended send. Files stay in memory and uncertain sends require Check Sent; no automatic resend is added. See [connected-mail-attachments.md](connected-mail-attachments.md) for deployment order and the complete-file contract.
+
+Formatted preview is an explicit read request bound to the selected folder, message and source version. Mail returns at most 16 KiB UTF-8/24 KiB JSON-escaped HTML plus an explicit shortened flag. Chat uses pinned DOMPurify 3.4.15 with a formatting-only tag allowlist and no email-supplied attributes, then renders the result only in a sandboxed srcdoc frame with no sandbox permissions, no referrer, and default-src none CSP. Email CSS, remote resources, links, forms, scripts, SVG/MathML and custom elements are removed. Plain text remains the default; unsupported sanitization fails closed. No claim of original-layout parity, remote image loading or full-message rendering is made.
