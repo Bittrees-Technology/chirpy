@@ -1,5 +1,6 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "Wallet changed. Reload the conversation.": "status.historyWalletChanged",
   "You are already a member of this room.": "roomMembers.self",
   "Connect a wallet to add a room member.": "roomMembers.connect",
   "A member addition is already in progress.": "roomMembers.busy",

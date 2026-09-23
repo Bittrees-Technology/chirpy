@@ -711,5 +711,6 @@
   "roomMembers.changed": "Wallet or room changed. Check members before retrying.",
   "roomMembers.gated": "Gated rooms require admission through the gate service.",
   "roomMembers.duplicate": "That wallet is already a room member.",
-  "roomMembers.unavailable": "Room member additions are unavailable."
+  "roomMembers.unavailable": "Room member additions are unavailable.",
+  "status.historyWalletChanged": "Wallet changed. Reload the conversation."
 }

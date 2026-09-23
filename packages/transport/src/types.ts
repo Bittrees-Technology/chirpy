@@ -3,7 +3,7 @@ import type { Gate, Identity, Policy } from "@app/core";
 export interface ChatMessage {
   id: string;
   conversationId: string;
-  sender: string;          // address
+  sender: string;          // resolved wallet, or original protocol identity when unresolved
   body: string;
   sentAt: number;          // epoch ms
   /** Bounded inline Push content; download only, never interpreted as HTML. */
@@ -13,7 +13,7 @@ export interface ChatMessage {
   pushParts?: PushMessagePart[];
   /** A native Push reaction event, retained in linked history for pagination. */
   pushReaction?: import('./pushReactions.js').PushReaction;
-  reactions?: Record<string, string[]>; // emoji -> addresses
+  reactions?: Record<string, string[]>; // emoji -> display identities; transport retains original authority
   replyTo?: string;        // message id
   replyPreview?: string;   // bounded text excerpt, including parents outside this page
 }
