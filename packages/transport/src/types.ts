@@ -6,6 +6,9 @@ export interface ChatMessage {
   sender: string;          // address
   body: string;
   sentAt: number;          // epoch ms
+  /** Bounded inline Push content; download only, never interpreted as HTML. */
+  pushAttachment?: import('./pushMedia.js').PushAttachment;
+  pushMediaUrl?: string;
   reactions?: Record<string, string[]>; // emoji -> addresses
   replyTo?: string;        // message id
   replyPreview?: string;   // bounded text excerpt, including parents outside this page

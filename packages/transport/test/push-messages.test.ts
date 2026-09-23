@@ -43,7 +43,7 @@ describe('Push history boundary', () => {
     }
   });
   it('preserves visible placeholders for unsupported, undecryptable and oversized messages', () => {
-    expect(readPushHistory([{ ...message(first, null), messageType: 'Image' }], conversation).messages[0].body).toContain('not supported');
+    expect(readPushHistory([{ ...message(first, null), messageType: 'Image' }], conversation).messages[0].body).toContain('invalid');
     expect(readPushHistory([{ ...message(first, null), messageContent: 'Unable to Decrypt Message' }], conversation).messages[0].body).toContain('could not be decrypted');
     expect(readPushHistory([message(first, null, 'x'.repeat(16_001))], conversation).messages[0].body).toContain('too large');
   });
