@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { XmtpTransport } from '../src/xmtp';
 import { PERSONAL_ORG, type Policy, type Gate } from '@app/core';
+vi.mock('@xmtp/browser-sdk', () => ({ ConsentState: { Unknown: 0, Allowed: 1, Denied: 2 } }));
 const make = () => new XmtpTransport(PERSONAL_ORG, { address: '0x0000000000000000000000000000000000000001' }, null) as any;
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 it('shares concurrent inbox refreshes and permits a later retry after failure', async () => {
@@ -50,7 +51,7 @@ it('preserves a joined room posting policy while applying the trusted directory 
   expect(rooms.find((room: any) => room.id === 'joined')).toMatchObject({ policy: paused, gate: directoryGate, title: 'Joined' });
   expect(t.roomMeta.get('discoverable')).toMatchObject({ policy: directoryPolicy, gate: directoryGate });
   t.assertConversationAccepted = vi.fn(); t.assertGateAllows = vi.fn();
-  t.isCurrentUserAdmin = vi.fn().mockResolvedValue(false); t.loadSdk = vi.fn().mockResolvedValue({});
+  t.isCurrentUserAdmin = vi.fn().mockResolvedValue(false); t.loadSdk = vi.fn().mockResolvedValue({ ConsentState: { Unknown: 0, Allowed: 1, Denied: 2 } });
   await expect(t.send('joined', 'Should remain paused')).rejects.toThrow('read-only');
   await expect(t.react('joined', 'message', '👍')).rejects.toThrow('read-only');
 });
@@ -67,7 +68,7 @@ it('keeps the existing posting restriction while refreshed room metadata is pend
   t.mapConversation = vi.fn(() => new Promise(resolve => { finish = resolve; }));
   t.publishedRooms = vi.fn().mockResolvedValue([]);
   t.assertConversationAccepted = vi.fn(); t.assertGateAllows = vi.fn();
-  t.isCurrentUserAdmin = vi.fn().mockResolvedValue(false); t.loadSdk = vi.fn().mockResolvedValue({});
+  t.isCurrentUserAdmin = vi.fn().mockResolvedValue(false); t.loadSdk = vi.fn().mockResolvedValue({ ConsentState: { Unknown: 0, Allowed: 1, Denied: 2 } });
   const refresh = t.listConversations();
   await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
   try {
@@ -87,7 +88,7 @@ it('keeps the existing posting restriction while refreshed room metadata is pend
 
 async function pollingFixture() {
   vi.useFakeTimers();
-  const t = make(); t.status = 'ready'; t.streamHealthy = true; t.streamRunning = true;
+  const t = make(); t.status = 'ready'; t.streamHealthy = true; t.streamRunning = true; t.startConsentStream = vi.fn();
   const api = { sync: vi.fn(), syncAll: vi.fn(), list: vi.fn().mockResolvedValue([]) };
   t.client = { conversations: api }; t.publishedRooms = vi.fn().mockResolvedValue([]);
   await t.listConversations();

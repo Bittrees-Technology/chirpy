@@ -17,10 +17,10 @@ function source() {
       if (waiting) { const resolve = waiting; waiting = undefined; resolve({ value, done: false }); }
       else queue.push(value);
     },
-    return() { closed = true; waiting?.({ value: undefined, done: true }); waiting = undefined; },
+    async return() { closed = true; waiting?.({ value: undefined, done: true }); waiting = undefined; return { value: undefined, done: true }; },
   };
 }
-async function setup(count = 3) {
+async function setup(count = 3, createConsent?: () => Promise<any>) {
   const t = new XmtpTransport(PERSONAL_ORG, { address: '0x0000000000000000000000000000000000000001' }, null) as any;
   const records: any[] = Array.from({ length: count }, (_, i) => ({ id: String(i), version: 0, consent: 1, metadata: { conversationType: 'dm' } }));
   const stream = source();
@@ -28,7 +28,8 @@ async function setup(count = 3) {
   const api = { sync: vi.fn(), syncAll: vi.fn(), list: vi.fn(async () => [...records]),
     getConversationById: vi.fn(async (id: string) => records.find(record => record.id === id)),
     streamAllMessages: vi.fn(async (value: any) => { options = value; return stream; }) };
-  t.client = { conversations: api, inboxId: 'self' }; t.status = 'ready';
+  const consentStream = source();
+  t.client = { conversations: api, inboxId: 'self', preferences: { streamConsent: vi.fn(createConsent ?? (async () => consentStream)) } }; t.status = 'ready';
   t.sdk = { ConversationType: { Group: 'group' }, ConsentState: { Allowed: 1, Denied: 2 } };
   const summarize = (record: any) => ({ id: record.id, kind: 'dm', title: `revision ${record.version}`, peers: [], unread: 0, blocked: record.consent === 2 });
   t.mapConversation = vi.fn(async (record: any) => summarize(record));
@@ -38,7 +39,7 @@ async function setup(count = 3) {
   await vi.waitFor(() => expect(api.streamAllMessages).toHaveBeenCalledOnce());
   await t.listConversations();
   t.mapConversation.mockClear(); changed.mockClear();
-  return { t, records, stream, api, changed, summarize, options: () => options,
+  return { t, records, stream, consentStream, api, changed, summarize, options: () => options,
     close: async () => { stop(); await vi.waitFor(() => expect(t.streamRunning).toBe(false)); } };
 }
 
@@ -263,7 +264,7 @@ it('keeps new invalidations arriving during targeted lookup for the next refresh
 it('applies fresh room restrictions and namespace changes through the real room mapper', async () => {
   const f = await setup();
   try {
-    const room = { id: 'room', name: 'Original title', metadata: { conversationType: 'group' },
+    const room = { consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Original title', metadata: { conversationType: 'group' },
       description: JSON.stringify({ chirpyRoom: 1, namespace: 'personal', policy: { mode: 'active' } }),
       lastMessage: async () => undefined, members: async () => [], countMessages: async () => 0n,
       isAdmin: async () => false, isSuperAdmin: async () => false, sendText: vi.fn() };
@@ -308,5 +309,91 @@ it('does not add an unlisted or duplicate DM through a direct lookup of an unkno
     expect(result.map((c: any) => c.id)).toEqual(['0', '1', '2']);
     expect(f.api.getConversationById).not.toHaveBeenCalled(); expect(f.api.list).toHaveBeenCalledTimes(2);
     expect(f.t.conversations.has('unlisted-duplicate')).toBe(false);
+  } finally { await f.close(); }
+});
+
+
+it('refreshes SDK consent changes without a new message and drains the consent stream on teardown', async () => {
+  const f = await setup();
+  f.records[0].consent = 2; f.consentStream.push([{ entity: '0', state: 2 }]);
+  await vi.waitFor(() => expect(f.changed).toHaveBeenCalled());
+  expect((await f.t.listConversations()).find(c => c.id === '0').blocked).toBe(true);
+  f.records[0].consent = 1; f.consentStream.push([{ entity: '0', state: 1 }]);
+  await vi.waitFor(() => expect(f.t.fullRefreshRequired).toBe(true));
+  expect((await f.t.listConversations()).find(c => c.id === '0').blocked).toBe(false);
+  await f.close(); expect(f.t.consentTask).toBeNull();
+  const calls = f.changed.mock.calls.length; f.consentStream.push([{ entity: '0', state: 2 }]);
+  await Promise.resolve(); expect(f.changed).toHaveBeenCalledTimes(calls);
+});
+
+it('does not publish stale consent held by a slow directory read after another device blocks', async () => {
+  const f = await setup(); let release!: (value: unknown[]) => void;
+  try {
+    f.t.fullRefreshRequired = true;
+    f.t.publishedRooms.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const refresh = f.t.listConversations();
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    f.records[0].consent = 2;
+    f.consentStream.push([{ entity: '0', state: 2 }]);
+    await vi.waitFor(() => expect(f.t.fullRefreshRequired).toBe(true));
+    release([]);
+    expect((await refresh).find(c => c.id === '0').blocked).toBe(true);
+  } finally { release?.([]); await f.close(); }
+});
+
+
+it('closes a consent stream that finishes opening after unsubscribe without publishing its result', async () => {
+  let release!: (stream: any) => void;
+  const f = await setup(3, () => new Promise(resolve => { release = resolve; }));
+  const late = source(); const close = vi.spyOn(late, 'return');
+  await f.close(); f.changed.mockClear();
+  release(late);
+  await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+  late.push([{ entity: '0', state: 2 }]);
+  await Promise.resolve();
+  expect(f.changed).not.toHaveBeenCalled();
+  expect(f.t.consentTask).toBeNull();
+  expect(f.t.consentStreamHealthy).toBe(false);
+});
+
+it('replaces a previous client consent stream and ignores late callbacks from that session', async () => {
+  const f = await setup();
+  const previousOptions = f.t.client.preferences.streamConsent.mock.calls[0][0];
+  const closePrevious = vi.spyOn(f.consentStream, 'return');
+  const next = source();
+  const api = vi.fn(async () => next);
+  f.t.client = { ...f.t.client, preferences: { streamConsent: api } };
+  try {
+    f.t.startConsentStream(f.changed);
+    await vi.waitFor(() => expect(api).toHaveBeenCalledOnce());
+    expect(closePrevious).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(f.t.consentStreamHealthy).toBe(true));
+    f.changed.mockClear(); f.t.fullRefreshRequired = false;
+    previousOptions.onError(); previousOptions.onRestart();
+    f.consentStream.push([{ entity: '0', state: 2 }]);
+    await Promise.resolve();
+    expect(f.changed).not.toHaveBeenCalled();
+    expect(f.t.fullRefreshRequired).toBe(false);
+    expect(f.t.consentStreamHealthy).toBe(true);
+    next.push([{ entity: '0', state: 2 }]);
+    await vi.waitFor(() => expect(f.changed).toHaveBeenCalledOnce());
+  } finally { await f.close(); }
+});
+
+it('reopens a terminated consent stream while keeping fallback reconciliation active', async () => {
+  const f = await setup();
+  const next = source();
+  const api = f.t.client.preferences.streamConsent;
+  api.mockResolvedValueOnce(next);
+  try {
+    await f.consentStream.return();
+    await vi.waitFor(() => expect(f.t.consentStreamHealthy).toBe(false));
+    expect(f.t.fullRefreshRequired).toBe(true);
+    f.t.startConsentStream(f.changed);
+    expect(api).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(api).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await vi.waitFor(() => expect(f.t.consentStreamHealthy).toBe(true));
+    f.changed.mockClear(); next.push([{ entity: '0', state: 2 }]);
+    await vi.waitFor(() => expect(f.changed).toHaveBeenCalledOnce());
   } finally { await f.close(); }
 });

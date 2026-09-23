@@ -37,7 +37,7 @@ it.each(['{"chirpyRoom":1,', 'x'.repeat(65537), '😀'.repeat(20000), null, {}])
 
 it('blocks sends, reactions and policy changes for malformed metadata even for an administrator', async () => {
   const t = new XmtpTransport(PERSONAL_ORG, { address: '0x0000000000000000000000000000000000000001' }, null) as any;
-  t.sdk = { ConversationType: { Group: 'group' } }; t.client = { inboxId: 'self' }; t.status = 'ready';
+  t.sdk = { ConversationType: { Group: 'group' }, ConsentState: { Unknown: 0, Allowed: 1, Denied: 2 } }; t.client = { inboxId: 'self' }; t.status = 'ready';
   const group = { id: 'room', name: 'Room', description: serialize({ gate: 'broken' }),
     isAdmin: vi.fn().mockResolvedValue(true), isSuperAdmin: vi.fn().mockResolvedValue(true),
     sendText: vi.fn(), sendReaction: vi.fn(), updateDescription: vi.fn() };
@@ -53,7 +53,7 @@ it('blocks sends, reactions and policy changes for malformed metadata even for a
 it('keeps invalid metadata visible as blocked when a directory supplies the missing namespace', async () => {
   const t = new XmtpTransport({ ...PERSONAL_ORG, namespace: 'org' }, { address: '0x0000000000000000000000000000000000000001' }, null) as any;
   const group = { id: 'room', name: 'Room', description: serialize({ namespace: {} }), isAdmin: async () => true };
-  t.sdk = { ConversationType: { Group: 'group' } }; t.status = 'ready';
+  t.sdk = { ConversationType: { Group: 'group' }, ConsentState: { Unknown: 0, Allowed: 1, Denied: 2 } }; t.status = 'ready';
   t.client = { inboxId: 'self', conversations: { sync: vi.fn(), syncAll: vi.fn(), list: async () => [group] } };
   t.addressesForMembers = async () => []; t.unreadCount = async () => 0;
   const directoryRoom = { id: 'room', kind: 'room', namespace: 'org', title: 'Published', peers: [], unread: 0, gate: { combine: 'all', rules: [{ kind: 'ens' }] }, policy };

@@ -52,3 +52,15 @@ it('does not borrow receipt times from self or an unrelated inbox', async () => 
   conversation.lastReadTimes.mockRejectedValue(new Error('offline'));
   expect(await transport.peerReceiptTime(conversation)).toBeUndefined();
 });
+
+
+it.each([0, 1, 2])('never classifies an unresolved DM peer as Saved Messages (consent %s)', async (state) => {
+  const { transport, conversation } = setup();
+  transport.resolvePeer = vi.fn().mockResolvedValue(undefined);
+  transport.unreadCount = vi.fn().mockResolvedValue(0);
+  Object.assign(transport.sdk.ConsentState, { Unknown: 0, Denied: 2 });
+  conversation.consentState.mockResolvedValue(state);
+  conversation.messages.mockResolvedValue([]);
+  const result = await transport.mapConversation(conversation);
+  expect(result).toMatchObject({ title: 'Direct message', peers: [], pending: state === 0, blocked: state === 2 });
+});
