@@ -18,7 +18,7 @@ it('shares concurrent inbox refreshes and permits a later retry after failure', 
   sync.mockResolvedValue(undefined); await t.listConversations();
   expect(sync).toHaveBeenCalledTimes(3);
 });
-it('polling notifies once without fetching twice and pauses while hidden', async () => {
+it('polling delegates refresh in hidden tabs and stops when messaging is disabled', async () => {
   vi.useFakeTimers(); const t = make(); t.status = 'ready';
   t.listConversations = vi.fn(); t.runStream = vi.fn();
   const cb = vi.fn(); const doc = { visibilityState: 'visible' };
@@ -28,7 +28,11 @@ it('polling notifies once without fetching twice and pauses while hidden', async
   expect(t.listConversations).not.toHaveBeenCalled();
   expect(t.fullRefreshRequired).toBe(true); t.fullRefreshRequired = false;
   doc.visibilityState = 'hidden'; await vi.advanceTimersByTimeAsync(30000);
-  expect(cb).toHaveBeenCalledTimes(1); expect(t.fullRefreshRequired).toBe(false); clearInterval(t.pollTimer);
+  expect(cb).toHaveBeenCalledTimes(4); expect(t.fullRefreshRequired).toBe(true);
+  expect(t.listConversations).not.toHaveBeenCalled();
+  t.status = 'idle'; t.fullRefreshRequired = false;
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(cb).toHaveBeenCalledTimes(4); expect(t.fullRefreshRequired).toBe(false); clearInterval(t.pollTimer);
 });
 
 it('preserves a joined room posting policy while applying the trusted directory gate', async () => {

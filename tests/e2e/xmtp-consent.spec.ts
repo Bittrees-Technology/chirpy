@@ -79,6 +79,10 @@ test.describe('XMTP consent ordering @xmtp', () => {
       await expect(first.locator('.composer-input')).toHaveCount(0);
       console.info('Consent acceptance: creator block/unblock/reblock passed.');
 
+      // Model the old installation remaining open in a background tab. This is
+      // explicit because headless contexts do not reliably change visibility.
+      await first.evaluate(() => Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }));
+
       // Recovery may supply a default for a creator's conversations. That default
       // must not outrank this explicit block, irrespective of archive/welcome order.
       await enable(fresh, address);
@@ -111,6 +115,7 @@ test.describe('XMTP consent ordering @xmtp', () => {
       await expect(fresh.locator('.list-item', { hasText: 'consent creator recovery trigger' })).toBeVisible({ timeout: 120_000 });
       await expect(fresh.getByRole('button', { name: 'Block conversation', exact: true })).toBeVisible();
       await first.bringToFront();
+      await first.evaluate(() => { delete (document as any).visibilityState; });
       await first.getByRole('button', { name: 'Inbox', exact: true }).click();
       await expect(first.locator('.list-item', { hasText: 'consent creator recovery trigger' })).toBeVisible({ timeout: 120_000 });
       await first.getByRole('button', { name: 'Block conversation', exact: true }).click();

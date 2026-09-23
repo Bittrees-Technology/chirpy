@@ -153,6 +153,25 @@ it.each(['focus', 'online', 'visibilitychange'])('forces network reconciliation 
   } finally { await f.close(); vi.unstubAllGlobals(); }
 });
 
+it('reconciles a hidden installation so missed device history requests can be serviced', async () => {
+  const f = await setup();
+  const doc = Object.assign(new EventTarget(), { visibilityState: 'hidden' });
+  vi.stubGlobal('document', doc);
+  vi.useFakeTimers();
+  try {
+    f.t.startPoll(f.changed);
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(f.changed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(f.changed).toHaveBeenCalledOnce();
+    await f.t.listConversations();
+    expect(f.api.sync).toHaveBeenCalledTimes(2);
+    expect(f.api.syncAll).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(f.changed).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); await f.close(); vi.unstubAllGlobals(); }
+});
+
 it('refreshes local read counts and reactions without waiting for the next poll', async () => {
   const f = await setup(); const record = f.records[0];
   record.consentState = async () => 1;

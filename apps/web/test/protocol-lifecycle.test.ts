@@ -2,9 +2,9 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { IdentityProvider, OrgProvider, SettingsPrefsProvider, ChatProvider, useChat } from '../src/state';
-const mock = vi.hoisted(() => ({ init: vi.fn(), nativePage: vi.fn(), pushPage: vi.fn(), notify: null as null | (() => void), getAdapter: vi.fn() }));
+const mock = vi.hoisted(() => ({ init: vi.fn(), list: vi.fn(), nativePage: vi.fn(), pushPage: vi.fn(), notify: null as null | (() => void), getAdapter: vi.fn() }));
 vi.mock('@app/transport', async importOriginal => ({ ...await importOriginal<typeof import('@app/transport')>(), createTransport: () => ({
-  id: 'mock', status: 'ready', init: mock.init, listConversations: async () => [], listMessagePage: mock.nativePage,
+  id: 'mock', status: 'ready', init: mock.init, listConversations: mock.list, listMessagePage: mock.nativePage,
   subscribe: (notify: () => void) => { mock.notify = notify; return () => { mock.notify = null; }; },
 }) }));
 vi.mock('../src/usePushRooms', () => ({ usePushRooms: () => ({ getAdapter: mock.getAdapter, connectionRevision: 0, snapshot: { rooms: [], status: 'ready' } }) }));
@@ -20,7 +20,7 @@ beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   vi.useFakeTimers(); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
   const storage = new Map(); vi.stubGlobal('localStorage', { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => storage.set(k, v), removeItem: (k: string) => storage.delete(k) });
-  mock.init.mockResolvedValue(undefined); mock.nativePage.mockResolvedValue({ messages: [] });
+  mock.list.mockResolvedValue([]); mock.init.mockResolvedValue(undefined); mock.nativePage.mockResolvedValue({ messages: [] });
   mock.pushPage.mockResolvedValue({ messages: [{ id: 'push-message', conversationId: pushId, sender: '0x' + '1'.repeat(40), body: 'Push history', sentAt: 1 }] });
   const rooms = { getSnapshot: () => ({ status: 'ready' }), history: mock.pushPage };
   mock.getAdapter.mockReturnValue(rooms); root = createRoot(document.createElement('div'));
@@ -39,4 +39,18 @@ it('refreshes native events only through their own protocol while Push stays ind
   expect(mock.pushPage).toHaveBeenCalledOnce(); expect(chat.messages[0].body).toBe('Push history');
   await act(async () => chat.select('native-room')); expect(mock.nativePage).toHaveBeenCalledOnce();
   await act(async () => { mock.notify?.(); await vi.advanceTimersByTimeAsync(150); }); expect(mock.nativePage).toHaveBeenCalledTimes(2);
+});
+
+it('services native inbox recovery while hidden without loading the selected message history', async () => {
+  await mount(); await act(async () => chat.select('native-room'));
+  mock.list.mockClear(); mock.nativePage.mockClear();
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  await act(async () => { mock.notify?.(); await vi.advanceTimersByTimeAsync(150); });
+  expect(mock.list).toHaveBeenCalledOnce();
+  expect(mock.nativePage).not.toHaveBeenCalled();
+  expect(mock.pushPage).not.toHaveBeenCalled();
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  await act(async () => { mock.notify?.(); await vi.advanceTimersByTimeAsync(150); });
+  expect(mock.list).toHaveBeenCalledTimes(2);
+  expect(mock.nativePage).toHaveBeenCalledOnce();
 });

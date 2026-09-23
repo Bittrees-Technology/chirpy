@@ -1091,10 +1091,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       await reloadConversations();
       if (cancelled) return;
       const queue = createRefreshQueue(async () => {
-        if (cancelled || document.visibilityState === "hidden") return;
+        if (cancelled) return;
+        // Inbox reconciliation also services other installations' history requests.
+        // Keep it running in background tabs, without refreshing hidden thread history.
         await reloadConversations();
         const selected = activeIdRef.current;
-        if (!cancelled && selected && !parsePushConversationId(selected)) await reloadMessages(selected);
+        if (!cancelled && document.visibilityState !== "hidden" && selected && !parsePushConversationId(selected)) await reloadMessages(selected);
       }, (error) => {
         if (!cancelled) setTransportError(error instanceof Error ? error.message : "Unable to refresh chats.");
       });

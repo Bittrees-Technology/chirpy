@@ -1213,7 +1213,7 @@ export class XmtpTransport implements Transport {
   private startPoll(cb: () => void) {
     if (this.pollTimer) clearInterval(this.pollTimer);
     const sync = () => {
-      if (this.status !== "ready" || (typeof document !== "undefined" && document.visibilityState === "hidden")) return;
+      if (this.status !== "ready") return;
       this.fullRefreshRequired = true;
       if (!this.streamRunning) void this.runStream(cb);
       this.startConsentStream(cb);
@@ -1222,7 +1222,8 @@ export class XmtpTransport implements Transport {
     this.pollTimer = setInterval(() => {
       const now = Date.now();
       // Healthy streams deliver immediate changes. Reconcile periodically for
-      // silently missed updates, while errors and explicit invalidation retain
+      // silently missed updates, including device history requests while this
+      // installation is in a background tab. Errors and explicit invalidation retain
       // the ten-second fallback. Clock rollback must not defer recovery.
       if (this.streamHealthy && this.consentStreamHealthy && !this.fullRefreshRequired && this.fullRefreshCompletedAt !== null &&
           now >= this.fullRefreshCompletedAt && now - this.fullRefreshCompletedAt < 60_000) return;
