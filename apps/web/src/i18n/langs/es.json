@@ -696,5 +696,20 @@
   "push.chooseReactionOriginal": "Elige un mensaje original de esta sala al que reaccionar.",
   "push.selectedFiles": "Archivos seleccionados",
   "push.multipleFileReply": "Las respuestas admiten un archivo. Elimina los archivos adicionales o cancela la respuesta.",
-  "push.fileCountLimit": "Selecciona hasta 6 archivos, de 1 MB cada uno."
+  "push.fileCountLimit": "Selecciona hasta 6 archivos, de 1 MB cada uno.",
+  "roomMembers.title": "Miembros de la sala",
+  "roomMembers.wallet": "Cartera del miembro",
+  "roomMembers.hint": "Añade una cartera que ya haya activado la mensajería. Esto da a su buzón acceso a esta sala.",
+  "roomMembers.demoHint": "Solo demostración: añadir un miembro cambia los datos de ejemplo locales.",
+  "roomMembers.add": "Añadir miembro",
+  "roomMembers.adding": "Añadiendo…",
+  "roomMembers.added": "Miembro añadido. Es posible que deba actualizar sus salas.",
+  "roomMembers.demoAdded": "Miembro de demostración añadido localmente.",
+  "roomMembers.self": "Ya eres miembro de esta sala.",
+  "roomMembers.connect": "Conecta una cartera para añadir un miembro.",
+  "roomMembers.busy": "Ya se está añadiendo un miembro.",
+  "roomMembers.changed": "La cartera o la sala ha cambiado. Revisa los miembros antes de volver a intentarlo.",
+  "roomMembers.gated": "Las salas restringidas requieren admisión mediante el servicio de acceso.",
+  "roomMembers.duplicate": "Esa cartera ya es miembro de la sala.",
+  "roomMembers.unavailable": "No está disponible la opción de añadir miembros."
 }

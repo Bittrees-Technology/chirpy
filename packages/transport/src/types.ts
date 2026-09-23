@@ -43,6 +43,8 @@ export interface Conversation {
   policy?: Policy;
   /** Current identity's room role, derived from the transport; actions recheck it. */
   isAdmin?: boolean;
+  /** Chat supports manual additions only for admins of valid open rooms in this namespace. */
+  canAddMembers?: boolean;
   /** Invalid or unsupported received room metadata; room actions must be blocked. */
   configurationError?: boolean;
   lastMessage?: ChatMessage;
@@ -86,6 +88,8 @@ export interface Transport {
   setConversationConsent(conversationId: string, state: "allowed" | "denied"): Promise<void>;
   startDm(address: string, handle?: string): Promise<Conversation>;
   createRoom(input: StartRoomInput): Promise<Conversation>;
+  /** Add one activated wallet to an open room; recheck authority before dispatch. */
+  addRoomMember?(conversationId: string, address: string, isCurrent?: () => boolean): Promise<void>;
   /** Ask the configured gatekeeper bot to add this wallet/inbox to a gated room. */
   requestRoomJoin?(conversationId: string): Promise<void>;
   /** Update a room's effective policy (admin action — e.g. freeze posting). */

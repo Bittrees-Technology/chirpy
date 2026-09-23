@@ -536,7 +536,7 @@ export class XmtpTransport implements Transport {
     let lastMessage: ChatMessage | undefined;
     try {
       const sdk = await this.loadSdk();
-      const last = await conversation.lastMessage();
+      const [last] = await conversation.messages({ contentTypes: [sdk.ContentType.Text, sdk.ContentType.Reply], direction: sdk.SortDirection.Descending, limit: 1n });
       if (last) {
         lastMessage = toChatMessage(
           sdk,
@@ -550,6 +550,7 @@ export class XmtpTransport implements Transport {
       lastMessage = undefined;
     }
 
+    const isAdmin = await this.isCurrentUserAdmin(conversation).catch(() => false);
     return {
       id: conversation.id,
       kind: "room",
@@ -559,7 +560,8 @@ export class XmtpTransport implements Transport {
       namespace: meta.namespace,
       gate: meta.gate,
       policy: meta.policy,
-      isAdmin: await this.isCurrentUserAdmin(conversation).catch(() => false),
+      isAdmin,
+      canAddMembers: isAdmin && !meta.invalid && !hasGate(meta.gate) && meta.namespace === this.org.namespace,
       configurationError: meta.invalid === true,
       lastMessage,
       unread: await this.unreadCount(conversation),
@@ -961,6 +963,62 @@ export class XmtpTransport implements Transport {
         sentAt: Date.now(),
       },
     };
+  }
+
+  private memberAdditions = new Set<string>();
+
+  async addRoomMember(conversationId: string, address: string, isCurrent: () => boolean = () => true): Promise<void> {
+    const client = this.requireClient();
+    const target = normalizeAddress(address);
+    if (target === this.myAddress) throw new Error("You are already a member of this room.");
+    if (!this.provider) throw new Error("Connect a wallet to add a room member.");
+    if (this.memberAdditions.has(conversationId)) throw new Error("A member addition is already in progress.");
+    const assertCurrent = () => {
+      if (!isCurrent() || this.client !== client || this.status !== 'ready') throw new Error("Wallet or room changed. Check members before retrying.");
+    };
+    const checkWallet = async () => {
+      assertCurrent();
+      const accounts = await this.provider!.request({ method: 'eth_accounts' });
+      assertCurrent();
+      if (!Array.isArray(accounts) || typeof accounts[0] !== 'string' || accounts[0].toLowerCase() !== this.myAddress) {
+        throw new Error("Wallet or room changed. Check members before retrying.");
+      }
+    };
+    this.memberAdditions.add(conversationId);
+    try {
+      await checkWallet();
+      const sdk = await this.loadSdk();
+      const readOpenRoom = async () => {
+        // SDK metadata properties on cached wrappers can be stale.
+        const cached = await client.conversations.getConversationById(conversationId);
+        if (!cached || cached.id !== conversationId || !this.isRoomConversation(sdk, cached)) throw new Error("Room not found in this organization.");
+        await cached.sync();
+        assertCurrent();
+        const group = await client.conversations.getConversationById(conversationId);
+        if (!group || group.id !== conversationId || !this.isRoomConversation(sdk, group) || !('addMembers' in group)) throw new Error("Room not found in this organization.");
+        const meta = parseRoomMeta(group.description, this.org.policy);
+        if (meta.invalid) throw new Error(INVALID_ROOM_METADATA);
+        if (meta.namespace !== this.org.namespace) throw new Error("Room not found in this organization.");
+        if (hasGate(meta.gate)) throw new Error("Gated rooms require admission through the gate service.");
+        if (!await this.isCurrentUserAdmin(group)) throw new Error("Admins only.");
+        assertCurrent();
+        return group;
+      };
+      await readOpenRoom();
+      const inboxId = await client.fetchInboxIdByIdentifier(await this.identifier(target));
+      assertCurrent();
+      if (!inboxId) throw new Error("That address hasn't activated XMTP messaging yet.");
+      // Recipient lookup may be slow; recheck current metadata and role afterward.
+      const group = await readOpenRoom();
+      const members = await group.members();
+      if (inboxId === client.inboxId || members.some(member => member.inboxId === inboxId)) throw new Error("That wallet is already a room member.");
+      // Membership and SDK permission checks fail closed; never reuse a cached UI role.
+      if (!members.some(member => member.inboxId === client.inboxId) || !await this.isCurrentUserAdmin(group)) throw new Error("Admins only.");
+      await checkWallet();
+      await group.addMembers([inboxId]);
+      this.invalidateConversation(conversationId);
+      assertCurrent();
+    } finally { this.memberAdditions.delete(conversationId); }
   }
 
   async requestRoomJoin(conversationId: string): Promise<void> {

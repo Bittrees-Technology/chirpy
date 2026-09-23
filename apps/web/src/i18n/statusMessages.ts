@@ -1,5 +1,13 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "You are already a member of this room.": "roomMembers.self",
+  "Connect a wallet to add a room member.": "roomMembers.connect",
+  "A member addition is already in progress.": "roomMembers.busy",
+  "Wallet or room changed. Check members before retrying.": "roomMembers.changed",
+  "Gated rooms require admission through the gate service.": "roomMembers.gated",
+  "That wallet is already a room member.": "roomMembers.duplicate",
+  "Room member additions are unavailable.": "roomMembers.unavailable",
+
   "This reaction history snapshot reached its limit. Return to latest messages.": "push.reactionLimit",
   "Choose a supported Push reaction.": "push.chooseReaction",
   "Choose an original message in this room to react to.": "push.chooseReactionOriginal",

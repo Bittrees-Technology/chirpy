@@ -256,10 +256,22 @@ export class MockTransport implements Transport {
     return conv;
   }
 
+  async addRoomMember(conversationId: string, address: string, isCurrent: () => boolean = () => true): Promise<void> {
+    const room = this.snap.conversations.find(c => c.id === conversationId);
+    if (!isCurrent()) throw new Error("Wallet or room changed. Check members before retrying.");
+    if (!room || room.kind !== 'room' || room.namespace !== this.org.namespace) throw new Error("Room not found in this organization.");
+    if (!room.isAdmin) throw new Error("Admins only.");
+    if (room.configurationError || room.gate?.rules.length) throw new Error("Gated rooms require admission through the gate service.");
+    const target = address.trim().toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(target)) throw new Error("Enter a valid 0x address.");
+    if (room.peers.some(peer => peer.toLowerCase() === target)) throw new Error("That wallet is already a room member.");
+    room.peers = [...room.peers, target]; this.persist(); this.emit();
+  }
+
   async createRoom(input: StartRoomInput): Promise<Conversation> {
     const conv: Conversation = {
       id: uid("room"), kind: "room", title: input.title, description: input.description,
-      peers: [this.identity.address], gate: input.gate, isAdmin: true,
+      peers: [this.identity.address], gate: input.gate, isAdmin: true, namespace: this.org.namespace, canAddMembers: !input.gate.rules.length,
       policy: mergePolicy(this.org.policy, input.policy), unread: 0,
     };
     this.snap.conversations.push(conv);

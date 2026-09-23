@@ -696,5 +696,20 @@
   "push.chooseReactionOriginal": "Choose an original message in this room to react to.",
   "push.selectedFiles": "Selected files",
   "push.multipleFileReply": "Replies support one file. Remove extra files or cancel the reply.",
-  "push.fileCountLimit": "Choose at most 6 files, up to 1 MB each."
+  "push.fileCountLimit": "Choose at most 6 files, up to 1 MB each.",
+  "roomMembers.title": "Room members",
+  "roomMembers.wallet": "Member wallet",
+  "roomMembers.hint": "Add one wallet that has already enabled messaging. This gives its inbox access to this room.",
+  "roomMembers.demoHint": "Demo only: adding a member changes local sample data.",
+  "roomMembers.add": "Add member",
+  "roomMembers.adding": "Adding…",
+  "roomMembers.added": "Member added. They may need to refresh their rooms.",
+  "roomMembers.demoAdded": "Demo member added locally.",
+  "roomMembers.self": "You are already a member of this room.",
+  "roomMembers.connect": "Connect a wallet to add a room member.",
+  "roomMembers.busy": "A member addition is already in progress.",
+  "roomMembers.changed": "Wallet or room changed. Check members before retrying.",
+  "roomMembers.gated": "Gated rooms require admission through the gate service.",
+  "roomMembers.duplicate": "That wallet is already a room member.",
+  "roomMembers.unavailable": "Room member additions are unavailable."
 }

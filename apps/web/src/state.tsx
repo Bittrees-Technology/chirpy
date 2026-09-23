@@ -976,6 +976,7 @@ interface ChatCtx {
   react: (messageId: string, emoji: string) => Promise<void>;
   startDm: (address: string, handle?: string) => Promise<void>;
   createRoom: (input: StartRoomInput) => Promise<void>;
+  addRoomMember: (address: string) => Promise<void>;
   requestRoomJoin: (conversationId: string) => Promise<{ ok: boolean; message: string }>;
   setRoomPolicy: (policy: Policy) => Promise<void>;
   setConversationConsent: (state: "allowed" | "denied") => Promise<void>;
@@ -995,6 +996,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
+  // A distinct scope object also cancels additions after leaving and returning to the same room.
+  const memberScopeKey = `${mode}:${identity.address.toLowerCase()}:${activeOrg.namespace}:${activeId ?? ''}`;
+  const memberScopeRef = useRef({ key: memberScopeKey });
+  if (memberScopeRef.current.key !== memberScopeKey) memberScopeRef.current = { key: memberScopeKey };
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [history, setHistory] = useState<{ before?: string; newer: (string | undefined)[] }>({ newer: [] });
   const historyRef = useRef(history);
@@ -1187,6 +1192,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (conv) select(conv.id);
   }, [reloadConversations, select]);
 
+  const addRoomMember = useCallback(async (address: string) => {
+    const id = activeIdRef.current; const transport = transportRef.current;
+    if (!id || parsePushConversationId(id) || !transport?.addRoomMember) throw new Error('Room member additions are unavailable.');
+    const scope = memberScopeRef.current;
+    const isCurrent = () => transportRef.current === transport && activeIdRef.current === id && memberScopeRef.current === scope;
+    await transport.addRoomMember(id, address, isCurrent);
+    if (!isCurrent()) throw new Error('Wallet or room changed. Check members before retrying.');
+    await reloadConversations();
+  }, [reloadConversations]);
+
   const requestRoomJoin = useCallback(async (conversationId: string) => {
     try {
       if (parsePushConversationId(conversationId)) {
@@ -1274,8 +1289,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     pushError: push.error ?? push.snapshot.error ?? null, enablePushRooms, refreshPushRooms: push.refresh, leavePushRoom, managePushMember, loadPushMembers, historyError,
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages: pushReadDenied ? [] : messages,
     historyLoading, isHistory: history.before !== undefined, hasOlderMessages: !pushReadDenied && olderCursor !== undefined, navigateHistory,
-    enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, pushReadDenied, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+    enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomJoin, setRoomPolicy, setConversationConsent,
+  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, pushReadDenied, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

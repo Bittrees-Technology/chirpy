@@ -2,6 +2,7 @@ import { PushImagePreviewScope } from "./PushImagePreviewScope";
 import { PushReactionControls } from "./PushReactionControls";
 import { PushFilePicker } from "./PushFilePicker";
 import type { PushAttachment } from "@app/transport";
+import { RoomMembers } from "./RoomMembers";
 import { PushMembers } from "./PushMembers";
 import { PushMessageBody } from "./PushMessageBody";
 import { MessageBody } from "./MessageBody";
@@ -193,6 +194,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           </div>
         ) : null}
       </header>
+      {isRoom && !pushRoom && <RoomMembers key={draftKey} conversation={activeConversation} />}
       {pushRoom && <div className="join-banner">
         <span>{t("push.provenance")}</span>
         {pushStatus !== "ready" ? <Button disabled={pushStatus === "enabling"} onClick={() => { void enablePushRooms().catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed") })); }}>{t("push.connect")}</Button> : <>
