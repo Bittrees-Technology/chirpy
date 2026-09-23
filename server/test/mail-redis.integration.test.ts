@@ -1,3 +1,4 @@
+import {backfillMailHistory} from '../mail-history.js';
 import { redirectFixture } from './helpers/mail-redirect-fixture.js';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
@@ -6,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { privateKeyToAccount } from 'viem/accounts';
 import { mailSignMessage } from '../../packages/core/src/mailAuth.js';
 import { verifyMailCommand } from '../mail-service.js';
-import { createMailService, mailConfig, bindingKey, hash, suppressionKey, suppressMailRecipient, optOutMail, mailOptoutKey } from '../mail-service.js';
+import { createMailService, mailConfig, bindingKey, hash, suppressionKey, suppressMailRecipient, optOutMail, mailOptoutKey, mailHistoryKey } from '../mail-service.js';
 import { APPLY_MAIL_EVENT } from '../mail-events.js';
 import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL } from '../mail-store.js';
 const container=process.env.CHIRPY_TEST_REDIS_CONTAINER;const exec=promisify(execFile);
@@ -252,5 +253,47 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     expect((await service.execute({...c,action:'status'})).receipt.updatedAt).toBeNull();
     await redis(['SET',bk,JSON.stringify({...binding,revoked:true})]);await service.drain();
     const stopped=await service.execute({...c,action:'status'});expect(stopped.status).toBe('stopped');expect(stopped.receipt.attempts).toBe(0);expect(stopped.receipt.updatedAt).toBeGreaterThanOrEqual(old.createdAt);
+  });
+
+  it('indexes new requests atomically and recovers legacy IDs through bounded, private pages',async()=>{
+    let sends=0;const service=createMailService(config,redis,async()=>{sends++;throw Error('must not send');});await service.execute(c);
+    const query={action:'history',wallet,service:config.service,id:'a'.repeat(32),cursor:null,expiresAt:Date.now()+300000};
+    expect((await service.execute(query)).ids).toEqual([c.id]);
+    const expected=new Set([c.id]),before=await redis(['PTTL',key]),legacyCreatedAt=Date.now()-30000;
+    for(let i=0;i<28;i++){
+      const id=randomBytes(16).toString('hex'),createdAt=legacyCreatedAt,k=`${config.prefix}job:${hash(`${wallet}\n${id}`)}`;expected.add(id);
+      await redis(['SET',k,JSON.stringify({wallet,id,createdAt,deadline:createdAt+82800000,attempts:0,status:'queued',providerId:'private-provider',subject:'private-content'}),'PX',String(2592000000-(i+1)*1000)]);
+    }
+    let cursor='0',scans=0;do{const result=await backfillMailHistory(config,redis,{cursor,apply:false});cursor=result.cursor;expect(result.indexed).toBe(0);expect(++scans).toBeLessThan(100);}while(cursor!=='0');
+    expect((await service.execute(query)).ids).toEqual([c.id]);
+    scans=0;do{const result=await backfillMailHistory(config,redis,{cursor,apply:true});cursor=result.cursor;expect(++scans).toBeLessThan(100);}while(cursor!=='0');
+    const first=await service.execute(query);expect(first.ids).toHaveLength(25);expect(first.nextCursor).toMatch(/^[a-f0-9]{64}$/);
+    const second=await service.execute({...query,cursor:first.nextCursor});expect(second.ids).toHaveLength(4);expect(second.nextCursor).toBeNull();expect(new Set([...first.ids,...second.ids])).toEqual(expected);
+    expect(JSON.stringify([first,second])).not.toMatch(/private-provider|private-content|attempts|lease|digest/);
+    expect((await service.execute({...query,wallet:'0x'+'4'.repeat(40)})).ids).toEqual([]);
+    expect((await service.execute({...query,wallet:'0x'+'4'.repeat(40),cursor:first.nextCursor})).status).toBe('history-changed');
+    expect(await redis(['PTTL',key])).toBeLessThanOrEqual(before);expect(sends).toBe(0);expect(await redis(['ZCARD',queue])).toBe(1);
+  });
+  it('bounds index growth without deleting receipts, and repeated maintenance preserves TTL',async()=>{
+    const index=mailHistoryKey(config,wallet),older=Date.now()-10000;
+    const pointers=Array.from({length:640},(_,i)=>[String(older),`${config.prefix}job:${hash(String(i))}`]).flat();
+    keys.add(index);await redis(['ZADD',index,...pointers]);
+    await createMailService(config,redis).execute(c);expect(await redis(['ZCARD',index])).toBe(640);expect(await redis(['ZSCORE',index,key])).not.toBeNull();
+    const original=await redis(['GET',key]),ttl=await redis(['PTTL',key]);
+    for(let pass=0;pass<2;pass++){
+      let cursor='0';do{const result=await backfillMailHistory(config,redis,{cursor,apply:true});cursor=result.cursor;}while(cursor!=='0');
+    }
+    expect(await redis(['ZCARD',index])).toBe(640);expect(await redis(['GET',key])).toBe(original);expect(await redis(['PTTL',key])).toBeLessThanOrEqual(ttl);expect(await redis(['ZCARD',queue])).toBe(1);
+  });
+  it('stops expired signed discovery, rejects foreign pointers and prunes expired references',async()=>{
+    const service=createMailService(config,redis);await service.execute(c);const index=mailHistoryKey(config,wallet);
+    const query={action:'history',wallet,service:config.service,id:'a'.repeat(32),cursor:null,expiresAt:Date.now()+300000};
+    expect((await service.execute({...query,expiresAt:Date.now()-1})).status).toBe('expired');
+    const foreignWallet='0x'+'4'.repeat(40),foreignId='f'.repeat(32),foreign=`${config.prefix}job:${hash(`${foreignWallet}\n${foreignId}`)}`;
+    await redis(['SET',foreign,JSON.stringify({wallet:foreignWallet,id:foreignId,createdAt:Date.now(),deadline:Date.now()+82800000,attempts:0,status:'queued'}),'PX','300000']);
+    await redis(['ZADD',index,Date.now()+1,foreign]);await expect(service.execute(query)).rejects.toThrow('owner');await redis(['ZREM',index,foreign]);
+    await redis(['ZADD',index,Date.now()-2592000001,foreign]);expect((await service.execute(query)).ids).toEqual([c.id]);expect(await redis(['ZSCORE',index,foreign])).toBeNull();
+    const ttl=await redis(['PTTL',index]);await service.execute(query);expect(await redis(['PTTL',index])).toBeLessThanOrEqual(ttl);
+    await redis(['DEL',key]);expect((await service.execute(query)).ids).toEqual([]);
   });
 });

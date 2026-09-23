@@ -350,4 +350,25 @@ Signed status queries now return a bounded `receipt` projection for the wallet's
 
 The projection excludes recipients, content, provider IDs, leases, binding keys and identity authorization. A mismatched owner/ID or malformed record fails closed. Unknown requests return no fabricated receipt; an expired or missing record does not prove that no email was sent. Records created before transition timestamps retain an explicit unknown update time until a new transition. Existing status-only clients remain compatible, and new clients support older servers without detailed receipts. Signature text, queue keys, local recovery storage and encrypted export formats are unchanged.
 
-Chat's forwarding history keeps independently checked results for up to 100 request IDs in the current wallet/provider session. It labels the check time, preserves the active recovery ID, does not persist results or message content, and removes old details if a recheck fails. Provider/session replacement clears the view. Each lookup requires the existing wallet signature; no send is needed to inspect a saved receipt. Inbound history, server-side discovery of lost IDs and provider delivery-event reconciliation remain unfinished. Live forwarding infrastructure and production acceptance are still required.
+Chat's forwarding history keeps independently checked results for up to 100 request IDs in the current wallet/provider session. It labels the check time, preserves the active recovery ID, does not persist results or message content, and removes old details if a recheck fails. Provider/session replacement clears the view. Each lookup requires the existing wallet signature; no send is needed to inspect a saved receipt. Inbound history and provider delivery-event reconciliation remain unfinished. Live forwarding infrastructure and production acceptance are still required.
+
+
+## Recovering lost outbound request IDs
+
+An enabled service advertises `historyVersion: 1`. Chat then offers **Find missing forwarding request IDs**. Each page requires a separate wallet signature binding the service, wallet, nonce, cursor and five-minute expiry to a read-only history command. Send and status authorization text is unchanged. The server checks expiry again using Redis time and returns at most 25 retained IDs, without recipients, message contents, delivery identity or provider metadata. Other wallets cannot use the cursor to access this wallet's records. A removed cursor fails explicitly; start a fresh lookup.
+
+The wallet-specific index contains opaque job keys and is capped at 640 entries. New enqueues add the pointer atomically. Old pointers are pruned at enqueue, lookup or maintenance; the index expires 30 days after its newest enqueue. Individual receipts retain their original 30-day expiry, and lookup neither extends that expiry nor changes jobs, payloads, quotas or the outbox. Missing or expired jobs are omitted. An empty page is not proof that no message was sent. Keep encrypted backups for older IDs and unusual legacy histories exceeding the index cap.
+
+Users review each page before saving, then prove current wallet ownership again. Saving appends lookup-only IDs, preserves an existing active request and rejects concurrent storage/session changes. With no active request, the first found ID becomes active for a status check before composing. No message content or retry permission is restored. The 100-ID device limit refuses excess pages without evicting existing recovery data; use encrypted backup and acknowledged cleanup before retrying.
+
+### Indexing retained legacy receipts
+
+Existing receipts need a one-time operator backfill. With the private production mail configuration loaded securely, run:
+
+```sh
+node scripts/mail-history-index.mjs --dry-run 0
+```
+
+Repeat with each returned `cursor` until `complete: true` (`cursor: "0"`). Inspect every page; `validated` counts structurally valid receipts, not guaranteed live/indexable records. Repair malformed records before proceeding. Then repeat the full traversal starting with `--apply 0`, passing each returned cursor until complete. Apply rechecks ownership, creation time and remaining TTL atomically, skips records that have expired, and may be repeated safely. `indexed` counts accepted maintenance operations, including already-indexed records, rather than newly created pointers.
+
+Each invocation requests a SCAN page with COUNT 50 (a Redis hint), rejects pages over 256 keys, excludes payloads and limits each parsed receipt to 16 KiB. Output contains aggregate counts and a scan cursor only. Apply adds bounded index pointers; it never extends receipt retention, dispatches or requeues mail. Backfilled index TTL follows remaining receipt retention. The command can run while forwarding is paused through an in-memory configuration override; it does not change deployed activation flags. Dry-run reads no payloads and performs no writes. Production backfill and signed lookup acceptance remain deployment checks; this change does not activate forwarding.

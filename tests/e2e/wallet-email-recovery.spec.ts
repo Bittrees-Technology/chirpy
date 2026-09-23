@@ -53,3 +53,23 @@ test('forwarding history shows independently signed receipt details without send
  expect(posts).toBe(2);expect(await page.evaluate(wallet=>localStorage.getItem(`chat:wallet-email-receipts:v1:${encodeURIComponent(new URL('/api/mail',location.href).href)}:${wallet}`),wallet)).toBe(saved);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await rows.nth(0).scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('forwarding-history-mobile.png')});
 });
+
+test('signed discovery reviews and restores paginated lookup-only IDs on a fresh device',async({page,walletAddress},testInfo)=>{
+ await page.setViewportSize({width:390,height:844});const wallet=walletAddress.toLowerCase(),a='a'.repeat(32),b='b'.repeat(32),cursor='f'.repeat(64);let lookups=0;
+ await page.route('**/api/mail',async route=>{
+  const service=new URL('/api/mail',route.request().url()).href;
+  if(route.request().method()==='GET')return route.fulfill({json:{enabled:true,service,historyVersion:1}});
+  const {command,signature}=route.request().postDataJSON();expect(command).toMatchObject({action:'history',wallet,service});expect([null,cursor]).toContain(command.cursor);
+  expect((await recoverMessageAddress({message:mailSignMessage(command),signature})).toLowerCase()).toBe(wallet);lookups++;
+  return route.fulfill({json:{status:'history',id:command.id,service,wallet,cursor:command.cursor,ids:[command.cursor?b:a],nextCursor:command.cursor?null:cursor}});
+ });
+ await page.goto('/');await dismissAnalyticsConsent(page);await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();
+ await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Channels/}).click();await page.getByText('Find missing forwarding request IDs',{exact:true}).click();
+ const readState=()=>page.evaluate(wallet=>JSON.parse(localStorage.getItem(`chat:wallet-email-receipts:v1:${encodeURIComponent(new URL('/api/mail',location.href).href)}:${wallet}`)!),wallet);
+ await page.getByRole('button',{name:'Find recent requests',exact:true}).click();const review=page.getByRole('region',{name:'Review found request IDs'});await expect(review).toContainText(a);expect(await readState()).toBeNull();
+ await review.getByRole('button',{name:'Save these request IDs'}).click();await expect(page.locator('.wallet-email-discovery [role=status]')).toContainText('Request IDs saved');expect(await readState()).toEqual({version:1,active:a,receipts:[{id:a,digest:null,createdAt:null}]});
+ await review.getByRole('button',{name:'Older requests'}).click();await expect(review).toContainText(b);expect((await readState()).receipts).toHaveLength(1);
+ await review.getByRole('button',{name:'Save these request IDs'}).click();await expect(page.locator('.wallet-email-discovery [role=status]')).toContainText('Request IDs saved');
+ expect(await readState()).toEqual({version:1,active:a,receipts:[a,b].map(id=>({id,digest:null,createdAt:null}))});expect(lookups).toBe(2);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await review.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('forwarding-discovery-mobile.png')});
+});

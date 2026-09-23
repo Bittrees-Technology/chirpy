@@ -813,5 +813,20 @@
   "mail.history.attempts": "Intentos de procesamiento",
   "mail.history.retryUntil": "Fin del plazo de reintento",
   "mail.history.unknown": "No se encontró un registro conservado en el servicio. Esto no demuestra que el correo nunca se enviara; revisa los recibos anteriores o contacta con soporte antes de reenviar.",
-  "mail.history.legacy": "Consulta esta solicitud para obtener detalles de la cola. Los servicios anteriores pueden devolver solo el estado."
+  "mail.history.legacy": "Consulta esta solicitud para obtener detalles de la cola. Los servicios anteriores pueden devolver solo el estado.",
+  "mailDiscovery.title": "Buscar ID de reenvío perdidos",
+  "mailDiscovery.scope": "Firma una consulta de solo lectura para esta cartera. Cada página contiene hasta 25 ID de solicitudes conservadas. No se envía ningún correo.",
+  "mailDiscovery.coverage": "Las solicitudes anteriores aparecen cuando el servicio indexa sus registros existentes. Los registros caducados no se pueden recuperar aquí. Un resultado vacío no demuestra que no se enviara correo; conserva tus copias cifradas.",
+  "mailDiscovery.find": "Buscar solicitudes recientes",
+  "mailDiscovery.review": "Revisar los ID encontrados",
+  "mailDiscovery.count": "Se encontraron {count} ID en esta página.",
+  "mailDiscovery.saveHint": "Revisa los ID antes de guardarlos. Se conserva la solicitud activa; si no hay ninguna, el primer ID encontrado pasa a ser el activo para comprobar su estado antes de redactar otro mensaje. No se restauran permisos de envío ni contenidos.",
+  "mailDiscovery.save": "Guardar estos ID",
+  "mailDiscovery.newer": "Solicitudes más recientes",
+  "mailDiscovery.older": "Solicitudes anteriores",
+  "mailDiscovery.working": "Esperando autorización de la cartera o recuperación…",
+  "mailDiscovery.empty": "No se encontraron ID conservados en esta página. Esto no demuestra que nunca se enviaran mensajes anteriores.",
+  "mailDiscovery.capacity": "Esta página supera el límite de 100 ID guardados. Crea una copia y elimina ID anteriores antes de buscar esta página de nuevo. No se sobrescribió nada.",
+  "mailDiscovery.saved": "ID guardados. No se envió ningún correo. Comprueba su estado antes de volver a enviar.",
+  "mailDiscovery.failed": "No se pudo completar la recuperación. La cartera, los ID guardados o el historial pueden haber cambiado. Inicia otra consulta; se conservaron los ID existentes."
 }
