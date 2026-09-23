@@ -46,3 +46,12 @@ it("failed consent changes do not report success or send", async () => {
   await expect(t.setConversationConsent("dm", "allowed")).rejects.toThrow("offline");
   await expect(t.send("dm", "hello")).rejects.toThrow("Accept or unblock");
 });
+
+it('explicitly lists every consent state so blocked conversations remain discoverable', async () => {
+  const { t } = setup();
+  const list = vi.fn().mockResolvedValue([]);
+  t.client = { conversations: { sync: vi.fn(), syncAll: vi.fn(), list } };
+  t.publishedRooms = vi.fn().mockResolvedValue([]);
+  await t.listConversations();
+  expect(list).toHaveBeenCalledWith({ consentStates: [0, 1, 2] });
+});

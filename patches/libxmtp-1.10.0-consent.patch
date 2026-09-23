@@ -1,0 +1,411 @@
+diff --git a/crates/xmtp_db/src/encrypted_store/consent_record.rs b/crates/xmtp_db/src/encrypted_store/consent_record.rs
+index a0fbdcb..f65644e 100644
+--- a/crates/xmtp_db/src/encrypted_store/consent_record.rs
++++ b/crates/xmtp_db/src/encrypted_store/consent_record.rs
+@@ -57,20 +57,35 @@ impl StoredConsentRecord {
+         }
+     }
+ 
++    /// An inferred creator default must lose to every explicit or restored choice.
++    /// A welcome's local creation time is the installation's receive time, not
++    /// the original conversation creation time.
++    pub fn creator_default(entity: String) -> Self {
++        Self {
++            entity_type: ConsentType::ConversationId,
++            state: ConsentState::Allowed,
++            entity,
++            consented_at_ns: i64::MIN,
++        }
++    }
++
+     /// This function will perform some logic to see if a new group should be auto-consented
+     /// or auto-denied based on past consent.
+     pub fn stitch_dm_consent(conn: &impl DbQuery, group: &StoredGroup) -> Result<(), StorageError> {
+         if let Some(dm_id) = &group.dm_id {
+-            let mut past_consent = conn.find_consent_by_dm_id(dm_id)?;
+-            let Some(last_consent) = past_consent.pop() else {
++            // Query results are newest first. Copy the decision's timestamp;
++            // receiving another welcome is not a new local consent decision.
++            let past_consent = conn.find_consent_by_dm_id(dm_id)?;
++            let Some(last_consent) = past_consent.first() else {
+                 return Ok(());
+             };
+ 
+-            let cr = Self::new(
+-                ConsentType::ConversationId,
+-                last_consent.state,
+-                hex::encode(&group.id),
+-            );
++            let cr = Self {
++                entity_type: ConsentType::ConversationId,
++                state: last_consent.state,
++                entity: hex::encode(&group.id),
++                consented_at_ns: last_consent.consented_at_ns,
++            };
+             conn.insert_newer_consent_record(cr)?;
+         }
+ 
+@@ -157,37 +172,22 @@ impl<C: ConnectionExt> QueryConsentRecord for DbConnection<C> {
+         &self,
+         record: StoredConsentRecord,
+     ) -> Result<bool, crate::ConnectionError> {
+-        self.raw_query_write(|conn| {
+-            let maybe_inserted_consent_record: Option<StoredConsentRecord> =
+-                diesel::insert_into(dsl::consent_records)
+-                    .values(&record)
+-                    .on_conflict_do_nothing()
+-                    .get_result(conn)
+-                    .optional()?;
++        use diesel::query_dsl::methods::FilterDsl;
+ 
+-            // if record was not inserted...
+-            if maybe_inserted_consent_record.is_none() {
+-                let old_record = dsl::consent_records
+-                    .find((&record.entity_type, &record.entity))
+-                    .first::<StoredConsentRecord>(conn)?;
+-
+-                if old_record.eq(&record) {
+-                    return Ok(false);
+-                }
+-
+-                let should_replace = old_record.consented_at_ns < record.consented_at_ns;
+-                if should_replace {
+-                    diesel::insert_into(dsl::consent_records)
+-                        .values(record)
+-                        .on_conflict((dsl::entity_type, dsl::entity))
+-                        .do_update()
+-                        .set(dsl::state.eq(excluded(dsl::state)))
+-                        .execute(conn)?;
+-                }
+-                return Ok(should_replace);
+-            }
+-
+-            Ok(true)
++        self.raw_query_write(|conn| {
++            // Compare and replace atomically. State and timestamp are one record;
++            // leaving the old timestamp lets a delayed preference undo a newer choice.
++            let updated = diesel::insert_into(dsl::consent_records)
++                .values(&record)
++                .on_conflict((dsl::entity_type, dsl::entity))
++                .do_update()
++                .set((
++                    dsl::state.eq(excluded(dsl::state)),
++                    dsl::consented_at_ns.eq(excluded(dsl::consented_at_ns)),
++                ))
++                .filter(dsl::consented_at_ns.lt(excluded(dsl::consented_at_ns)))
++                .execute(conn)?;
++            Ok(updated > 0)
+         })
+     }
+ 
+@@ -220,12 +220,17 @@ impl<C: ConnectionExt> QueryConsentRecord for DbConnection<C> {
+                 .collect();
+ 
+             conn.transaction::<_, diesel::result::Error, _>(|conn| {
+-                for record in records.iter() {
++                // Unchanged local states are not broadcast; do not advance their
++                // timestamps silently (send() also repeats Allowed as a no-op).
++                for record in changed.iter() {
+                     diesel::insert_into(dsl::consent_records)
+                         .values(record)
+                         .on_conflict((dsl::entity_type, dsl::entity))
+                         .do_update()
+-                        .set(dsl::state.eq(excluded(dsl::state)))
++                        .set((
++                            dsl::state.eq(excluded(dsl::state)),
++                            dsl::consented_at_ns.eq(excluded(dsl::consented_at_ns)),
++                        ))
+                         .execute(conn)?;
+                 }
+                 Ok(())
+@@ -427,6 +432,270 @@ mod tests {
+         }
+     }
+ 
++    fn consent_at(state: ConsentState, timestamp: i64) -> StoredConsentRecord {
++        StoredConsentRecord {
++            entity_type: ConsentType::ConversationId,
++            state,
++            entity: "consent-order-regression".to_string(),
++            consented_at_ns: timestamp,
++        }
++    }
++
++    #[xmtp_common::test]
++    fn local_consent_timestamp_prevents_older_replay() {
++        with_connection(|conn| {
++            for (timestamp, state) in [
++                (1, ConsentState::Allowed),
++                (3, ConsentState::Denied),
++                (5, ConsentState::Allowed),
++            ] {
++                conn.insert_or_replace_consent_records(&[consent_at(state, timestamp)])
++                    .unwrap();
++                let saved = conn
++                    .get_consent_record(
++                        "consent-order-regression".into(),
++                        ConsentType::ConversationId,
++                    )
++                    .unwrap()
++                    .unwrap();
++                assert_eq!(saved.consented_at_ns, timestamp);
++                assert_eq!(saved.state, state);
++            }
++            assert!(
++                !conn
++                    .insert_newer_consent_record(consent_at(ConsentState::Denied, 3))
++                    .unwrap()
++            );
++            let saved = conn
++                .get_consent_record(
++                    "consent-order-regression".into(),
++                    ConsentType::ConversationId,
++                )
++                .unwrap()
++                .unwrap();
++            assert_eq!(saved.state, ConsentState::Allowed);
++            assert_eq!(saved.consented_at_ns, 5);
++            assert!(
++                conn.insert_newer_consent_record(consent_at(ConsentState::Denied, 6))
++                    .unwrap()
++            );
++        })
++    }
++
++    #[xmtp_common::test]
++    fn synchronized_consent_timestamp_orders_replays() {
++        with_connection(|conn| {
++            assert!(
++                conn.insert_newer_consent_record(consent_at(ConsentState::Allowed, 1))
++                    .unwrap()
++            );
++            assert!(
++                conn.insert_newer_consent_record(consent_at(ConsentState::Denied, 5))
++                    .unwrap()
++            );
++            assert!(
++                !conn
++                    .insert_newer_consent_record(consent_at(ConsentState::Allowed, 3))
++                    .unwrap()
++            );
++            assert!(
++                !conn
++                    .insert_newer_consent_record(consent_at(ConsentState::Allowed, 5))
++                    .unwrap()
++            );
++            let saved = conn
++                .get_consent_record(
++                    "consent-order-regression".into(),
++                    ConsentType::ConversationId,
++                )
++                .unwrap()
++                .unwrap();
++            assert_eq!(saved.state, ConsentState::Denied);
++            assert_eq!(saved.consented_at_ns, 5);
++        })
++    }
++
++    #[xmtp_common::test]
++    fn same_state_consent_timestamp_advances_replay_boundary() {
++        with_connection(|conn| {
++            assert!(
++                conn.insert_newer_consent_record(consent_at(ConsentState::Denied, 1))
++                    .unwrap()
++            );
++            conn.insert_newer_consent_record(consent_at(ConsentState::Denied, 5))
++                .unwrap();
++            assert!(
++                !conn
++                    .insert_newer_consent_record(consent_at(ConsentState::Allowed, 3))
++                    .unwrap()
++            );
++            let saved = conn
++                .get_consent_record(
++                    "consent-order-regression".into(),
++                    ConsentType::ConversationId,
++                )
++                .unwrap()
++                .unwrap();
++            assert_eq!(saved.state, ConsentState::Denied);
++            assert_eq!(saved.consented_at_ns, 5);
++        })
++    }
++
++    #[xmtp_common::test]
++    fn replay_order_preserves_the_latest_consent_for_every_state_sequence() {
++        with_connection(|conn| {
++            let states = [
++                ConsentState::Unknown,
++                ConsentState::Allowed,
++                ConsentState::Denied,
++            ];
++            let orders = [
++                [0, 1, 2],
++                [0, 2, 1],
++                [1, 0, 2],
++                [1, 2, 0],
++                [2, 0, 1],
++                [2, 1, 0],
++            ];
++            let mut case = 0;
++            for first in states {
++                for second in states {
++                    for third in states {
++                        for order in orders {
++                            let entity = format!("replay-order-{case}");
++                            case += 1;
++                            let sequence = [first, second, third];
++                            let mut newest = 0;
++                            for index in order {
++                                newest = newest.max(index);
++                                let record = StoredConsentRecord {
++                                    entity: entity.clone(),
++                                    ..consent_at(sequence[index], (index as i64 + 1) * 10)
++                                };
++                                conn.insert_newer_consent_record(record).unwrap();
++                                let saved = conn
++                                    .get_consent_record(entity.clone(), ConsentType::ConversationId)
++                                    .unwrap()
++                                    .unwrap();
++                                assert_eq!(saved.state, sequence[newest]);
++                                assert_eq!(saved.consented_at_ns, (newest as i64 + 1) * 10);
++                            }
++                        }
++                    }
++                }
++            }
++        })
++    }
++
++    #[xmtp_common::test]
++    fn creator_default_never_overrides_an_explicit_choice_in_either_order() {
++        with_connection(|conn| {
++            for state in [
++                ConsentState::Unknown,
++                ConsentState::Allowed,
++                ConsentState::Denied,
++            ] {
++                for timestamp in [0, 1, 1_700_000_000_000_000_000] {
++                    for default_first in [false, true] {
++                        let entity = format!("creator-{state:?}-{timestamp}-{default_first}");
++                        let default = StoredConsentRecord::creator_default(entity.clone());
++                        let explicit = StoredConsentRecord {
++                            entity: entity.clone(),
++                            ..consent_at(state, timestamp)
++                        };
++                        let sequence = if default_first {
++                            [default, explicit]
++                        } else {
++                            [explicit, default]
++                        };
++                        for record in sequence {
++                            conn.insert_newer_consent_record(record).unwrap();
++                        }
++                        let saved = conn
++                            .get_consent_record(entity, ConsentType::ConversationId)
++                            .unwrap()
++                            .unwrap();
++                        assert_eq!(saved.state, state);
++                        assert_eq!(saved.consented_at_ns, timestamp);
++                    }
++                }
++            }
++        })
++    }
++
++    #[xmtp_common::test]
++    fn local_same_state_noop_does_not_create_an_unbroadcast_timestamp() {
++        with_connection(|conn| {
++            conn.insert_or_replace_consent_records(&[consent_at(ConsentState::Allowed, 10)])
++                .unwrap();
++            let changed = conn
++                .insert_or_replace_consent_records(&[consent_at(ConsentState::Allowed, 20)])
++                .unwrap();
++            assert!(changed.is_empty());
++            let saved = conn
++                .get_consent_record(
++                    "consent-order-regression".into(),
++                    ConsentType::ConversationId,
++                )
++                .unwrap()
++                .unwrap();
++            assert_eq!(saved.consented_at_ns, 10);
++            // A new explicit block from another device must not lose to a local
++            // SDK no-op (for example send() repeating the already Allowed state).
++            assert!(
++                conn.insert_newer_consent_record(consent_at(ConsentState::Denied, 15))
++                    .unwrap()
++            );
++        })
++    }
++
++    #[xmtp_common::test]
++    fn dm_stitch_uses_latest_choice_without_redating_it() {
++        with_connection(|conn| {
++            let mut groups = Vec::new();
++            for id in 1..=3 {
++                let mut group = generate_group(None);
++                group.id = vec![id; 16];
++                group.dm_id = Some("dm:stitch:regression".to_string());
++                group.store(conn).unwrap();
++                groups.push(group);
++            }
++            for (index, state, timestamp) in [
++                (0, ConsentState::Allowed, 10),
++                (1, ConsentState::Denied, 20),
++            ] {
++                conn.insert_or_replace_consent_records(&[StoredConsentRecord {
++                    entity: hex::encode(&groups[index].id),
++                    ..consent_at(state, timestamp)
++                }])
++                .unwrap();
++            }
++            StoredConsentRecord::stitch_dm_consent(conn, &groups[2]).unwrap();
++            let entity = hex::encode(&groups[2].id);
++            let saved = conn
++                .get_consent_record(entity.clone(), ConsentType::ConversationId)
++                .unwrap()
++                .unwrap();
++            assert_eq!(saved.state, ConsentState::Denied);
++            assert_eq!(saved.consented_at_ns, 20);
++            // A later restored unblock must win over the copied decision.
++            assert!(
++                conn.insert_newer_consent_record(StoredConsentRecord {
++                    entity: entity.clone(),
++                    ..consent_at(ConsentState::Allowed, 30)
++                })
++                .unwrap()
++            );
++            StoredConsentRecord::stitch_dm_consent(conn, &groups[2]).unwrap();
++            let saved = conn
++                .get_consent_record(entity, ConsentType::ConversationId)
++                .unwrap()
++                .unwrap();
++            assert_eq!(saved.state, ConsentState::Allowed);
++            assert_eq!(saved.consented_at_ns, 30);
++        })
++    }
++
+     #[xmtp_common::test(unwrap_try = true)]
+     fn find_consent_by_dm_id() {
+         with_connection(|conn| {
+diff --git a/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs b/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs
+index 68062a7..47c1e48 100644
+--- a/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs
++++ b/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs
+@@ -544,9 +544,13 @@ where
+             stored_group.created_at_ns,
+         );
+ 
+-        // If this group is created by us - auto-consent to it.
++        // A creator welcome is a fallback, not a new user decision. It must
++        // preserve explicit choices whether preference/archive sync runs before
++        // or after this welcome. Local created_at_ns is the receive time.
+         if context.inbox_id() == metadata.creator_inbox_id {
+-            group.quietly_update_consent_state(ConsentState::Allowed, &db)?;
++            db.insert_newer_consent_record(StoredConsentRecord::creator_default(hex::encode(
++                &group.group_id,
++            )))?;
+         } else if is_readd_after_leaving {
+             // If user is being re-added after leaving, reset consent to Unknown
+             // This requires the user to explicitly accept being added back

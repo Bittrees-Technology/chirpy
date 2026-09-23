@@ -29,3 +29,6 @@ Use [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) for completed work and ev
 Voice calls, presence/SSE and optional organization relays follow core release acceptance. They are not implemented by the security hardening increments.
 
 Offline preparation: `node scripts/mail-preflight.mjs` now checks mail and webhook configuration without network access or secret output. Passing it does not satisfy the external activation and acceptance dependencies above.
+
+
+SDK follow-up: replace the pinned local XMTP consent patch only after a compatible upstream release passes its timestamp/default/no-op regressions and real two-installation acceptance. Complete blocked-room archive recovery as readable local history with truthful inactive membership and disabled actions until access is restored; blocked status alone is not proof of removed membership. Native group accept/block UI and leave/owner-transfer remain separate increments. Existing installations must receive the corrected SDK through the applicable web/native rollout.

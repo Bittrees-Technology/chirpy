@@ -1,4 +1,4 @@
-import { InboxIdentities, messageInboxIds } from "./inboxIdentities.js";
+import { InboxIdentities, inboxWallets, messageInboxIds } from "./inboxIdentities.js";
 import { INVALID_ROOM_METADATA, MAX_ROOM_DESCRIPTION_LENGTH, ROOM_META_VERSION, parseRoomMeta, type RoomMeta } from "./roomMetadata.js";
 import { readMessagePage } from "./messagePage.js";
 import { mapConversations } from "./mapConversations.js";
@@ -34,10 +34,6 @@ type StreamHandle = AsyncIterable<DecodedMessage> & { return?: () => void };
 
 interface Eip1193Provider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
-}
-
-interface PeerState {
-  accountIdentifiers?: { identifier?: string }[];
 }
 
 
@@ -325,6 +321,7 @@ export class XmtpTransport implements Transport {
     await this.listConversations();
     if (this.changeCallback) {
       void this.runStream(this.changeCallback);
+      this.startConsentStream(this.changeCallback);
       this.startPoll(this.changeCallback);
     }
   }
@@ -446,13 +443,13 @@ export class XmtpTransport implements Transport {
       const peerInboxId = await dm.peerInboxId();
       this.peerInboxByConversation.set(id, peerInboxId);
       const client = this.requireClient();
-      let states: PeerState[] = await client.preferences.getInboxStates([peerInboxId]) as PeerState[];
-      if (!states?.[0]?.accountIdentifiers?.length) {
-        states = await client.preferences.fetchInboxStates([peerInboxId]) as PeerState[];
-      }
-      const identifiers = states?.[0]?.accountIdentifiers ?? [];
-      const eth = identifiers.find((entry) => entry.identifier && ETH_ADDRESS.test(entry.identifier)) ?? identifiers[0];
-      const address = eth?.identifier?.toLowerCase();
+      const sdk = await this.loadSdk();
+      // Missing local identity state can throw after history recovery. Resolve the
+      // explicitly requested inbox from network state instead of guessing by position.
+      const states = await client.preferences.getInboxStates([peerInboxId]).catch(() => []);
+      let address = inboxWallets(states, [peerInboxId], sdk.IdentifierKind.Ethereum).get(peerInboxId);
+      if (!address) address = (await this.roomAddresses([peerInboxId])).get(peerInboxId);
+      if (this.client !== client || this.status !== 'ready') return undefined;
       if (address) {
         this.peerByConversation.set(id, address);
         savePeerCache(this.peerByConversation);
@@ -637,7 +634,8 @@ export class XmtpTransport implements Transport {
       id: conversation.id,
       kind: "dm",
       title,
-      peers: peer ? [this.myAddress, peer] : [this.myAddress],
+      // An unresolved peer is not evidence of a self-conversation.
+      peers: peer ? [this.myAddress, peer] : [],
       lastMessage: blocked ? undefined : lastMessage,
       lastReadReceiptAt: pending || blocked ? undefined : await this.peerReceiptTime(conversation),
       unread: blocked ? 0 : await this.unreadCount(conversation),
@@ -653,7 +651,15 @@ export class XmtpTransport implements Transport {
 
   listConversations(): Promise<Conversation[]> {
     if (!this.conversationRefresh) {
-      const refresh = this.refreshConversations();
+      const refresh = (async () => {
+        // A consent change can complete while a directory request holds an older
+        // inbox snapshot. Drain the invalidation before publishing that snapshot.
+        for (;;) {
+          const revision = this.consentRevision;
+          const result = await this.refreshConversations();
+          if (revision === this.consentRevision) return result;
+        }
+      })();
       this.conversationRefresh = refresh;
       void refresh.finally(() => {
         if (this.conversationRefresh === refresh) this.conversationRefresh = null;
@@ -692,7 +698,8 @@ export class XmtpTransport implements Transport {
         // A missing lookup is not proof of deletion. Reconcile the local list.
       }
       if (!changed) {
-        const list = await client.conversations.list();
+        const sdk = await this.loadSdk();
+        const list = await client.conversations.list({ consentStates: [sdk.ConsentState.Unknown, sdk.ConsentState.Allowed, sdk.ConsentState.Denied] });
         this.conversations = new Map(list.map((conversation) => [conversation.id, conversation]));
         changed = full ? list : list.filter(conversation => dirty.has(conversation.id) || !this.mappedConversations.has(conversation.id));
       }
@@ -884,6 +891,7 @@ export class XmtpTransport implements Transport {
     const sdk = await this.loadSdk();
     if (this.isRoomConversation(sdk, conversation)) throw new Error("Consent controls apply to direct messages.");
     await conversation.updateConsentState(state === "allowed" ? sdk.ConsentState.Allowed : sdk.ConsentState.Denied);
+    this.consentRevision++;
     this.invalidateConversation(conversationId);
   }
 
@@ -1095,10 +1103,15 @@ export class XmtpTransport implements Transport {
     this.changeCallback = cb;
     this.streamStopped = false;
     void this.runStream(cb);
+    this.startConsentStream(cb);
     this.startPoll(cb);
     return () => {
       if (this.changeCallback === cb) this.changeCallback = null;
       this.streamStopped = true;
+      this.consentStreamHealthy = false;
+      const consentTask = this.consentTask;
+      this.consentTask = null;
+      if (consentTask) { consentTask.stopped = true; void consentTask.stream?.return?.().catch(() => {}); }
       this.streamHealthy = false;
       this.fullRefreshRequired = true;
       if (this.pollTimer) clearInterval(this.pollTimer);
@@ -1116,6 +1129,7 @@ export class XmtpTransport implements Transport {
       if (this.status !== "ready" || (typeof document !== "undefined" && document.visibilityState === "hidden")) return;
       this.fullRefreshRequired = true;
       if (!this.streamRunning) void this.runStream(cb);
+      this.startConsentStream(cb);
       cb(); // The subscriber owns refresh; polling must not duplicate it.
     };
     this.pollTimer = setInterval(() => {
@@ -1123,7 +1137,7 @@ export class XmtpTransport implements Transport {
       // Healthy streams deliver immediate changes. Reconcile periodically for
       // silently missed updates, while errors and explicit invalidation retain
       // the ten-second fallback. Clock rollback must not defer recovery.
-      if (this.streamHealthy && !this.fullRefreshRequired && this.fullRefreshCompletedAt !== null &&
+      if (this.streamHealthy && this.consentStreamHealthy && !this.fullRefreshRequired && this.fullRefreshCompletedAt !== null &&
           now >= this.fullRefreshCompletedAt && now - this.fullRefreshCompletedAt < 60_000) return;
       sync();
     }, 10_000);
@@ -1139,6 +1153,52 @@ export class XmtpTransport implements Transport {
         document.removeEventListener("visibilitychange", visible);
       };
     }
+  }
+
+  private consentRevision = 0;
+  private consentStreamHealthy = true;
+  private consentTask: { client: XmtpClient; stopped: boolean; stream?: Awaited<ReturnType<XmtpClient["preferences"]["streamConsent"]>> } | null = null;
+
+  private startConsentStream(cb: () => void) {
+    if (!this.client || this.streamStopped || this.status !== "ready") return;
+    const previous = this.consentTask;
+    if (previous?.client === this.client && !previous.stopped) return;
+    if (previous) { previous.stopped = true; void previous.stream?.return?.().catch(() => {}); }
+    const task: NonNullable<XmtpTransport["consentTask"]> = { client: this.client, stopped: false };
+    this.consentTask = task;
+    this.consentStreamHealthy = false;
+    const current = () => this.consentTask === task && this.changeCallback === cb && !task.stopped && !this.streamStopped && this.client === task.client && this.status === "ready";
+    const changed = () => {
+      if (!current()) return;
+      this.consentRevision++;
+      this.fullRefreshRequired = true;
+      cb();
+    };
+    const recover = () => { if (current()) { this.consentStreamHealthy = false; changed(); } };
+    void (async () => {
+      while (current()) {
+        try {
+          const stream = await task.client.preferences.streamConsent({
+            onError: recover, onFail: recover, onRetry: recover, onEnd: recover,
+            onRestart: () => { if (current()) { this.consentStreamHealthy = true; changed(); } },
+          });
+          if (!current()) { await stream.return?.(); break; }
+          task.stream = stream;
+          this.consentStreamHealthy = true;
+          // Consume the iterator rather than leaving an unbounded callback queue.
+          for await (const _updates of stream) {
+            if (!current()) break;
+            this.consentStreamHealthy = true;
+            changed();
+          }
+        } catch { /* Network/SDK failures retain full reconciliation as fallback. */ }
+        if (!current()) break;
+        recover();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    })().finally(() => {
+      if (this.consentTask === task) { this.consentTask = null; this.consentStreamHealthy = false; }
+    });
   }
 
   private cleanupEvents: (() => void) | null = null;

@@ -28,6 +28,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Verify the reviewed XMTP consent dependency
+        run: python3 scripts/verify-xmtp-consent.py --installed
       - name: Dependency security audit
         run: pnpm audit --audit-level=moderate
       - name: Isolated inbound worker runtime
@@ -46,6 +48,26 @@ jobs:
         run: pnpm e2e:push-runtime
       - name: Push room controller and UI acceptance
         run: pnpm e2e:push-ui
+
+  xmtp-consent-storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: xmtp-consent-rust-1.98.1-${{ runner.os }}-${{ hashFiles('patches/libxmtp-1.10.0-consent.patch') }}
+          restore-keys: xmtp-consent-rust-1.98.1-${{ runner.os }}-
+      - name: Verify package provenance and consumer pin
+        run: python3 scripts/verify-xmtp-consent.py
+      - name: Test the exact upstream source plus reviewed consent patch
+        run: python3 scripts/build-xmtp-consent.py --tests-only
 
   gate-container:
     runs-on: ubuntu-latest

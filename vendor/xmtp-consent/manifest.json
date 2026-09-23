@@ -1,0 +1,6 @@
+{
+  "artifact": "xmtp-wasm-bindings-1.10.0-chat-consent.1-0febd03bd9ff.tgz",
+  "sha256": "0febd03bd9ff631ff8225169d7e9c54fe469ef58209e096317f426707b04099d",
+  "wasmSha256": "793f0120004db2f152f22b034ecf5a9c70b366001a8249c526cc758aff2042eb",
+  "cargoLockSha256": "3f24c1b20f38a25fd5601283e478fa9d752dffdd3a837b3086a0528c0fe141a0"
+}
