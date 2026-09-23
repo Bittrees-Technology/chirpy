@@ -121,3 +121,11 @@ it('explains unknown evidence and clears checked observations when the provider 
  expect(container.textContent).toContain('does not prove that the email was never sent');
  await act(async()=>setActiveProvider({request:async()=>[a]},'injected'));expect(container.textContent).not.toContain('does not prove that the email was never sent');expect(container.querySelector('.wallet-email-history time')).toBeNull();
 });
+
+it('shows independent provider facts without claiming reading and clears stale facts on recheck failure',async()=>{
+ const ids=seedHistory(),key=walletEmailReceiptKey(a,'https://chat.example/api/mail'),original=storage.get(key);
+ vi.mocked(submitWalletEmail).mockImplementation(async c=>({id:c.id,status:'accepted',receipt:receiptDetails,delivery:{version:1,events:[{type:'delivered',occurredAt:1700000000000},{type:'bounced',occurredAt:1700000001000}]}}));await render();
+ const row=container.querySelector('.wallet-email-history li')!;await act(async()=>row.querySelector('button')!.click());
+ expect(row.textContent).toContain('Recipient mail server accepted');expect(row.textContent).toContain('Recipient mail server rejected');expect(row.textContent).toContain('does not prove inbox placement or reading');expect(storage.get(key)).toBe(original);
+ vi.mocked(submitWalletEmail).mockRejectedValueOnce(Error('offline'));await act(async()=>row.querySelector('button')!.click());expect(row.querySelector('.wallet-email-delivery')).toBeNull();expect(storage.get(key)).toBe(original);
+});

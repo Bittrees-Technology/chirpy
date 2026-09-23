@@ -1,12 +1,12 @@
 import { stringToHex } from 'viem';
-import { mailSignMessage, parseMailReceiptDetails, type MailCommand, type MailHistoryCommand, type MailReceiptDetails } from '../../../packages/core/src/mailAuth.js';
+import { mailSignMessage, parseMailReceiptDetails, parseMailDeliveryDetails, type MailDeliveryDetails, type MailCommand, type MailHistoryCommand, type MailReceiptDetails } from '../../../packages/core/src/mailAuth.js';
 import { getActiveProvider, getProviderRevision, subscribeProvider } from './walletProviders';
 import { syncEndpoint } from './apiEndpoint';
 export function mailEndpoint() {
   const endpoint=syncEndpoint();
   return {requestUrl:endpoint.requestUrl.replace(/\/usersync$/, '/mail'),service:endpoint.service.replace(/\/usersync$/, '/mail')};
 }
-export type WalletEmailResult={status:string;id:string;receipt?:MailReceiptDetails};
+export type WalletEmailResult={status:string;id:string;receipt?:MailReceiptDetails;delivery?:MailDeliveryDetails};
 async function requestWalletEmail<T>(command:MailCommand|MailHistoryCommand,parse:(response:Response,result:any)=>T,signal?:AbortSignal):Promise<T> {
   const endpoint=mailEndpoint();
   if(command.service!==endpoint.service) throw Error('Email service identity changed.');
@@ -51,7 +51,9 @@ export async function submitWalletEmail(command:MailCommand,signal?:AbortSignal)
   if(result.id!==command.id || !['queued','sending','accepted','stopped','unknown','denied','limited','conflict'].includes(result.status)) throw Error('Invalid email status response.');
   if(result.receipt!==undefined&&command.action!=='status')throw Error('Unexpected forwarding receipt.');
   const receipt=result.receipt===undefined?undefined:parseMailReceiptDetails(result.receipt,result.status);
-  return {status:result.status,id:result.id,...(receipt?{receipt}:{})} as WalletEmailResult;
+  if(result.delivery!==undefined&&(command.action!=='status'||result.status!=='accepted'))throw Error('Unexpected provider delivery evidence.');
+  const delivery=result.delivery===undefined?undefined:parseMailDeliveryDetails(result.delivery);
+  return {status:result.status,id:result.id,...(receipt?{receipt}:{}),...(delivery?{delivery}:{})} as WalletEmailResult;
  },signal);
 }
 export type WalletEmailHistory={ids:string[];nextCursor:string|null};

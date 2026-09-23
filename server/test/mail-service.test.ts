@@ -115,3 +115,14 @@ describe('signed forwarding discovery scope',()=>{
  });
  it.each([{cursor:''},{cursor:'b'.repeat(63)},{cursor:2},{to:'a@example.com'},{extra:true}])('rejects malformed discovery scope %j',patch=>{expect(validMailCommand({...query(),...patch},env.CHIRPY_MAIL_SERVICE_URL)).toBe(false);});
 });
+
+it('joins provider evidence only for accepted, owned receipts using private provider/recipient correlation',async()=>{
+ const config=mailConfig(env)!,c={...command(),action:'status'},createdAt=1700000000000,recipientKey=`${config.prefix}suppressed:${'a'.repeat(64)}`;
+ const job={wallet:c.wallet,id:c.id,createdAt,updatedAt:createdAt,deadline:createdAt+82800000,status:'accepted',attempts:1,providerId:'private-provider',suppressionKey:recipientKey};
+ const kv=vi.fn().mockResolvedValueOnce(JSON.stringify(job)).mockResolvedValueOnce(JSON.stringify({version:1,events:[{type:'delivered',occurredAt:createdAt+1000}]}));
+ const result=await createMailService(config,kv).execute(c);expect(result.delivery.events).toHaveLength(1);expect(kv.mock.calls[1][0]).toEqual(['GET',`${config.prefix}delivery:${hash(`private-provider\n${recipientKey}`)}`]);expect(JSON.stringify(result)).not.toContain('private-provider');
+ for(const raw of ['x'.repeat(2049),JSON.stringify({version:1,events:[{type:'read',occurredAt:1}]})]){
+  const bad=vi.fn().mockResolvedValueOnce(JSON.stringify(job)).mockResolvedValueOnce(raw);await expect(createMailService(config,bad).execute(c)).rejects.toThrow();
+ }
+ const waiting=vi.fn().mockResolvedValue(JSON.stringify({...job,status:'sending'}));expect((await createMailService(config,waiting).execute(c)).delivery).toBeUndefined();expect(waiting).toHaveBeenCalledOnce();
+});

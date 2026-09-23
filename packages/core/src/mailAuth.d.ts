@@ -11,3 +11,7 @@ export interface MailReceiptDetails {
   version: 1; createdAt: number; updatedAt: number | null; attempts: number; retryUntil: number;
 }
 export declare function parseMailReceiptDetails(value: unknown, status: string): MailReceiptDetails;
+export type MailDeliveryEventType='sent'|'delivered'|'delivery_delayed'|'failed'|'bounced'|'complained'|'suppressed';
+export interface MailDeliveryDetails {version:1;events:{type:MailDeliveryEventType;occurredAt:number}[];}
+export declare const MAIL_DELIVERY_EVENTS:readonly MailDeliveryEventType[];
+export declare function parseMailDeliveryDetails(value:unknown):MailDeliveryDetails;

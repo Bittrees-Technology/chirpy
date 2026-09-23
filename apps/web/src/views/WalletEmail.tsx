@@ -28,6 +28,9 @@ function ReceiptDetails({value}:{value:ReceiptObservation}){
    <dt>{t('mail.history.attempts')}</dt><dd>{value.receipt.attempts}</dd>
    <dt>{t('mail.history.retryUntil')}</dt><dd>{date(value.receipt.retryUntil)}</dd>
   </dl>:<p>{t(value.status==='unknown'?'mail.history.unknown':'mail.history.legacy')}</p>}
+  {value.status==='accepted'&&<section className="wallet-email-delivery" aria-label={t('mail.delivery.title')}><h4>{t('mail.delivery.title')}</h4><p>{t('mail.delivery.scope')}</p>
+   {value.delivery?.events.length?<dl>{value.delivery.events.map(event=><React.Fragment key={event.type}><dt>{t('mail.delivery.'+event.type)}</dt><dd>{date(event.occurredAt)}</dd></React.Fragment>)}</dl>:<p>{t('mail.delivery.empty')}</p>}
+  </section>}
  </div>;
 }
 function WalletEmailSession() {

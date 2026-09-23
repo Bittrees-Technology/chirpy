@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {APPLY_MAIL_DELIVERY_EVENT} from '../mail-delivery.js';
 import { Webhook } from 'svix';
 import { handleMailEvent, mailEventConfig, readMailEventBody, APPLY_MAIL_EVENT } from '../mail-events.js';
 const secret=`whsec_${Buffer.alloc(32,7).toString('base64')}`;
@@ -22,9 +23,9 @@ describe('signed mail provider events',()=>{
     const kv=vi.fn().mockResolvedValue('applied');const body={...event(),type};
     const response=await handleMailEvent(request(JSON.stringify(body,null,2)),env,kv);
     expect(response.status).toBe(200);expect(await response.json()).toEqual({status:'applied'});
-    expect(kv).toHaveBeenCalledOnce();const command=kv.mock.calls[0][0];expect(command.slice(0,3)).toEqual(['EVAL',APPLY_MAIL_EVENT,'2']);
+    expect(kv).toHaveBeenCalledOnce();const command=kv.mock.calls[0][0];expect(command.slice(0,3)).toEqual(['EVAL',APPLY_MAIL_DELIVERY_EVENT,'4']);
     expect(JSON.stringify(command)).not.toContain('member@example.com');expect(JSON.stringify(command)).not.toContain('private subject');
-    expect(JSON.parse(command[6]).reason).toBe(type==='email.bounced'?'bounce':'complaint');
+    expect(JSON.parse(command[9]).reason).toBe(type==='email.bounced'?'bounce':'complaint');
   });
   it('rejects signature, body, ID and timestamp tampering before storage',async()=>{
     const kv=vi.fn();const original=request();const headers=Object.fromEntries(original.headers);
@@ -53,4 +54,15 @@ describe('signed mail provider events',()=>{
     const response=await handleMailEvent(request(),env,vi.fn().mockRejectedValue(Error('secret storage detail')));
     expect(response.status).toBe(503);expect(await response.text()).not.toContain('secret');
   });
+});
+
+it.each(['sent','delivered','delivery_delayed','failed','suppressed'])('accepts a signed timed %s report without suppressing the recipient',async type=>{
+ const kv=vi.fn().mockResolvedValue('applied'),body={...event(),type:'email.'+type,created_at:new Date(Date.now()-1000).toISOString()};
+ expect((await handleMailEvent(request(JSON.stringify(body)),env,kv)).status).toBe(200);const args=kv.mock.calls[0][0];expect(args.slice(0,3)).toEqual(['EVAL',APPLY_MAIL_DELIVERY_EVENT,'4']);expect(args[9]).toBe('');expect(args[10]).toBe(type);expect(JSON.stringify(args)).not.toMatch(/member@example|private subject|provider-1/);
+});
+it.each([undefined,'invalid','2026-99-99T01:00:00Z',new Date(Date.now()+600000).toISOString()])('rejects invalid delivery report times before storage',async created_at=>{
+ const kv=vi.fn();const body={...event(),type:'email.delivered',created_at};expect((await handleMailEvent(request(JSON.stringify(body)),env,kv)).status).toBe(400);expect(kv).not.toHaveBeenCalled();
+});
+it.each(['email.opened','email.clicked'])('ignores tracking reports rather than claiming read receipts: %s',async type=>{
+ const kv=vi.fn();expect(await (await handleMailEvent(request(JSON.stringify({...event(),type})),env,kv)).json()).toEqual({status:'ignored'});expect(kv).not.toHaveBeenCalled();
 });
