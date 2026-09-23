@@ -83,3 +83,15 @@ it.each(['inactive', 'unavailable'])('shows restored group history but disables 
   state.chat.activeConversation = { ...room, deviceAccess: 'active' }; await render();
   expect(container.querySelector('.composer-input')).not.toBeNull();
 });
+
+it.each(['pending', 'removed'])('keeps history and drafts while disabling actions for %s removal', async leaveState => {
+  await render(); await type('Preserve this draft');
+  state.chat.activeConversation = { ...room, leaveState, deviceAccess: 'active', isAdmin: true, canAddMembers: true }; await render();
+  expect(container.textContent).toContain('Secret incoming text');
+  expect(container.querySelector('.composer-input')).toBeNull();
+  expect(container.querySelector('.room-members form')).toBeNull();
+  expect(button('Pause member posting')).toBeUndefined();
+  expect(Array.from(container.querySelectorAll<HTMLButtonElement>('.react-btn')).every(b => b.disabled)).toBe(true);
+  state.chat.activeConversation = { ...room, leaveState: 'available', deviceAccess: 'active' }; await render();
+  expect(container.querySelector<HTMLInputElement>('.composer-input')!.value).toBe('Preserve this draft');
+});

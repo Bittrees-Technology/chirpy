@@ -8,7 +8,7 @@ function setup() {
   const provider = { request: vi.fn().mockResolvedValue([self]) };
   const t = new XmtpTransport(PERSONAL_ORG, { address: self }, provider) as any;
   t.status = 'ready'; t.sdk = { ConsentState: { Unknown: 0, Allowed: 1, Denied: 2 }, ConversationType: { Group: 'group' }, IdentifierKind: { Ethereum: 0 } };
-  const group = { isActive: vi.fn().mockResolvedValue(true), consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Room', description: meta(), sync: vi.fn(),
+  const group = { isPendingRemoval: vi.fn().mockResolvedValue(false), isActive: vi.fn().mockResolvedValue(true), consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Room', description: meta(), sync: vi.fn(),
     isSuperAdmin: vi.fn().mockResolvedValue(true), isAdmin: vi.fn().mockResolvedValue(false),
     members: vi.fn().mockResolvedValue([{ inboxId: 'self' }]), addMembers: vi.fn().mockResolvedValue(undefined) };
   const stale = { ...group, description: meta(), sync: vi.fn() };

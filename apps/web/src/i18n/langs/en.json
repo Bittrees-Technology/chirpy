@@ -719,5 +719,21 @@
   "thread.deviceUnavailable": "Saved messages are available. Active access could not be confirmed; refresh to try again.",
   "status.activeAccessRequired": "Active access from this device is required. You can still read restored messages.",
   "roomMembers.savedTitle": "Saved member list",
-  "roomMembers.savedHint": "This saved list may not reflect current membership."
+  "roomMembers.savedHint": "This saved list may not reflect current membership.",
+  "roomLeave.title": "Room membership",
+  "roomLeave.action": "Leave room",
+  "roomLeave.confirmTitle": "Request to leave this room?",
+  "roomLeave.confirmHint": "A room owner must process your removal. While it is pending, Chat stops sending and room changes. Saved messages and your draft stay on this device.",
+  "roomLeave.confirm": "Request removal",
+  "roomLeave.requesting": "Requesting removal…",
+  "roomLeave.pending": "Removal requested. An owner must process it before your membership ends. Sending and room changes are paused.",
+  "roomLeave.removed": "Your membership has ended. Saved messages remain available on this device.",
+  "roomLeave.owner": "An owner must appoint another owner and step down before leaving.",
+  "roomLeave.alone": "The last member cannot leave this room.",
+  "roomLeave.unavailable": "Active room membership could not be confirmed.",
+  "roomLeave.failed": "Removal was not confirmed. Refresh membership before retrying.",
+  "roomLeave.connect": "Connect a wallet to request room removal.",
+  "roomLeave.busy": "A leave request is already in progress.",
+  "roomLeave.unsupported": "Native room leaving is unavailable.",
+  "roomLeave.actionsUnavailable": "Room removal is pending or could not be checked. Sending and room changes are unavailable."
 }

@@ -55,6 +55,8 @@ export interface Conversation {
   consentSupported?: boolean;
   /** Native group access on this installation; restored history can be inactive. */
   deviceAccess?: "active" | "inactive" | "unavailable";
+  /** Native leave lifecycle; an inactive restored archive alone is not removal. */
+  leaveState?: "available" | "pending" | "removed" | "owner" | "alone" | "unavailable";
   /** A native conversation the current user has not yet accepted. */
   pending?: boolean;
   /** A denied conversation stays discoverable without message previews. */
@@ -94,6 +96,8 @@ export interface Transport {
   createRoom(input: StartRoomInput): Promise<Conversation>;
   /** Add one activated wallet to an open room; recheck authority before dispatch. */
   addRoomMember?(conversationId: string, address: string, isCurrent?: () => boolean): Promise<void>;
+  /** Request native group removal; acknowledgement does not mean removal completed. */
+  requestRoomLeave?(conversationId: string, isCurrent?: () => boolean): Promise<void>;
   /** Ask the configured gatekeeper bot to add this wallet/inbox to a gated room. */
   requestRoomJoin?(conversationId: string): Promise<void>;
   /** Update a room's effective policy (admin action — e.g. freeze posting). */

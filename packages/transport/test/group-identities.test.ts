@@ -15,7 +15,7 @@ function setup() {
   const raw = ['member', 'former', 'unknown'].map((senderInboxId, i) => ({ id: `m${i}`, conversationId: 'room', senderInboxId, sentAtNs: BigInt(i + 1), content: `message ${i}`, reactions: i === 0 ? [reaction] : [] }));
   const fetch = vi.fn(async (ids: string[]) => ids.flatMap(id => id === 'member' ? [state(id, peer)] : id === 'former' ? [state(id, former)] : []).reverse());
   const client = { inboxId: 'self', preferences: { fetchInboxStates: fetch }, conversations: { getMessageById: vi.fn().mockResolvedValue(raw[0]) } };
-  const group = { isActive: vi.fn().mockResolvedValue(true), consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Room', sync: vi.fn(), messages: vi.fn().mockResolvedValue(raw), sendReaction: vi.fn(),
+  const group = { isPendingRemoval: vi.fn().mockResolvedValue(false), isActive: vi.fn().mockResolvedValue(true), consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Room', sync: vi.fn(), messages: vi.fn().mockResolvedValue(raw), sendReaction: vi.fn(),
     members: vi.fn().mockResolvedValue([{ inboxId: 'self' }, { inboxId: 'member' }]), isSuperAdmin: async () => true };
   t.client = client; t.conversations.set('room', group); t.peerByConversation.set('room', 'wrong-DM-cache');
   t.roomMeta.set('room', { gate: { combine: 'any', rules: [] }, policy: { mode: 'active' } });

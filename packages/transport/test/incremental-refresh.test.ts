@@ -306,7 +306,7 @@ it('keeps new invalidations arriving during targeted lookup for the next refresh
 it('applies fresh room restrictions and namespace changes through the real room mapper', async () => {
   const f = await setup();
   try {
-    const room = { isActive: vi.fn().mockResolvedValue(true), consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Original title', metadata: { conversationType: 'group' },
+    const room = { isPendingRemoval: vi.fn().mockResolvedValue(false), isActive: vi.fn().mockResolvedValue(true), consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Original title', metadata: { conversationType: 'group' },
       description: JSON.stringify({ chirpyRoom: 1, namespace: 'personal', policy: { mode: 'active' } }),
       lastMessage: async () => undefined, members: async () => [], countMessages: async () => 0n,
       isAdmin: async () => false, isSuperAdmin: async () => false, sendText: vi.fn() };

@@ -719,5 +719,21 @@
   "thread.deviceUnavailable": "Los mensajes guardados están disponibles. No se pudo confirmar el acceso activo; actualiza para volver a intentarlo.",
   "status.activeAccessRequired": "Se requiere acceso activo desde este dispositivo. Aún puedes leer los mensajes restaurados.",
   "roomMembers.savedTitle": "Lista de miembros guardada",
-  "roomMembers.savedHint": "Esta lista guardada puede no reflejar los miembros actuales."
+  "roomMembers.savedHint": "Esta lista guardada puede no reflejar los miembros actuales.",
+  "roomLeave.title": "Pertenencia a la sala",
+  "roomLeave.action": "Salir de la sala",
+  "roomLeave.confirmTitle": "¿Solicitar salir de esta sala?",
+  "roomLeave.confirmHint": "Un propietario debe procesar tu salida. Mientras esté pendiente, Chat desactiva los envíos y los cambios en la sala. Los mensajes guardados y tu borrador permanecen en este dispositivo.",
+  "roomLeave.confirm": "Solicitar salida",
+  "roomLeave.requesting": "Solicitando salida…",
+  "roomLeave.pending": "Salida solicitada. Un propietario debe procesarla para finalizar tu pertenencia. Los envíos y los cambios en la sala están pausados.",
+  "roomLeave.removed": "Tu pertenencia ha finalizado. Los mensajes guardados siguen disponibles en este dispositivo.",
+  "roomLeave.owner": "Un propietario debe nombrar a otro propietario y renunciar a su función antes de salir.",
+  "roomLeave.alone": "El último miembro no puede salir de esta sala.",
+  "roomLeave.unavailable": "No se pudo confirmar tu pertenencia activa a la sala.",
+  "roomLeave.failed": "No se confirmó la salida. Actualiza la pertenencia antes de volver a intentarlo.",
+  "roomLeave.connect": "Conecta una cartera para solicitar salir de la sala.",
+  "roomLeave.busy": "Ya hay una solicitud de salida en curso.",
+  "roomLeave.unsupported": "No se puede solicitar la salida de esta sala nativa.",
+  "roomLeave.actionsUnavailable": "La salida está pendiente o no se pudo comprobar. Los envíos y los cambios en la sala no están disponibles."
 }
