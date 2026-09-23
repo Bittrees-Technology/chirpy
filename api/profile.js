@@ -1,8 +1,10 @@
+import {handleDisplayWallet} from '../server/display-wallet.js';
 import {publicProfileConfig,createPublicProfiles,verifyProfileSignature} from '../server/public-profile.js';
 import {profileAddress} from '../packages/core/src/publicProfile.js';
 import {syncCors} from '../server/sync-cors.js';
 import {checkRateLimit} from '../server/server-utils.js';
 export default async function handler(req,res){
+ if(req.query?.kind==='display-wallet')return handleDisplayWallet(req,res);
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
  const config=publicProfileConfig();if(!config)return res.status(503).json({enabled:false,error:'Public profiles are unavailable.'});
  const cors=syncCors(req,res,{service:config.service,allowedOrigins:[process.env.CHIRPY_SYNC_ALLOWED_ORIGINS,process.env.CHIRPY_SYNC_MIGRATION_ORIGINS].filter(Boolean).join(',')});
