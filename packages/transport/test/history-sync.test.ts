@@ -47,3 +47,13 @@ it('coalesces concurrent requests and allows an explicit retry after failure', a
   expect(transport.status).toBe('ready');
   await transport.requestHistorySync(); expect(client.sendSyncRequest).toHaveBeenCalledTimes(2);
 });
+
+it('does not start recovery polling after a failed request or a replaced client', async () => {
+  const { transport, client } = setup();
+  client.sendSyncRequest.mockRejectedValueOnce(new Error('offline'));
+  await expect(transport.requestHistorySync()).rejects.toThrow('offline');
+  expect((transport as any).historyRequestedAt).toBeNull();
+  client.sendSyncRequest.mockImplementationOnce(async () => { Object.assign(transport, { client: {} }); });
+  await expect(transport.requestHistorySync()).rejects.toThrow('Wallet changed');
+  expect((transport as any).historyRequestedAt).toBeNull();
+});

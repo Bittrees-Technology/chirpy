@@ -172,6 +172,29 @@ it('reconciles a hidden installation so missed device history requests can be se
   } finally { vi.useRealTimers(); await f.close(); vi.unstubAllGlobals(); }
 });
 
+it('briefly checks requested history every ten seconds, then restores normal polling', async () => {
+  const f = await setup();
+  f.t.provider = { request: async () => [f.t.myAddress] };
+  f.t.client.sendSyncRequest = vi.fn().mockResolvedValue(undefined);
+  vi.useFakeTimers();
+  try {
+    f.t.startPoll(f.changed);
+    await f.t.requestHistorySync();
+    for (let tick = 1; tick <= 11; tick++) {
+      f.changed.mockClear();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(f.changed).toHaveBeenCalledOnce();
+      await f.t.listConversations();
+    }
+    f.changed.mockClear();
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(f.changed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(f.changed).toHaveBeenCalledOnce();
+    expect(f.t.client.sendSyncRequest).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); await f.close(); }
+});
+
 it('refreshes local read counts and reactions without waiting for the next poll', async () => {
   const f = await setup(); const record = f.records[0];
   record.consentState = async () => 1;

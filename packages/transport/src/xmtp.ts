@@ -255,6 +255,7 @@ export class XmtpTransport implements Transport {
   private readonly readState: ReadState;
   private messageCursors = new Map<string, { conversationId: string; at: bigint }>();
   private historyRequest: Promise<void> | null = null;
+  private historyRequestedAt: number | null = null;
 
   constructor(
     private org: OrgConfig,
@@ -324,6 +325,8 @@ export class XmtpTransport implements Transport {
       // SDK 7 does not automatically request an archive on new installations.
       // The default archive includes messages and consent. Never claim it has arrived yet.
       await client.sendSyncRequest();
+      if (this.client !== client || this.status !== 'ready') throw new Error('Wallet changed. Request history for the current wallet.');
+      this.historyRequestedAt = Date.now();
     })();
     this.historyRequest = request;
     try { await request; } finally { if (this.historyRequest === request) this.historyRequest = null; }
@@ -1221,11 +1224,15 @@ export class XmtpTransport implements Transport {
     };
     this.pollTimer = setInterval(() => {
       const now = Date.now();
+      // Archive transfer needs a request, another installation's response, and
+      // an import. Do not make each stage wait a full minute after an explicit
+      // request. This bounded recovery window never resends the request itself.
+      const recoveringHistory = this.historyRequestedAt !== null && now >= this.historyRequestedAt && now - this.historyRequestedAt < 120_000;
       // Healthy streams deliver immediate changes. Reconcile periodically for
       // silently missed updates, including device history requests while this
       // installation is in a background tab. Errors and explicit invalidation retain
       // the ten-second fallback. Clock rollback must not defer recovery.
-      if (this.streamHealthy && this.consentStreamHealthy && !this.fullRefreshRequired && this.fullRefreshCompletedAt !== null &&
+      if (!recoveringHistory && this.streamHealthy && this.consentStreamHealthy && !this.fullRefreshRequired && this.fullRefreshCompletedAt !== null &&
           now >= this.fullRefreshCompletedAt && now - this.fullRefreshCompletedAt < 60_000) return;
       sync();
     }, 10_000);
