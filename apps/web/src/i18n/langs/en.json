@@ -567,7 +567,7 @@
   "mailbox.to": "To",
   "mailbox.subject": "Subject",
   "mailbox.message": "Message",
-  "mailbox.draftHint": "Plain text only. Draft text is cleared when you leave Email or reload. A pending-send warning is saved on this device.",
+  "mailbox.draftHint": "The message body is plain text. Drafts are cleared when you leave Email or reload. A pending-send warning is saved on this device.",
   "mailbox.send": "Send email",
   "mailbox.unthreadedReply": "This message has no usable conversation references. A reply may appear as a separate conversation.",
   "mailbox.reply": "Reply",
@@ -650,5 +650,10 @@
   "publicProfile.saved": "Public name saved. Other active Chat clients refresh within about 40 seconds.",
   "publicProfile.withdrawn": "Chat name withdrawn. Active Chat clients refresh within about 40 seconds. Previously seen copies and external ENS records cannot be erased.",
   "publicProfile.failed": "The public profile could not be loaded. Try reloading it.",
-  "publicProfile.uncertain": "The result could not be confirmed. Reload the public profile before retrying; a previous update may already have been saved."
+  "publicProfile.uncertain": "The result could not be confirmed. Reload the public profile before retrying; a previous update may already have been saved.",
+  "mailbox.addAttachments": "Attach files",
+  "mailbox.outgoingAttachmentHint": "Up to 4 files, 256 KiB total. Files stay in this draft until you send. Drafts are cleared when you refresh or leave Email.",
+  "mailbox.removeAttachment": "Remove {filename}",
+  "mailbox.removeFile": "Remove",
+  "mailbox.error.attachmentFiles": "Choose up to 4 files totaling 256 KiB or less. Use filenames without slashes or hidden control characters."
 }

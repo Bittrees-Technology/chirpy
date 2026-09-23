@@ -25,7 +25,7 @@ export function createConnectedMailHandler({config=action=>connectedMailConfig(p
    }
    const type=String(req.headers?.['content-type']||'').split(';')[0].trim().toLowerCase();
    if(type!==(action==='callback'?'application/x-www-form-urlencoded':'application/json'))throw new ConnectedMailError(415,'Invalid request format.');
-   if(Buffer.byteLength(typeof req.body==='string'?req.body:JSON.stringify(req.body??{}))>65536)throw new ConnectedMailError(413,'Mail request is too large.');
+   if(Buffer.byteLength(typeof req.body==='string'?req.body:JSON.stringify(req.body??{}))>(action==='operation'?410000:65536))throw new ConnectedMailError(413,'Mail request is too large.');
    let input=req.body;
    if(action==='callback'&&typeof input==='string'){
     const params=new URLSearchParams(input);input={};for(const [key,value]of params){if(Object.hasOwn(input,key))throw new ConnectedMailError(400,'Duplicate callback field.');Object.defineProperty(input,key,{value,enumerable:true});}

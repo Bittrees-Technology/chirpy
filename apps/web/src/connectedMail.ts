@@ -1,3 +1,5 @@
+import {MAIL_ATTACHMENT_BYTES,MAIL_ATTACHMENT_COUNT,validAttachmentName,validOutgoingAttachments,type OutgoingAttachment} from '../../../packages/core/src/mailAttachments';
+export {MAIL_ATTACHMENT_BYTES,MAIL_ATTACHMENT_COUNT,validAttachmentName};
 import {stringToHex} from 'viem';
 import {parseSiweMessage,createSiweMessage} from 'viem/siwe';
 import {getActiveProvider} from './walletProviders';
@@ -5,7 +7,7 @@ export type MailConnection={mailbox:string;scopes:('read'|'send')[];expiresAt:st
 export type MailSummary={id:string;from:string;subject:string;date:string};
 export type MailMessage=MailSummary&{text:string;sourceVersion?:string;replyTo?:string;threadedReply?:boolean};
 export type MailReceipt={id:string;createdAt:number};
-export class MailClientError extends Error {constructor(public code:'session'|'unavailable'|'denied'|'wallet'|'failed'|'storage'|'pageChanged'|'pageLimit',public status?:number){super(code);}}
+export class MailClientError extends Error {constructor(public code:'session'|'unavailable'|'denied'|'wallet'|'failed'|'storage'|'pageChanged'|'pageLimit'|'attachmentFiles',public status?:number){super(code);}}
 const isWallet=(v:unknown):v is string=>typeof v==='string'&&/^0x[a-f0-9]{40}$/.test(v);
 const messageId=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 export const validMailFolder=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$/.test(v)&&v===v.trim();
@@ -126,13 +128,26 @@ export async function downloadMailAttachment(wallet:string,folder:string,id:stri
  // The UI creates a download only after this completes and its view/session is current.
  return {filename:item.filename,bytes};
 }
-export type MailDraft={to:string;subject:string;text:string;reply?:{folder:string;id:string;version:string}};
-export function validMailDraft(d:MailDraft){return (!d.reply||validMailFolder(d.reply.folder)&&messageId(d.reply.id)&&messageId(d.reply.version)&&Object.keys(d.reply).length===3)&&d.to.length<=254&&/^[^\s<>@,;\x00-\x1f\x7f]+@[^\s<>@,;\x00-\x1f\x7f]+\.[^\s<>@,;\x00-\x1f\x7f]+$/.test(d.to)&&d.subject.length<=200&&!/[\x00-\x1f\x7f]/.test(d.subject)&&!!d.text.trim()&&!d.text.includes('\0')&&new TextEncoder().encode(JSON.stringify(d)).length<=19000;}
+export type MailDraft={to:string;subject:string;text:string;attachments?:OutgoingAttachment[];reply?:{folder:string;id:string;version:string}};
+export function validMailDraft(d:MailDraft){
+ if(!d||typeof d!=='object'||Object.keys(d).some(k=>!['to','subject','text','reply','attachments'].includes(k))||typeof d.to!=='string'||typeof d.subject!=='string'||typeof d.text!=='string'||d.attachments!==undefined&&!validOutgoingAttachments(d.attachments))return false;
+ const {attachments,...text}=d;
+ return (!d.reply||validMailFolder(d.reply.folder)&&messageId(d.reply.id)&&messageId(d.reply.version)&&Object.keys(d.reply).length===3)&&d.to.length<=254&&/^[^\s<>@,;\x00-\x1f\x7f]+@[^\s<>@,;\x00-\x1f\x7f]+\.[^\s<>@,;\x00-\x1f\x7f]+$/.test(d.to)&&d.subject.length<=200&&!/[\x00-\x1f\x7f]/.test(d.subject)&&!!d.text.trim()&&!d.text.includes('\0')&&new TextEncoder().encode(JSON.stringify(text)).length<=19000;
+}
+export async function prepareMailAttachments(files:File[],existing:OutgoingAttachment[]=[],signal?:AbortSignal):Promise<OutgoingAttachment[]>{
+ if(!validOutgoingAttachments(existing)||existing.length+files.length>MAIL_ATTACHMENT_COUNT||files.some(f=>!validAttachmentName(f.name)||!Number.isSafeInteger(f.size)||f.size<0||f.size>MAIL_ATTACHMENT_BYTES))throw new MailClientError('attachmentFiles');
+ const used=existing.reduce((n,f)=>n+atob(f.content).length,0);
+ if(used+files.reduce((n,f)=>n+f.size,0)>MAIL_ATTACHMENT_BYTES)throw new MailClientError('attachmentFiles');
+ const added:OutgoingAttachment[]=[];
+ for(const file of files){signal?.throwIfAborted();const bytes=new Uint8Array(await file.arrayBuffer());signal?.throwIfAborted();if(bytes.length!==file.size)throw new MailClientError('attachmentFiles');let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));added.push({filename:file.name,content:btoa(binary)});}
+ const result=[...existing,...added];if(!validOutgoingAttachments(result))throw new MailClientError('attachmentFiles');return result;
+}
+
 const receiptKey=(wallet:string)=>'chat:mail-pending:v1:'+wallet;
 export function mailReceipt(wallet:string):MailReceipt|null{try{const raw=localStorage.getItem(receiptKey(wallet));if(!raw)return null;const r=JSON.parse(raw);if(!messageId(r.id)||!Number.isSafeInteger(r.createdAt)||r.createdAt<=0)throw Error();return {id:r.id,createdAt:r.createdAt};}catch{throw new MailClientError('storage');}}
 export function clearMailReceipt(wallet:string){try{localStorage.removeItem(receiptKey(wallet));}catch{throw new MailClientError('storage');}}
 export async function sendMail(wallet:string,draft:MailDraft,signal?:AbortSignal){
- if(!validMailDraft(draft))throw new MailClientError('failed');await assertMailWallet(wallet);
+ const snapshot=structuredClone(draft);if(!validMailDraft(snapshot))throw new MailClientError('failed');await assertMailWallet(wallet);
  signal?.throwIfAborted();
  if(!navigator.locks)throw new MailClientError('storage');
  const receipt=await navigator.locks.request(receiptKey(wallet),{signal:signal?AbortSignal.any([signal,AbortSignal.timeout(5000)]):AbortSignal.timeout(5000)},()=>{
@@ -142,7 +157,7 @@ export async function sendMail(wallet:string,draft:MailDraft,signal?:AbortSignal
  return receipt;
  });
  // Retain this receipt on every uncertain result, including navigation or wallet changes.
- const result=await operation(wallet,'send',{...draft,idempotencyKey:receipt.id},signal);
+ const result=await operation(wallet,'send',{...snapshot,idempotencyKey:receipt.id},signal);
  if(result.ok!==true)throw new MailClientError('failed');
  await navigator.locks.request(receiptKey(wallet),{},()=>{if(mailReceipt(wallet)?.id===receipt.id)clearMailReceipt(wallet);});
 }
