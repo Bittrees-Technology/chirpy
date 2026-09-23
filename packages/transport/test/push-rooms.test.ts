@@ -374,3 +374,62 @@ it('bounds reaction snapshots without silently truncating counts or resetting li
  vi.mocked(f.client.history).mockResolvedValue([{cid:target,link:null,fromDID:owner,toDID:group,timestamp:0,messageType:'Text',messageContent:'New snapshot'}]);
  expect((await f.rooms.history(id,fresh.olderCursor)).messages[0].reactions).toEqual({'❤️':[owner]});
 });
+
+describe('Push multiple-file dispatch', () => {
+  const selected = (name: string, bytes = 16) => preparePushFile(name, 'application/octet-stream', new Uint8Array(bytes).fill(31));
+  it.each(['', 'Combined caption'])('sends one ordered Composite with all file bytes and caption %j', async body => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const files = [selected('first.bin'), selected('second.bin', 31)];
+    await f.rooms.send(id, body, { files });
+    expect(f.client.send).toHaveBeenCalledOnce();
+    const [room, payload] = vi.mocked(f.client.send).mock.calls[0];
+    expect(room).toBe(group); expect(payload.type).toBe('Composite');
+    const parts = payload.content as Array<{ type: string; content: string }>;
+    if (body) expect(parts[0]).toEqual({ type: 'Text', content: body });
+    expect(parts.slice(body ? 1 : 0).map(part => readPushAttachment(part.type, part.content))).toEqual(files);
+  });
+  it('snapshots every file and array order before asynchronous permission checks', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const files = [selected('first.bin'), selected('second.bin')], original = files.map(file => ({ ...file }));
+    const pending = f.rooms.send(id, '', { files });
+    files[0].base64 = btoa('changed'); files.reverse(); files.push(selected('extra.bin'));
+    await pending;
+    const payload = vi.mocked(f.client.send).mock.calls[0][1];
+    expect((payload.content as any[]).map(part => readPushAttachment(part.type, part.content))).toEqual(original);
+  });
+  it('reads the largest allowed send as one complete history message using the actual SDK schema', async () => {
+    const { createRequire } = await import('node:module');
+    const { validateMessageObj } = createRequire(import.meta.url)('@pushprotocol/restapi/src/lib/validations/messageObject.js');
+    const { readPushHistory } = await import('../src/pushMessages');
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const files = Array.from({ length: 6 }, (_, index) => selected(`file-${index}.bin`, 1_000_000));
+    const body = 'x'.repeat(16_000); await f.rooms.send(id, body, { files });
+    const payload = vi.mocked(f.client.send).mock.calls[0][1];
+    const content = (payload.content as any[]).map(part => ({ messageType: part.type, messageObj: { content: part.content } }));
+    expect(() => validateMessageObj({ content }, 'Composite')).not.toThrow();
+    expect(() => validateMessageObj({ content: { messageType: 'Composite', messageObj: { content } }, reference: replyCid }, 'Reply')).toThrow();
+    const history = readPushHistory([{ ...replyRow(), messageType: 'Composite', messageObj: { content } }], id);
+    expect(history.messages[0].pushParts).toHaveLength(7);
+    expect(history.messages[0].pushParts!.slice(1).map(part => part.pushAttachment)).toEqual(files);
+    expect(history.messages[0].pushParts![0].body).toBe(body);
+  });
+  it('rejects invalid batches, sparse entries and ambiguous options before any authority lookup or write', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    for (const opts of [
+      { files: Array.from({ length: 7 }, () => selected('extra.bin')) },
+      { files: [selected('good.bin'), { ...selected('bad.bin'), bytes: -1 }] },
+      { files: new Array(2) }, { files: null }, { files: { length: 1 } },
+      { files: [selected('batch.bin')], file: selected('ambiguous.bin') },
+      { files: [selected('first.bin'), selected('second.bin')], replyTo: replyCid },
+    ]) await expect(f.rooms.send(id, '', opts as any)).rejects.toThrow();
+    expect(f.client.info).not.toHaveBeenCalled(); expect(f.client.history).not.toHaveBeenCalled(); expect(f.client.send).not.toHaveBeenCalled();
+  });
+  it('never splits a failed combined send into partial writes or retries', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const files = [selected('first.bin'), selected('second.bin')];
+    vi.mocked(f.client.permissions).mockResolvedValueOnce({ entry: true, chat: false });
+    await expect(f.rooms.send(id, '', { files })).rejects.toThrow('not allowed'); expect(f.client.send).not.toHaveBeenCalled();
+    vi.mocked(f.client.send).mockRejectedValueOnce(new Error('Unknown combined outcome'));
+    await expect(f.rooms.send(id, '', { files })).rejects.toThrow('Unknown combined outcome'); expect(f.client.send).toHaveBeenCalledOnce();
+  });
+});

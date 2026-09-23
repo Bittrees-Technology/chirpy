@@ -1,4 +1,4 @@
-import { writePushFile, type PushAttachment } from './pushMedia.js';
+import { writePushFiles, type PushAttachment } from './pushMedia.js';
 import type { Message as PushSdkMessage } from '@pushprotocol/restapi';
 import { parsePushIdentity } from './pushIdentity.js';
 import type { Conversation, MessagePage } from './types.js';
@@ -227,18 +227,18 @@ export class PushRooms {
     });
     return { members, page, hasMore: members.length === 20, pending };
   }
-  async send(id: string, body: string, opts?: { replyTo?: string; file?: PushAttachment }): Promise<void> {
-    const fileContent = opts?.file === undefined ? undefined : writePushFile(opts.file);
-    if ((!body.trim() && fileContent === undefined) || body.length > 16_000 || new TextEncoder().encode(body).byteLength > 64 * 1024) throw new Error('Write a message of at most 16,000 characters.');
+  async send(id: string, body: string, opts?: { replyTo?: string; file?: PushAttachment; files?: PushAttachment[] }): Promise<void> {
+    if (opts?.file !== undefined && opts?.files !== undefined) throw new Error('The selected file is invalid. Choose it again.');
+    const files = writePushFiles(opts?.files === undefined ? opts?.file === undefined ? [] : [opts.file] : opts.files);
+    if ((!body.trim() && !files.length) || body.length > 16_000 || new TextEncoder().encode(body).byteLength > 64 * 1024) throw new Error('Write a message of at most 16,000 characters.');
     const replyTo = opts?.replyTo;
-    if (replyTo !== undefined && fileContent !== undefined && body.trim()) throw new Error('File replies cannot include a caption. Clear the caption or cancel the reply.');
+    if (replyTo !== undefined && files.length > 1) throw new Error('Replies support one file. Remove extra files or cancel the reply.');
+    if (replyTo !== undefined && files.length && body.trim()) throw new Error('File replies cannot include a caption. Clear the caption or cancel the reply.');
     if (replyTo !== undefined && (typeof replyTo !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(replyTo))) throw new Error('Choose an original message in this room to reply to.');
+    const parts = [...(body.trim() ? [{ type: 'Text' as const, content: body }] : []), ...files.map(content => ({ type: 'File' as const, content }))];
     const payload: PushSdkMessage = replyTo !== undefined
-      ? { type: 'Reply', content: fileContent === undefined ? { type: 'Text', content: body } : { type: 'File', content: fileContent }, reference: replyTo }
-      : fileContent !== undefined
-        ? body.trim() ? { type: 'Composite', content: [{ type: 'Text', content: body }, { type: 'File', content: fileContent }] }
-          : { type: 'File', content: fileContent }
-        : { type: 'Text', content: body };
+      ? { type: 'Reply', content: parts[0], reference: replyTo }
+      : parts.length > 1 ? { type: 'Composite', content: parts } : parts[0];
     await this.#post(id, payload, replyTo);
   }
   async react(id: string, reference: string, emoji: string): Promise<void> {

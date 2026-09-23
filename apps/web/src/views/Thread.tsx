@@ -40,10 +40,11 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const [sendError, setSendError] = useState<{ id: string; message: string } | null>(null);
   const [reply, setReply] = useState<{ id: string; preview: string; scope: string } | null>(null);
   const selectedReply = reply?.scope === draftKey ? reply : null;
-  const [attachment, setAttachment] = useState<{ file: PushAttachment; scope: string } | null>(null);
-  const selectedFile = attachment?.scope === draftKey ? attachment.file : undefined;
+  const [attachment, setAttachment] = useState<{ files: PushAttachment[]; scope: string } | null>(null);
+  const selectedFiles = attachment?.scope === draftKey ? attachment.files : undefined;
   const [fileReading, setFileReading] = useState(false);
-  const fileReplyCaption = Boolean(selectedReply && selectedFile && draft.trim());
+  const fileReplyCaption = Boolean(selectedReply && selectedFiles?.length && draft.trim());
+  const multipleFileReply = Boolean(selectedReply && (selectedFiles?.length ?? 0) > 1);
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [consentPending, setConsentPending] = useState(false);
   const [joinPending, setJoinPending] = useState(false);
@@ -111,17 +112,17 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (sendingRef.current || fileReading || fileReplyCaption || (!draft.trim() && !selectedFile)) return;
+    if (sendingRef.current || fileReading || fileReplyCaption || multipleFileReply || (!draft.trim() && !selectedFiles?.length)) return;
     const body = draft;
     const id = activeConversation.id;
     sendingRef.current = true;
     setSending(id); setSendError(null);
     try {
-      await send(body, selectedReply?.id, selectedFile);
+      await send(body, selectedReply?.id, selectedFiles);
       if (currentDraftKeyRef.current === draftKey) scrollToLatest();
       setDrafts((current) => current[draftKey] === body ? { ...current, [draftKey]: "" } : current);
       setReply(current => current === selectedReply ? null : current);
-      setAttachment(current => current?.file === selectedFile ? null : current);
+      setAttachment(current => current?.files === selectedFiles ? null : current);
     } catch (error) {
       setSendError({ id: draftKey, message: error instanceof Error ? error.message : "Message was not sent. Your draft is saved; try again." });
     } finally { sendingRef.current = false; setSending(null); }
@@ -317,8 +318,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         </div>
       )}
 
-      {pushRoom && !postingBlocked && <PushFilePicker key={draftKey} file={selectedFile} replying={Boolean(selectedReply)} disabled={sending !== null}
-        onReading={setFileReading} onChange={file => setAttachment(file ? { file, scope: draftKey } : null)}/>}
+      {pushRoom && !postingBlocked && <PushFilePicker key={draftKey} files={selectedFiles} replying={Boolean(selectedReply)} disabled={sending !== null}
+        onReading={setFileReading} onChange={files => setAttachment(files.length ? { files, scope: draftKey } : null)}/>}
+      {multipleFileReply && !postingBlocked && <div className="join-banner" role="status">{t("push.multipleFileReply")}</div>}
       {fileReplyCaption && !postingBlocked && <div className="join-banner" role="status">{t("push.fileReplyCaption")}</div>}
       {sendError?.id === draftKey && <div className="join-banner error" role="alert">{translateStatus(t, sendError.message)} {t("thread.draftKept", "Your draft has been kept.")}</div>}
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
@@ -335,7 +337,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
             onChange={(e) => setDraft(e.target.value)}
             autoFocus
           />
-          <button className="btn btn-primary" type="submit" disabled={(!draft.trim() && !selectedFile) || sending !== null || fileReading || fileReplyCaption}>{sending === conversationKey ? t("thread.sending", "Sending…") : t("thread.send", "Send")}</button>
+          <button className="btn btn-primary" type="submit" disabled={(!draft.trim() && !selectedFiles?.length) || sending !== null || fileReading || fileReplyCaption || multipleFileReply}>{sending === conversationKey ? t("thread.sending", "Sending…") : t("thread.send", "Send")}</button>
         </form>
       )}
     </div>

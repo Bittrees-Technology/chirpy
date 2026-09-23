@@ -1,5 +1,7 @@
 /** Decrypted Push payloads only. No URL fetch, active rendering or identity claim. */
 export const PUSH_FILE_BYTES = 1_000_000;
+// Six maximum-size files encode below the existing 8 MiB history-page budget.
+export const PUSH_MAX_FILES = 6;
 const MAX_CONTENT = 1_340_000;
 export interface PushAttachment { filename: string; mediaType: string; bytes: number; base64: string }
 function filename(value: unknown, fallback: string) {
@@ -50,4 +52,11 @@ export function writePushFile(file: PushAttachment): string {
   const parsed = readPushAttachment('File', content);
   if (!parsed || parsed.bytes !== file.bytes || parsed.filename !== file.filename || parsed.mediaType !== file.mediaType) throw new Error('The selected file is invalid. Choose it again.');
   return content;
+}
+
+/** Validate the whole selection before authority checks or a network write. */
+export function writePushFiles(files: PushAttachment[]): string[] {
+  if (!Array.isArray(files) || files.length > PUSH_MAX_FILES) throw new Error('Choose at most 6 files, up to 1 MB each.');
+  // Array.from visits holes too, so sparse or partially invalid batches fail closed.
+  return Array.from(files, writePushFile);
 }
