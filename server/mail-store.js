@@ -11,7 +11,7 @@ local raw=redis.call('GET',KEYS[3]); if not raw then return {'denied'} end
 local b=cjson.decode(raw)
 if b.version~=ARGV[3] or b.revoked or tonumber(b.expiresAt)<=now then return {'denied'} end
 if tonumber(redis.call('GET',KEYS[4]) or '0')>=20 or tonumber(redis.call('GET',KEYS[5]) or '0')>=50 then return {'limited'} end
-local j=cjson.decode(ARGV[2]); j.createdAt=now; j.deadline=now+82800000; j.status='queued'; j.attempts=0
+local j=cjson.decode(ARGV[2]); j.createdAt=now; j.updatedAt=now; j.deadline=now+82800000; j.status='queued'; j.attempts=0
 redis.call('SET',KEYS[1],cjson.encode(j),'PX',2592000000)
 redis.call('SET',KEYS[6],ARGV[4],'PX',86400000)
 -- Keep only hashes so delivered links survive payload deletion and key rotation.
@@ -30,9 +30,9 @@ local score=redis.call('ZSCORE',KEYS[2],KEYS[1]); if score and tonumber(score)>n
 local br=redis.call('GET',KEYS[3]); local b=br and cjson.decode(br) or {}
 local payload=redis.call('GET',KEYS[4])
 if redis.call('EXISTS',KEYS[5])==1 or j.deadline<=now or j.attempts>=5 or not payload or b.version~=j.bindingVersion or b.revoked or tonumber(b.expiresAt or 0)<=now then
- j.status='stopped'; redis.call('DEL',KEYS[4]); redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); redis.call('ZREM',KEYS[2],KEYS[1]); return nil
+ j.status='stopped'; j.updatedAt=now; redis.call('DEL',KEYS[4]); redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); redis.call('ZREM',KEYS[2],KEYS[1]); return nil
 end
-j.status='sending'; j.attempts=j.attempts+1; j.lease=ARGV[1]; j.lockedUntil=now+60000
+j.status='sending'; j.updatedAt=now; j.attempts=j.attempts+1; j.lease=ARGV[1]; j.lockedUntil=now+60000
 redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); redis.call('ZADD',KEYS[2],j.lockedUntil,KEYS[1])
 return {cjson.encode(j),payload}
 `;
@@ -40,7 +40,7 @@ export const FINISH_MAIL = `
 local raw=redis.call('GET',KEYS[1]); if not raw then return 0 end
 local j=cjson.decode(raw); if j.lease~=ARGV[1] or j.status~='sending' then return 0 end
 local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
-j.providerId=ARGV[3]; j.lockedUntil=0
+j.providerId=ARGV[3]; j.lockedUntil=0; j.updatedAt=now
 if ARGV[2]=='accepted' then j.status='accepted'
 elseif ARGV[2]=='stopped' or j.attempts>=5 or now>=j.deadline then j.status='stopped'
 else j.status='queued' end

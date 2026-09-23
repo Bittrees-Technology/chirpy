@@ -1,7 +1,7 @@
 import { mailIdentityConfig, mailIdentityScope, resolveMailIdentity } from './mail-identity.js';
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { recoverMessageAddress } from 'viem';
-import { normalizeMailAddress, mailSignMessage } from '../packages/core/src/mailAuth.js';
+import { normalizeMailAddress, mailSignMessage, parseMailReceiptDetails } from '../packages/core/src/mailAuth.js';
 import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_HEARTBEAT, APPLY_MAIL_OPTOUT } from './mail-store.js';
 export const hash = value => createHash('sha256').update(value).digest('hex');
 const address = value => typeof value === 'string' && /^0x[a-f0-9]{40}$/.test(value);
@@ -77,7 +77,14 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
     },
     async execute(c) {
       const key=jobKey(c);
-      if (c.action==='status') { const raw=await kv(['GET',key]); return { status:raw?JSON.parse(raw).status:'unknown', id:c.id }; }
+      if (c.action==='status') {
+        const raw=await kv(['GET',key]);
+        if(!raw)return {status:'unknown',id:c.id};
+        const job=JSON.parse(raw);
+        if(job.wallet!==c.wallet||job.id!==c.id)throw Error('Invalid forwarding receipt owner.');
+        const receipt=parseMailReceiptDetails({version:1,createdAt:job.createdAt,updatedAt:job.updatedAt??null,attempts:job.attempts,retryUntil:job.deadline},job.status);
+        return {status:job.status,id:c.id,receipt};
+      }
       const digest=hash(JSON.stringify([c.service,c.wallet,c.id,c.to,c.subject,c.text]));
       // A retry must report the existing outcome even if permission was revoked
       // after enqueue; denial must not imply that an earlier attempt never sent.

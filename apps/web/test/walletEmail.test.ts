@@ -58,3 +58,16 @@ it('screen cancellation prevents late signature dispatch and rejects an already-
  await expect(submitWalletEmail(command(),controller.signal)).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();
  request.mockClear();await expect(submitWalletEmail(command(),controller.signal)).rejects.toThrow();expect(request).not.toHaveBeenCalled();
 });
+
+const details=()=>({version:1,createdAt:1700000000000,updatedAt:1700000001000,attempts:1,retryUntil:1700082800000});
+it('returns validated receipt metadata while dropping unrelated response fields',async()=>{
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'accepted',receipt:details(),private:'must not reach UI'}));
+ expect(await submitWalletEmail(command())).toEqual({id:command().id,status:'accepted',receipt:details()});
+});
+it.each([{version:2},{attempts:6},{attempts:0},{createdAt:-1},{updatedAt:1},{retryUntil:1700082800001},{providerId:'private'}])('rejects invalid or expanded receipt metadata %j',async patch=>{
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'accepted',receipt:{...details(),...patch}}));await expect(submitWalletEmail(command())).rejects.toThrow();
+});
+it('does not attach receipt evidence to unknown requests or send responses',async()=>{
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'unknown',receipt:details()}));await expect(submitWalletEmail(command())).rejects.toThrow();
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'accepted',receipt:details()}));await expect(submitWalletEmail({...command(),action:'send',to:'fixture@example.com',subject:'Fixture',text:'Synthetic'})).rejects.toThrow();
+});

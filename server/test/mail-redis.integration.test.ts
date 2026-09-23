@@ -233,4 +233,24 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     await redis(['DEL',`${config.prefix}quota:wallet:${wallet}`]);await redis(['SET',`${config.prefix}quota:email:${hash(c.to)}`,'50']);expect((await service.execute(c)).status).toBe('limited');
     await redis(['ZADD',queue,'0',key]);await service.drain();expect(await redis(['ZSCORE',queue,key])).toBeNull();
   });
+
+  it('records queue transitions with Redis timestamps and exposes no content or provider identifiers',async()=>{
+    let accept=false;const service=createMailService(config,redis,async()=>Response.json(accept?{id:'private-provider-receipt'}:{error:'retry'},{status:accept?200:503}));
+    await service.execute(c);const queued=await service.execute({...c,action:'status'});
+    expect(queued.receipt).toEqual({version:1,createdAt:expect.any(Number),updatedAt:queued.receipt.createdAt,attempts:0,retryUntil:queued.receipt.createdAt+82800000});
+    const ttl=await redis(['PTTL',key]);await service.execute({...c,action:'status'});expect(await redis(['PTTL',key])).toBeLessThanOrEqual(ttl);
+    await service.drain();const retry=await service.execute({...c,action:'status'});expect(retry.status).toBe('queued');expect(retry.receipt.attempts).toBe(1);expect(retry.receipt.updatedAt).toBeGreaterThanOrEqual(queued.receipt.updatedAt);
+    accept=true;await readyAgain();await service.drain();const accepted=await service.execute({...c,action:'status'});
+    expect(accepted.status).toBe('accepted');expect(accepted.receipt.attempts).toBe(2);expect(accepted.receipt.updatedAt).toBeGreaterThanOrEqual(retry.receipt.updatedAt);expect(accepted.receipt.createdAt).toBe(queued.receipt.createdAt);
+    expect(JSON.stringify(accepted)).not.toMatch(/private-provider|recipient|Synthetic|private body/);
+    expect(await service.execute({...c,action:'status',wallet:'0x'+'4'.repeat(40)})).toEqual({status:'unknown',id:c.id});
+    expect(await redis(['GET',`${key}:payload`])).toBeNull();
+  });
+  it('records a stop before any worker attempt and preserves missing legacy update times',async()=>{
+    const service=createMailService(config,redis,async()=>{throw Error('must not send');});await service.execute(c);
+    const old=await status();delete old.updatedAt;await redis(['SET',key,JSON.stringify(old),'KEEPTTL']);
+    expect((await service.execute({...c,action:'status'})).receipt.updatedAt).toBeNull();
+    await redis(['SET',bk,JSON.stringify({...binding,revoked:true})]);await service.drain();
+    const stopped=await service.execute({...c,action:'status'});expect(stopped.status).toBe('stopped');expect(stopped.receipt.attempts).toBe(0);expect(stopped.receipt.updatedAt).toBeGreaterThanOrEqual(old.createdAt);
+  });
 });

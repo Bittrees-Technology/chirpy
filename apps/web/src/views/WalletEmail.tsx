@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useIdentity } from '../state';
 import { useI18n } from '../i18n';
 import { Button, Field } from '../ui';
-import { mailEndpoint, submitWalletEmail } from '../walletEmail';
+import { mailEndpoint, submitWalletEmail, type WalletEmailResult } from '../walletEmail';
 import { normalizeMailAddress, type MailCommand } from '../../../../packages/core/src/mailAuth.js';
 import { getProviderRevision, subscribeProvider } from '../walletProviders';
 import { WalletEmailRecovery as WalletEmailRecoveryPanel } from './WalletEmailRecovery';
@@ -14,6 +14,21 @@ export function WalletEmail() {
   return <WalletEmailSession key={`${identity.address.toLowerCase()}:${mode}:${revision}`} />;
 }
 
+type ReceiptObservation=WalletEmailResult&{checkedAt:number|null};
+function ReceiptDetails({value}:{value:ReceiptObservation}){
+ const {t,lang}=useI18n();
+ const date=(at:number)=><time dateTime={new Date(at).toISOString()}>{new Date(at).toLocaleString(lang)}</time>;
+ if(value.checkedAt===null)return null;
+ return <div className="wallet-email-receipt">
+  <p>{t('mail.history.checked')} {date(value.checkedAt)}</p>
+  {value.receipt?<dl>
+   <dt>{t('mail.history.queued')}</dt><dd>{date(value.receipt.createdAt)}</dd>
+   <dt>{t('mail.history.updated')}</dt><dd>{value.receipt.updatedAt===null?t('mail.history.unavailable'):date(value.receipt.updatedAt)}</dd>
+   <dt>{t('mail.history.attempts')}</dt><dd>{value.receipt.attempts}</dd>
+   <dt>{t('mail.history.retryUntil')}</dt><dd>{date(value.receipt.retryUntil)}</dd>
+  </dl>:<p>{t(value.status==='unknown'?'mail.history.unknown':'mail.history.legacy')}</p>}
+ </div>;
+}
 function WalletEmailSession() {
   const {identity,mode}=useIdentity(); const {t}=useI18n();
   const [enabled,setEnabled]=useState(false);
@@ -29,7 +44,8 @@ function WalletEmailSession() {
   const [receipt,setReceipt]=useState(recovery?.active??'');
   const selected=useRef(receipt);
   const [status,setStatus]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState(false);
-  const [historyStatus,setHistoryStatus]=useState<{id:string;status:string}|null>(null);
+  const [observations,setObservations]=useState<Record<string,ReceiptObservation>>({});
+  const remember=(id:string,value:ReceiptObservation)=>setObservations(previous=>Object.fromEntries([...Object.entries(previous).filter(([key])=>key!==id).slice(-99),[id,value]]));
   const choose=(id:string)=>{selected.current=id;setReceipt(id);setStatus('');setError(false);};
   const refresh=()=>{
     try {
@@ -55,7 +71,7 @@ function WalletEmailSession() {
   const run=async(action:'send'|'status',lookupId?:string)=>{
     if(operation.current || mode!=='wallet') return;
     const controller=new AbortController();operation.current=controller;
-    setBusy(true);setError(false);
+    let operationId=lookupId??receipt;setBusy(true);if(!lookupId)setError(false);
     try {
       const base={service:mailEndpoint().service,wallet:identity.address.toLowerCase(),expiresAt:Date.now()+300000};
       let command:MailCommand;
@@ -66,17 +82,16 @@ function WalletEmailSession() {
         controller.signal.throwIfAborted();
         setPending(command);choose(command.id);setRecovery(load());
       }
-      if(lookupId)setHistoryStatus({id:lookupId,status:'authorizing'});else setStatus('authorizing');
+      operationId=command.id;remember(command.id,{id:command.id,status:'authorizing',checkedAt:null});if(!lookupId)setStatus('authorizing');
       const result=await submitWalletEmail(command,controller.signal);
       if(!controller.signal.aborted){
-        if(lookupId)setHistoryStatus({id:lookupId,status:result.status});
-        else if(selected.current===command.id)setStatus(result.status);
+        remember(command.id,{...result,checkedAt:Date.now()});
+        if(!lookupId&&selected.current===command.id)setStatus(result.status);
       }
     } catch(cause){if(!controller.signal.aborted){
-      setError(true);
+      if(!lookupId&&selected.current===operationId)setError(true);
       if(cause instanceof WalletEmailReceiptError){refresh();setStorageError(true);setRetryExpired(cause.code==='expired');setStatus('');}
-      else if(lookupId)setHistoryStatus({id:lookupId,status:'uncertain'});
-      else setStatus('uncertain');
+      else {remember(operationId,{id:operationId,status:'uncertain',checkedAt:null});if(!lookupId&&selected.current===operationId)setStatus('uncertain');}
     }}
     finally {operation.current=null;if(!controller.signal.aborted)setBusy(false);}
   };
@@ -105,10 +120,11 @@ function WalletEmailSession() {
       <Button disabled={busy||mode!=='wallet'||!/^[a-f0-9]{32}$/.test(receipt)} onClick={()=>void run('status')}>{t('mail.check')}</Button>
       {terminal && <Button disabled={busy||storageError} onClick={()=>void startNew()}>{t('mail.new')}</Button>}
       {status && <p role={error?'alert':'status'}>{t(`mail.status.${status}`,t('mail.status.uncertain'))}</p>}
-      {!!recovery?.receipts.length&&<details><summary>{t('mail.savedRequests')}</summary>
+      {status&&observations[receipt]?.status===status&&<ReceiptDetails value={observations[receipt]}/>}
+      {!!recovery?.receipts.length&&<details className="wallet-email-history"><summary>{t('mail.savedRequests')}</summary>
         <p>{t('mail.savedRequestsHint')}</p>
         <ul>{recovery.receipts.map(item=><li key={item.id}><code>{item.id}</code>{' '}<Button disabled={busy||mode!=='wallet'} onClick={()=>void run('status',item.id)}>{t('mail.check')}</Button>
-          {historyStatus?.id===item.id&&<p role="status">{t(`mail.status.${historyStatus.status}`,t('mail.status.uncertain'))}</p>}
+          {observations[item.id]&&<><p role={observations[item.id].status==='uncertain'?'alert':'status'}>{t(`mail.status.${observations[item.id].status}`,t('mail.status.uncertain'))}</p><ReceiptDetails value={observations[item.id]}/></>}
         </li>)}</ul>
       </details>}
     </>}

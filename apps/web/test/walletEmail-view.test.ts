@@ -95,3 +95,29 @@ it('stops an expired retry before opening another signature while keeping its ID
  await click('Retry same request');await waitFor(()=>expect(container.textContent).toContain('too old to retry safely'));expect(submitWalletEmail).toHaveBeenCalledTimes(1);
  expect(container.querySelectorAll('input')[2].value).toBe(command.id);expect(button('Check request status').disabled).toBe(false);
 });
+
+const seedHistory=()=>{
+ const ids=['a'.repeat(32),'b'.repeat(32)];storage.set(walletEmailReceiptKey(a,'https://chat.example/api/mail'),JSON.stringify({version:1,active:ids[0],receipts:ids.map(id=>({id,digest:null,createdAt:null}))}));return ids;
+};
+const receiptDetails={version:1 as const,createdAt:1700000000000,updatedAt:1700000001000,attempts:2,retryUntil:1700082800000};
+it('keeps separate checked histories, stores no observations and preserves the active recovery ID',async()=>{
+ const ids=seedHistory(),before=storage.get(walletEmailReceiptKey(a,'https://chat.example/api/mail'));
+ vi.mocked(submitWalletEmail).mockImplementation(async c=>({id:c.id,status:c.id===ids[0]?'accepted':'stopped',receipt:receiptDetails}));await render();
+ const rows=container.querySelectorAll('.wallet-email-history li');
+ for(const row of rows)await act(async()=>row.querySelector('button')!.click());
+ expect(rows[0].textContent).toContain('does not confirm delivery or reading');expect(rows[1].textContent).toContain('Forwarding stopped');
+ for(const row of rows){expect(row.textContent).toContain('Processing attempts');expect(row.querySelector('time')?.dateTime).toBeTruthy();}
+ expect(storage.get(walletEmailReceiptKey(a,'https://chat.example/api/mail'))).toBe(before);expect(container.querySelectorAll('input')[2].value).toBe(ids[0]);
+});
+it('a failed recheck removes previous receipt details without changing another request result',async()=>{
+ const ids=seedHistory();vi.mocked(submitWalletEmail).mockImplementation(async c=>({id:c.id,status:'accepted',receipt:receiptDetails}));await render();
+ const rows=container.querySelectorAll('.wallet-email-history li');for(const row of rows)await act(async()=>row.querySelector('button')!.click());
+ vi.mocked(submitWalletEmail).mockRejectedValueOnce(Error('offline'));await act(async()=>rows[1].querySelector('button')!.click());
+ expect(rows[0].textContent).toContain('Processing attempts');expect(rows[1].querySelector('dl')).toBeNull();expect(rows[1].querySelector('[role=alert]')).not.toBeNull();expect(readWalletEmailRecovery(a,'https://chat.example/api/mail').active).toBe(ids[0]);
+});
+it('explains unknown evidence and clears checked observations when the provider reconnects',async()=>{
+ seedHistory();vi.mocked(submitWalletEmail).mockImplementation(async c=>({id:c.id,status:'unknown'}));await render();
+ await act(async()=>container.querySelector('.wallet-email-history li button')!.dispatchEvent(new MouseEvent('click',{bubbles:true})));
+ expect(container.textContent).toContain('does not prove that the email was never sent');
+ await act(async()=>setActiveProvider({request:async()=>[a]},'injected'));expect(container.textContent).not.toContain('does not prove that the email was never sent');expect(container.querySelector('.wallet-email-history time')).toBeNull();
+});
