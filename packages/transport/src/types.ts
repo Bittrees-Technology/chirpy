@@ -9,10 +9,14 @@ export interface ChatMessage {
   /** Bounded inline Push content; download only, never interpreted as HTML. */
   pushAttachment?: import('./pushMedia.js').PushAttachment;
   pushMediaUrl?: string;
+  /** Original order of bounded, non-nested Push composite parts. */
+  pushParts?: PushMessagePart[];
   reactions?: Record<string, string[]>; // emoji -> addresses
   replyTo?: string;        // message id
   replyPreview?: string;   // bounded text excerpt, including parents outside this page
 }
+
+export type PushMessagePart = Pick<ChatMessage, 'body' | 'pushAttachment' | 'pushMediaUrl'>;
 
 export interface MessagePage {
   messages: ChatMessage[];

@@ -659,5 +659,6 @@
   "push.downloadFile": "Download file",
   "push.fileHint": "Up to 1 MB. Files are not scanned or opened automatically.",
   "push.downloadFailed": "The file could not be prepared. Try again.",
-  "push.externalMedia": "External media — opens another website"
+  "push.externalMedia": "External media — opens another website",
+  "push.replyUnavailable": "Original message is not on this page"
 }

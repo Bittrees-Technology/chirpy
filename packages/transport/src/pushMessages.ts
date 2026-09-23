@@ -1,9 +1,8 @@
 import { pushSenderIdentity } from './pushIdentity.js';
 import type { ChatMessage } from './types.js';
 import { parsePushConversationId } from './pushRegistry.js';
-import { readPushAttachment, readPushMediaLink } from './pushMedia.js';
+import { readPushContent } from './pushContent.js';
 export const PUSH_HISTORY_LIMIT = 30;
-const MAX_BODY = 16_000;
 const MAX_PAGE_BYTES = 512 * 1024;
 const MAX_MEDIA_PAGE_BYTES = 8 * 1024 * 1024;
 export interface PushHistoryPage { messages: ChatMessage[]; nextReference?: string }
@@ -35,30 +34,14 @@ export function readPushHistory(raw: unknown, conversationId: string, requestedR
     if (typeof row.timestamp !== 'number' || !Number.isSafeInteger(row.timestamp) || row.timestamp < 0 || row.timestamp > 8_640_000_000_000_000) invalid();
     const link = row.link === null ? null : cid(row.link);
     if (link === id) invalid();
-    let body: string, pushAttachment: ChatMessage['pushAttachment'], pushMediaUrl: string | undefined;
-    const messageObj = row.messageObj;
-    const content = messageObj && typeof messageObj === 'object' && !Array.isArray(messageObj) ? (messageObj as Record<string, unknown>).content : row.messageContent;
-    if (row.messageContent === 'Unable to Decrypt Message') body = 'This Push message could not be decrypted.';
-    else if (['Image', 'File', 'Audio', 'Video'].includes(row.messageType as string)) {
-      pushAttachment = readPushAttachment(row.messageType, content);
-      body = pushAttachment ? pushAttachment.filename : 'This Push attachment is invalid or exceeds the 1 MB download limit.';
-    }
-    else if (row.messageType === 'MediaEmbed' || row.messageType === 'GIF') {
-      pushMediaUrl = readPushMediaLink(content);
-      body = pushMediaUrl ?? 'This Push media link is not supported in Chat.';
-    }
-    else if (row.messageType !== 'Text') body = 'This Push message type is not supported in Chat yet.';
-    else {
-      if (typeof content !== 'string') invalid();
-      // Preserve an explicit placeholder for oversized legacy messages, without rendering them.
-      body = content.length > MAX_BODY ? 'This Push message is too large to display in Chat.' : content;
-    }
-    size += new TextEncoder().encode(body).byteLength;
+    let content: ReturnType<typeof readPushContent>;
+    try { content = readPushContent(row, id); } catch { invalid(); }
+    size += new TextEncoder().encode(content.body).byteLength;
     if (size > MAX_PAGE_BYTES) invalid();
-    const next = { message: { id, conversationId, sender: from, body, sentAt: row.timestamp, ...(pushAttachment ? { pushAttachment } : {}), ...(pushMediaUrl ? { pushMediaUrl } : {}) }, link };
+    const next = { message: { id, conversationId, sender: from, sentAt: row.timestamp, ...content }, link };
     const previous = seen.get(id);
     if (previous && JSON.stringify(previous) !== JSON.stringify(next)) invalid();
-    if (!previous) mediaSize += pushAttachment?.base64.length ?? 0;
+    if (!previous) mediaSize += (content.pushAttachment?.base64.length ?? 0) + (content.pushParts?.reduce((sum, part) => sum + (part.pushAttachment?.base64.length ?? 0), 0) ?? 0);
     if (mediaSize > MAX_MEDIA_PAGE_BYTES) invalid();
     seen.set(id, next);
   }

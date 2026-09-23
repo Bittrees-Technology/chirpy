@@ -298,3 +298,29 @@ test('downloads original Push attachments without rendering content or fetching 
   await page.getByRole('button',{name:'Refresh messages',exact:true}).click();
   await expect(page.getByRole('button',{name:'Download file',exact:true})).toHaveCount(0);await expect(link).toHaveCount(0);
 });
+
+test('preserves reply context and combined content order without fetching missing parents', async ({ page },testInfo) => {
+  const {readFile}=await import('node:fs/promises');const bytes=Buffer.alloc(65536,73);
+  const wire=(messageType:string,content:unknown)=>({messageType,messageObj:{content}});
+  const parent='<img src=x onerror="window.untrustedReply=true"> Original message';
+  await openRoom(page);
+  await page.evaluate(({messages,objects})=>{(window as any).__pushFixture.pages.latest=messages.map((message:any,index:number)=>({...message,...objects[index]}));},{
+    messages:[row('QmCombinedMessage','QmMissingReply'),row('QmMissingReply','QmPresentReply'),row('QmPresentReply','QmParentMessage'),row('QmParentMessage',null,parent)],
+    objects:[
+      {messageType:'Composite',messageObj:{content:[wire('Text','Caption before'),wire('File',JSON.stringify({name:'combined.bin',content:'data:application/octet-stream;base64,'+bytes.toString('base64')})),wire('MediaEmbed','https://media.example.test/combined'),wire('Text','Caption after')]}},
+      {messageType:'Reply',messageObj:{content:wire('Text','Reply without loaded parent'),reference:'QmAbsentParent'}},
+      {messageType:'Reply',messageObj:{content:wire('Text','Reply with loaded parent'),reference:'QmParentMessage'}},{}
+    ]
+  });
+  await enable(page);
+  await expect(page.locator('.msg-reply-ref')).toHaveText(['↩ '+parent.slice(0,60),'↩ Original message is not on this page']);
+  const combined=page.locator('.msg-row').filter({hasText:'Caption before'});
+  const parts=combined.locator('.push-message-parts > div');await expect(parts).toHaveCount(4);
+  await expect(parts.nth(0)).toHaveText('Caption before');await expect(parts.nth(1)).toContainText('combined.bin');await expect(parts.nth(2)).toContainText('https://media.example.test/combined');await expect(parts.nth(3)).toHaveText('Caption after');
+  const pending=page.waitForEvent('download');await combined.getByRole('button',{name:'Download file',exact:true}).click();const download=await pending;const path=testInfo.outputPath('combined.bin');await download.saveAs(path);expect((await readFile(path)).equals(bytes)).toBe(true);
+  expect(await page.evaluate(()=>(window as any).untrustedReply)).toBeUndefined();await expect(page.locator('.msg-bubble img')).toHaveCount(0);
+  expect(await page.evaluate(()=>(window as any).__pushFixture.calls.filter((call:any)=>call.kind==='history').length)).toBe(1);
+  await page.setViewportSize({width:390,height:844});await combined.scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath('push-combined-mobile.png')});
+  await page.evaluate(address=>{const s=(window as any).__pushFixture;s.address=address;s.emit('accountsChanged',[address]);},other);
+  await expect(page.locator('.msg-reply-ref')).toHaveCount(0);await expect(page.getByRole('button',{name:'Download file',exact:true})).toHaveCount(0);await expect(page.getByText('Caption before',{exact:true})).toHaveCount(0);
+});
