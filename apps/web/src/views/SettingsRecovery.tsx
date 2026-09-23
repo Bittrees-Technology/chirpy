@@ -1,4 +1,4 @@
-import { assertNoRecoveryPending, walletSettingsKey } from '../settingsStorage';
+import { assertNoRecoveryPending, parseSettingsRaw, samePreferences, walletSettingsKey } from '../settingsStorage';
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Field } from '../ui';
 import { useI18n } from '../i18n';
@@ -32,10 +32,12 @@ export function SettingsRecovery({ wallet, preferences }: { wallet: string; pref
     try {
       // Read explicit wallet-owned fields and validate a copy. No localStorage enumeration.
       assertNoRecoveryPending(walletSettingsKey(wallet));
+      const prefsKey = walletSettingsKey(wallet), prefsRaw = localStorage.getItem(prefsKey), stored = parseSettingsRaw(prefsRaw);
+      if (stored.syncPayload && !samePreferences({ ...preferences, syncAcrossDevices: stored.prefs.syncAcrossDevices }, stored.prefs)) throw new Error('Settings changed during export');
       const labelRaw = readWalletLabelRaw(wallet);
       const local = await readLocalData(wallet);
       ensureCurrent();
-      const data = validateRecoveryData({ version: 2, source: 'chirpy', wallet, createdAt: Date.now(), localDisplayName: parseWalletLabelRaw(labelRaw) ?? null,
+      const data = validateRecoveryData({ ...(stored.syncPayload ? { version: 3, syncPayload: stored.syncPayload, syncMinimum: stored.syncMinimum } : { version: 2 }), source: 'chirpy', wallet, createdAt: Date.now(), localDisplayName: parseWalletLabelRaw(labelRaw) ?? null,
         contacts: local.contacts, notes: local.notes, preferences });
       proof = await verifyRecoveryWallet(wallet, ensureCurrent);
       const archive = await encryptRecoveryArchive(data, password);
@@ -43,6 +45,7 @@ export function SettingsRecovery({ wallet, preferences }: { wallet: string; pref
       await proof.assertCurrent();
       ensureCurrent();
       assertNoRecoveryPending(walletSettingsKey(wallet));
+      if (localStorage.getItem(prefsKey) !== prefsRaw) throw new Error('Settings changed during export');
       if (readWalletLabelRaw(wallet) !== labelRaw) throw new Error('Display name changed during export');
       download('chat-local-data-recovery.json', archive);
       setStatus('prepared');

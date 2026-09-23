@@ -133,3 +133,16 @@ describe('private name recovery v2', () => {
     ]) expect(() => validateRecoveryData(mutation)).toThrow();
   });
 });
+
+it('encrypts and restores complete v3 sync markers and legacy fields without reinterpreting absent private-name choices',async()=>{
+  const { upgradeSyncPayloadV1, editSyncPayloadV2, syncPayloadV2View }=await import('../src/versionedSync');
+  let syncPayload=upgradeSyncPayloadV1({version:1,settingsPrefs:{...fixture().preferences,syncAcrossDevices:false},savedMessages:[{id:'legacy',body:'private saved value',custom:{preserved:true}}],updatedAt:10});
+  syncPayload=editSyncPayloadV2(syncPayload,{kind:'savedMessage',id:'deleted',value:null},20);
+  syncPayload=editSyncPayloadV2(syncPayload,{kind:'block',address:other,value:false},21);
+  const {syncAcrossDevices:_,...preferences}=syncPayloadV2View(syncPayload).settingsPrefs;
+  const data={...fixture(),version:3,syncMinimum:2,preferences,syncPayload};
+  const raw=await encryptRecoveryArchive(data,password);expect(raw).not.toContain('private saved value');
+  const restored=await decryptRecoveryArchive(raw,password,wallet);expect(restored).toEqual(data);expect(restored).not.toHaveProperty('localDisplayName');
+  await expect(decryptRecoveryArchive(raw,password,other)).rejects.toThrow('different wallet');
+  expect(()=>validateRecoveryData({...data,version:2})).toThrow();expect(()=>validateRecoveryData({...data,syncPayload:{...syncPayload,version:99}})).toThrow();
+});

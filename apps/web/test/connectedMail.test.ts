@@ -105,7 +105,7 @@ async function fileFixture(changes?:(data:any,index:number)=>any){
 }
 it('downloads the full bounded file in one operation and checks its digest',async()=>{
  const expected=await fileFixture(),items=await mailAttachments(wallet,'INBOX',fileContext.id,fileContext.sourceVersion);
- const result=await downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,items[0]);expect(result.bytes).toEqual(expected);expect(result.filename).toBe('fixture.bin');expect(fetcher).toHaveBeenCalledTimes(2);expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toMatchObject({action:'attachmentFile',input:{part:'1.2',version:fileContext.sourceVersion,transferVersion:2}});
+ const result=await downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,items[0]);expect(Buffer.from(result.bytes).equals(Buffer.from(expected))).toBe(true);expect(result.filename).toBe('fixture.bin');expect(fetcher).toHaveBeenCalledTimes(2);expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toMatchObject({action:'attachmentFile',input:{part:'1.2',version:fileContext.sourceVersion,transferVersion:2}});
 });
 it('rejects changed content, selectors, truncated files and noncanonical bytes without returning a file',async()=>{
  for(const change of [(d:any)=>({...d,sourceVersion:'c'.repeat(64)}),(d:any)=>({...d,transfer:'chunk'}),(d:any)=>({...d,maxAttachmentBytes:524288}),(d:any)=>({...d,id:'c'.repeat(64)}),(d:any)=>({...d,data:d.data+'\n'}),(d:any)=>({...d,sha256:'c'.repeat(64)}),(d:any)=>({...d,data:d.data.slice(4)}),(d:any)=>({...d,attachment:{...fileItem,filename:'different.bin'}})]){

@@ -357,3 +357,60 @@ test('keeps every character when typing a private name through coordinated saves
   await expect(input).toHaveValue('Private name 123');
   await expect.poll(()=>page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe('"Private name 123"');
 });
+
+import { editSyncPayloadV2, mergeSyncPayloadV2, syncPayloadV2View, upgradeSyncPayloadV1 } from '../../apps/web/src/versionedSync';
+import { serializeSettings, parseSettingsRaw } from '../../apps/web/src/settingsStorage';
+const syncChoice = (page: Page) => page.getByRole('checkbox', { name: 'Restore legacy synchronized items and deletion history', exact: true });
+function syncFixture() {
+  let payload = upgradeSyncPayloadV1({version:1,settingsPrefs:{readReceiptsDefault:false,readReceiptOverrides:{},syncAcrossDevices:false,blocked:[]},savedMessages:[{id:'old',body:'Existing legacy item'}],updatedAt:10});
+  payload = editSyncPayloadV2(payload,{kind:'savedMessage',id:'already-deleted',value:null},11);
+  return payload;
+}
+function syncArchive(wallet:string): RecoveryData {
+  let syncPayload=editSyncPayloadV2(syncFixture(),{kind:'savedMessage',id:'old',value:null},20);
+  syncPayload=editSyncPayloadV2(syncPayload,{kind:'savedMessage',id:'imported',value:{id:'imported',body:'Imported legacy item',custom:{retained:true}}},21);
+  const {syncAcrossDevices:_,...preferences}=syncPayloadV2View(syncPayload).settingsPrefs;
+  return {version:3,syncMinimum:2,source:'chirpy',wallet,createdAt:30,contacts:[],notes:[],preferences,syncPayload};
+}
+async function seedSync(page:Page,wallet:string) {
+  const payload=syncFixture();
+  await page.evaluate(({wallet,raw})=>localStorage.setItem(`chat:settingsPrefs:v1:wallet:${wallet.toLowerCase()}`,raw),{wallet,raw:serializeSettings(syncPayloadV2View(payload).settingsPrefs,payload.updatedAt,payload)});
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();
+}
+test('reviews v3 sync history explicitly, exports all markers and undoes with newer intent across reload',async({page,walletAddress},testInfo)=>{
+  await connect(page);await seedSync(page,walletAddress);await review(page,syncArchive(walletAddress));
+  await expect(syncChoice(page)).not.toBeChecked();await expect(page.getByRole('button',{name:'Apply reviewed changes'})).toBeDisabled();
+  await syncChoice(page).check();await page.getByText('Review synchronized items and deletion history',{exact:true}).click();
+  await expect(page.getByText('Deleted item',{exact:false}).first()).toBeVisible();
+  const decline=page.getByRole('button',{name:'Decline',exact:true});if(await decline.isVisible())await decline.click();
+  await page.setViewportSize({width:390,height:844});await syncChoice(page).scrollIntoViewIfNeeded();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath('sync-history-review-mobile.png')});
+  await page.setViewportSize({width:1280,height:720});await apply(page);
+  const applied=await records(page,walletAddress),metadata=parseSettingsRaw(applied.prefs).syncPayload!;
+  expect(applied.journal.version).toBe(3);expect(metadata.savedMessages.old.value).toBeNull();expect(metadata.savedMessages['already-deleted'].value).toBeNull();
+  expect(metadata.savedMessages.imported.value).toMatchObject({body:'Imported legacy item',custom:{retained:true}});expect(parseSettingsRaw(applied.prefs).prefs.syncAcrossDevices).toBe(false);
+  await page.getByLabel('Recovery passphrase',{exact:true}).fill(password);await page.getByLabel('Confirm recovery passphrase',{exact:true}).fill(password);
+  const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Export encrypted local data',exact:true}).click();
+  const stream=await(await downloaded).createReadStream(),chunks:Buffer[]=[];for await(const chunk of stream)chunks.push(Buffer.from(chunk));
+  const exported=await decryptRecoveryArchive(Buffer.concat(chunks).toString('utf8'),password,walletAddress);expect(exported).toMatchObject({version:3,syncPayload:metadata});
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Undo restore',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'Restore undone.'})).toBeVisible();
+  const final=await records(page,walletAddress),undone=parseSettingsRaw(final.prefs).syncPayload!;
+  expect(final.marker).toBeNull();expect(undone.savedMessages.old.value).toEqual(syncFixture().savedMessages.old.value);expect(undone.savedMessages.imported.value).toBeNull();expect(undone.savedMessages['already-deleted'].value).toBeNull();
+  expect(syncPayloadV2View(mergeSyncPayloadV2(undone,metadata)).savedMessages).toEqual(syncPayloadV2View(syncFixture()).savedMessages);
+});
+test('keeps existing sync metadata when its import is declined and local data is restored',async({page,walletAddress})=>{
+  await connect(page);await seedSync(page,walletAddress);const incoming={...syncArchive(walletAddress),notes:[{id:'local-only',text:'Local note',sentAtMs:1}]};
+  await review(page,incoming);await expect(syncChoice(page)).not.toBeChecked();await apply(page);
+  const state=await records(page,walletAddress);expect(state.data.notes).toEqual(incoming.notes);expect(parseSettingsRaw(state.prefs).syncPayload).toEqual(syncFixture());
+});
+test('resumes interrupted v3 undo without dropping markers or repeating the local revision',async({page,walletAddress})=>{
+  await connect(page);await seedSync(page,walletAddress);await review(page,syncArchive(walletAddress));await syncChoice(page).check();await apply(page);
+  await page.evaluate(wallet=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key===`chat:settingsPrefs:v1:wallet:${wallet.toLowerCase()}`)throw new DOMException('Full','QuotaExceededError');return set.call(this,key,value);};},walletAddress);
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Undo restore',exact:true}).click();await expect(page.getByRole('alert').filter({hasText:'An unfinished restore'})).toBeVisible();
+  const pending=await records(page,walletAddress);expect(pending.journal.phase).toBe('undoing');
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Resume unfinished restore'}).click();
+  await expect(page.getByRole('status').filter({hasText:'Restore undone.'})).toBeVisible();const finished=await records(page,walletAddress);
+  expect(finished.data.revision).toBe(pending.data.revision);expect(finished.marker).toBeNull();expect(finished.prefs).toBe(pending.journal.undoPrefs);
+  expect(parseSettingsRaw(finished.prefs).syncPayload!.savedMessages['already-deleted'].value).toBeNull();
+});

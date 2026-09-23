@@ -71,5 +71,8 @@ export function planRecoveryPreferences(
       ? { ...checked.preferences.readReceiptOverrides, ...incoming.preferences.readReceiptOverrides }
       : checked.preferences.readReceiptOverrides,
   };
+  if (choice.restoreReceipts && incoming.version === 3) {
+    for (const [key, item] of Object.entries(incoming.syncPayload.readReceiptOverrides)) if (item.value === null) delete preferences.readReceiptOverrides[key];
+  }
   return validateRecoveryData({ ...checked, preferences }).preferences;
 }

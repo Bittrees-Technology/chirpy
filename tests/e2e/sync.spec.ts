@@ -7,7 +7,7 @@ test('encrypted sync signs scoped device writes and exposes confirmed revocation
   let epoch = 0; let revoked = false; let writes = 0;
   await page.route('**/api/usersync**', async (route) => {
     const request = route.request(); const service = new URL('/api/usersync', request.url()).href;
-    if (request.method() === 'GET') return route.fulfill({ json: { ...record, epoch, authVersion: 2, service } });
+    if (request.method() === 'GET') return route.fulfill({ json: { ...record, epoch, authVersion: 2, service, payloadVersions:[1,2], minPayloadVersion:record.blob?2:1 } });
     const body = request.postDataJSON();
     if (body.action === 'revoke-all') {
       expect((await recoverMessageAddress({ message: syncRevokeAllMessage(service, body.address, body.epoch, body.expiresAt), signature: body.signature })).toLowerCase()).toBe(walletAddress.toLowerCase());
@@ -22,10 +22,11 @@ test('encrypted sync signs scoped device writes and exposes confirmed revocation
     expect(revoked).toBe(false);
     expect(body.expectedRevision).toBe(record.revision);
     const encrypted = JSON.parse(body.blob);
+    expect(encrypted.payloadVersion).toBe(2);
     expect(encrypted.algorithm).toBe('AES-GCM');
     expect(encrypted.settingsPrefs).toBeUndefined();
     record = { blob: body.blob, updatedAt: Date.now(), revision: record.revision + 1 }; writes++;
-    return route.fulfill({ json: { ok: true, revision: record.revision } });
+    return route.fulfill({ json: { ok: true, revision: record.revision, minPayloadVersion:2 } });
   });
   await page.goto('/');
   await page.locator('.nav-item', { hasText: 'Settings' }).click();

@@ -24,6 +24,10 @@ vi.mock("../src/userSync", async (original) => ({
   revokeSyncAuthorization: (...args) => mocks.revoke(...args),
   revokeAllSyncAuthorizations: (...args) => mocks.revokeAll(...args),
 }));
+vi.mock('../src/versionedSyncTransport', async original => {
+  const { versionedSyncMock } = await import('./fixtures/versioned-sync-mock');
+  return versionedSyncMock(await original(), mocks);
+});
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it.each(["authorization", "remote read", "write acknowledgment"])(
@@ -40,7 +44,7 @@ it.each(["authorization", "remote read", "write acknowledgment"])(
     const deferred = () => { reached(); return new Promise((resolve) => { release = resolve; }); };
     mocks.authorize.mockReset().mockResolvedValue(auth);
     mocks.pull.mockReset().mockResolvedValue(null);
-    mocks.push.mockReset().mockResolvedValue({ ok: true });
+    mocks.push.mockReset().mockImplementation(async envelope => { mocks.pull.mockResolvedValue(envelope); return { ok: true }; });
     if (stage === "authorization") mocks.authorize.mockImplementationOnce(deferred);
     if (stage === "remote read") mocks.pull.mockImplementationOnce(deferred);
     if (stage === "write acknowledgment") mocks.push.mockImplementationOnce(deferred);
@@ -79,13 +83,13 @@ it.each(["authorization", "remote read", "write acknowledgment"])(
 it('does not report sync enabled when the acknowledged preference cannot be persisted', async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal('crypto', webcrypto);
-  const storage = new Map<string, string>(); let deny = false;
+  const storage = new Map<string, string>(); let deny = false; let prepared: string | undefined;
   vi.stubGlobal('localStorage', { getItem: (key) => storage.get(key) ?? null,
     setItem: (key, value) => { if (deny && key.startsWith('chat:settingsPrefs:v1:')) throw new Error('Quota'); storage.set(key, value); },
     removeItem: key => storage.delete(key) });
   mocks.authorize.mockReset().mockResolvedValue({ grant: { expiresAt: Date.now() + 60_000 } });
   mocks.pull.mockReset().mockResolvedValue(null);
-  mocks.push.mockReset().mockImplementation(async () => { deny = true; return { ok: true }; });
+  mocks.push.mockReset().mockImplementation(async () => { prepared = storage.get(`chat:settingsPrefs:v1:wallet:${mocks.address}`); deny = true; return { ok: true }; });
   let current: any;
   function Probe() { current = { ...useIdentity(), ...useSettingsPrefs() }; return null; }
   const root = createRoot(document.createElement('div'));
@@ -102,7 +106,8 @@ it('does not report sync enabled when the acknowledged preference cannot be pers
     expect(current.storageError).toContain('Settings could not be saved');
     expect(current.syncState.hasSessionKey).toBe(false);
     expect(current.prefs.syncAcrossDevices).toBe(false);
-    expect(storage.get(key)).toBe(before);
+    expect(storage.get(key)).toBe(prepared);
+    expect(JSON.parse(prepared!)).toMatchObject({readReceiptsDefault:JSON.parse(before!).readReceiptsDefault,syncMinimum:1,syncPayload:{version:2}});
   } finally { await act(async () => root.unmount()); }
 });
 
@@ -116,7 +121,7 @@ it.each(['disableSyncAcrossDevices', 'revokeAllSyncDevices'])(
       setItem: (key, value) => { if (deny && key.startsWith('chat:settingsPrefs:v1:')) throw new Error('Quota'); storage.set(key, value); },
       removeItem: key => storage.delete(key) });
     mocks.authorize.mockReset().mockResolvedValue({ grant: { expiresAt: Date.now() + 60_000 } });
-    mocks.pull.mockReset().mockResolvedValue(null); mocks.push.mockReset().mockResolvedValue({ ok: true });
+    mocks.pull.mockReset().mockResolvedValue(null); mocks.push.mockReset().mockImplementation(async envelope => { mocks.pull.mockResolvedValue(envelope); return { ok: true }; });
     mocks.revoke.mockReset().mockResolvedValue(undefined); mocks.revokeAll.mockReset().mockResolvedValue(undefined);
     let current: any;
     function Probe() { current = { ...useIdentity(), ...useSettingsPrefs() }; return null; }
@@ -138,3 +143,22 @@ it.each(['disableSyncAcrossDevices', 'revokeAllSyncDevices'])(
     } finally { await act(async () => root.unmount()); }
   },
 );
+
+it.each(['settingsSyncBlob', 'settingsPrefsUpdatedAt'])('preserves changed legacy %s bytes during a wallet prompt without upgrading', async part => {
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; vi.stubGlobal('crypto', webcrypto);
+  const storage = new Map<string, string>();
+  vi.stubGlobal('localStorage', { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) });
+  const key = `chat:${part}:v1:wallet:${mocks.address}`;
+  mocks.pull.mockReset().mockResolvedValue(null); mocks.push.mockReset();
+  mocks.authorize.mockReset().mockImplementation(async () => { storage.set(key, 'newer bytes from another tab'); return { grant: { expiresAt: Date.now() + 60000 } }; });
+  let current: any; function Probe() { current = { ...useIdentity(), ...useSettingsPrefs() }; return null; }
+  const root = createRoot(document.createElement('div'));
+  try {
+    await act(async () => root.render(React.createElement(IdentityProvider, null, React.createElement(SettingsPrefsProvider, null, React.createElement(Probe)))));
+    await act(async () => current.connectWallet()); let result: any;
+    await act(async () => { result = await current.enableSyncAcrossDevices(); });
+    expect(result.ok).toBe(false); expect(current.syncState.hasSessionKey).toBe(false); expect(mocks.push).not.toHaveBeenCalled();
+    expect(storage.get(key)).toBe('newer bytes from another tab');
+    expect(storage.get(`chat:settingsPrefs:v1:wallet:${mocks.address}`)).toBeUndefined();
+  } finally { await act(async () => root.unmount()); }
+});
