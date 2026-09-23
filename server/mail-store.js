@@ -17,8 +17,42 @@ redis.call('SET',KEYS[6],ARGV[4],'PX',86400000)
 -- Keep only hashes so delivered links survive payload deletion and key rotation.
 redis.call('SET',KEYS[8],KEYS[7],'NX')
 redis.call('ZADD',KEYS[2],now,KEYS[1])
+redis.call('ZREMRANGEBYSCORE',KEYS[9],'-inf',now-2592000000)
+redis.call('ZADD',KEYS[9],now,KEYS[1])
+redis.call('ZREMRANGEBYRANK',KEYS[9],0,-641)
+redis.call('PEXPIRE',KEYS[9],2592000000)
 for i=4,5 do if redis.call('INCR',KEYS[i])==1 then redis.call('PEXPIRE',KEYS[i],86400000) end end
 return {'queued'}
+`;
+
+// Only opaque job keys are indexed. The signed wallet chooses the index server-side.
+export const LIST_MAIL_HISTORY = `
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
+if (tonumber(ARGV[1]) or 0)<=now then return {'expired'} end
+redis.call('ZREMRANGEBYSCORE',KEYS[1],'-inf',now-2592000000)
+local start=0
+if ARGV[2]~='' then
+ local rank=redis.call('ZREVRANK',KEYS[1],ARGV[2]); if not rank then return {'history-changed'} end
+ start=rank+1
+end
+local page=redis.call('ZREVRANGE',KEYS[1],start,start+25)
+return {'history',unpack(page)}
+`;
+
+// Bounded maintenance for old receipts. Never modify a job, payload or queue.
+export const INDEX_MAIL_HISTORY = `
+local raw=redis.call('GET',KEYS[1]); if not raw then return 0 end
+local j=cjson.decode(raw)
+if j.wallet~=ARGV[1] or j.id~=ARGV[2] or j.createdAt~=tonumber(ARGV[3]) then return 0 end
+local ttl=redis.call('PTTL',KEYS[1]); if ttl<=0 or ttl>2592000000 then return 0 end
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
+if j.createdAt<=now-2592000000 or j.createdAt>now then return 0 end
+local prior=redis.call('PTTL',KEYS[2])
+redis.call('ZREMRANGEBYSCORE',KEYS[2],'-inf',now-2592000000)
+redis.call('ZADD',KEYS[2],'NX',j.createdAt,KEYS[1])
+redis.call('ZREMRANGEBYRANK',KEYS[2],0,-641)
+redis.call('PEXPIRE',KEYS[2],math.max(ttl,prior))
+return 1
 `;
 export const CLAIM_MAIL = `
 local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)

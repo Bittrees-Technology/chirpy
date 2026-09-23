@@ -2,7 +2,7 @@ import { mailIdentityConfig, mailIdentityScope, resolveMailIdentity } from './ma
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { recoverMessageAddress } from 'viem';
 import { normalizeMailAddress, mailSignMessage, parseMailReceiptDetails } from '../packages/core/src/mailAuth.js';
-import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_HEARTBEAT, APPLY_MAIL_OPTOUT } from './mail-store.js';
+import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_HEARTBEAT, APPLY_MAIL_OPTOUT, LIST_MAIL_HISTORY } from './mail-store.js';
 export const hash = value => createHash('sha256').update(value).digest('hex');
 const address = value => typeof value === 'string' && /^0x[a-f0-9]{40}$/.test(value);
 const id = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
@@ -25,7 +25,8 @@ export function mailKv(config, request = fetch) {
   };
 }
 export function validMailCommand(c, service, now = Date.now()) {
-  if (!c || !['send','status'].includes(c.action) || c.service !== service || !address(c.wallet) || !id(c.id) || !Number.isSafeInteger(c.expiresAt) || c.expiresAt <= now || c.expiresAt > now+300000) return false;
+  if (!c || !['send','status','history'].includes(c.action) || c.service !== service || !address(c.wallet) || !id(c.id) || !Number.isSafeInteger(c.expiresAt) || c.expiresAt <= now || c.expiresAt > now+300000) return false;
+  if(c.action==='history')return Object.keys(c).sort().join(',')==='action,cursor,expiresAt,id,service,wallet'&&(c.cursor===null||typeof c.cursor==='string'&&/^[a-f0-9]{64}$/.test(c.cursor));
   if (c.action === 'status') return true;
   return normalizeMailAddress(c.to) === c.to && typeof c.subject === 'string' && c.subject.trim().length > 0 && c.subject.length <= 120 && !/[\x00-\x1f\x7f]/.test(c.subject) && typeof c.text === 'string' && c.text.trim().length > 0 && Buffer.byteLength(c.text) <= 16384 && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(c.text);
 }
@@ -34,6 +35,7 @@ export async function verifyMailCommand(c, signature, service, now) {
   try { return (await recoverMessageAddress({ message: mailSignMessage(c), signature })).toLowerCase() === c.wallet; } catch { return false; }
 }
 export const bindingKey = (config, wallet, email) => `${config.prefix}binding:${hash(`${wallet}\n${email}`)}`;
+export const mailHistoryKey = (config,wallet) => `${config.prefix}history:${hash(wallet)}`;
 // Fold case conservatively for suppression so spelling changes cannot bypass opt-out.
 export const suppressionKey = (config, email) => `${config.prefix}suppressed:${hash(email.toLowerCase())}`;
 export const mailOptoutKey = (config, token) => `${config.prefix}optout:${hash(token)}`;
@@ -77,6 +79,25 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
     },
     async execute(c) {
       const key=jobKey(c);
+      if(c.action==='history'){
+        const prefix=`${config.prefix}job:`;
+        const result=await kv(['EVAL',LIST_MAIL_HISTORY,'1',mailHistoryKey(config,c.wallet),String(c.expiresAt),c.cursor?prefix+c.cursor:'']);
+        if(!Array.isArray(result)||!result.length)throw Error('Invalid forwarding history.');
+        const [status,...keys]=result;
+        if(['expired','history-changed'].includes(status)&&!keys.length)return {status,id:c.id};
+        if(status!=='history'||keys.length>26||new Set(keys).size!==keys.length||keys.some(value=>typeof value!=='string'||!value.startsWith(prefix)||!/^[a-f0-9]{64}$/.test(value.slice(prefix.length))))throw Error('Invalid forwarding history.');
+        const page=keys.slice(0,25),rows=page.length?await kv(['MGET',...page]):[];
+        if(!Array.isArray(rows)||rows.length!==page.length)throw Error('Invalid forwarding history.');
+        const ids=[];
+        for(let i=0;i<rows.length;i++){
+          if(rows[i]===null)continue;
+          const job=JSON.parse(rows[i]);
+          if(job.wallet!==c.wallet||!id(job.id)||jobKey(job)!==page[i])throw Error('Invalid forwarding history owner.');
+          parseMailReceiptDetails({version:1,createdAt:job.createdAt,updatedAt:job.updatedAt??null,attempts:job.attempts,retryUntil:job.deadline},job.status);
+          ids.push(job.id);
+        }
+        return {status:'history',id:c.id,service:c.service,wallet:c.wallet,cursor:c.cursor,ids,nextCursor:keys.length>25?page.at(-1).slice(prefix.length):null};
+      }
       if (c.action==='status') {
         const raw=await kv(['GET',key]);
         if(!raw)return {status:'unknown',id:c.id};
@@ -100,7 +121,7 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
       const payload={ from:config.from,to:[c.to],subject:c.subject,headers:{'X-Chat-Bridge':'wallet-to-email'},text:`Sent through Chat by wallet ${c.wallet}.\nThis email was authorized by a wallet signature. Email is not end-to-end encrypted wallet chat. Replies to this service address are not forwarded.\n\n${c.text}\n\nStop future Chat email to this address (confirmation required): ${optoutUrl.href}` };
       const sk=suppressionKey(config,c.to);
       const record={identityService:config.identity?.url||null,identityScope,digest,wallet:c.wallet,id:c.id,bindingKey:bk,bindingVersion:b.version,suppressionKey:sk};
-      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'8',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to.toLowerCase())}`,`${key}:payload`,sk,mailOptoutKey(config,optoutToken),digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
+      const [status]=await kv(['EVAL',ENQUEUE_MAIL,'9',key,queue,bk,`${config.prefix}quota:wallet:${c.wallet}`,`${config.prefix}quota:email:${hash(c.to.toLowerCase())}`,`${key}:payload`,sk,mailOptoutKey(config,optoutToken),mailHistoryKey(config,c.wallet),digest,JSON.stringify(record),b.version,encrypt(config,payload,key),String(c.expiresAt)]);
       return {status,id:c.id};
     },
     async drain() {

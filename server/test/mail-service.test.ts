@@ -94,3 +94,24 @@ describe('private forwarding receipt projection',()=>{
   await expect(createMailService(mailConfig(env)!,async()=>JSON.stringify({...job(),...patch})).execute({...command(),action:'status'})).rejects.toThrow();
  });
 });
+
+describe('signed forwarding discovery scope',()=>{
+ const query=()=>({action:'history',service:env.CHIRPY_MAIL_SERVICE_URL,wallet:wallet.address.toLowerCase(),id:'a'.repeat(32),expiresAt:Date.now()+60000,cursor:null});
+ it('binds every history field and cannot reuse send or status authorization',async()=>{
+  const c=query(),signature=await wallet.signMessage({message:mailSignMessage(c)});expect(await verifyMailCommand(c,signature,c.service)).toBe(true);
+  for(const change of [{cursor:'b'.repeat(64)},{id:'b'.repeat(32)},{wallet:'0x'+'1'.repeat(40)},{service:'https://other.example/api/mail'},{expiresAt:c.expiresAt+1},{action:'status'},{action:'send',to:'a@example.com',subject:'x',text:'x'}])expect(await verifyMailCommand({...c,...change},signature,c.service)).toBe(false);
+  const old={...command(),action:'status'};expect(await verifyMailCommand(c,await wallet.signMessage({message:mailSignMessage(old)}),c.service)).toBe(false);
+ });
+ it('authenticates discovery at the HTTP boundary before storage and advertises support',async()=>{
+  for(const [key,value] of Object.entries(env))vi.stubEnv(key,value);
+  const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);const c=query();
+  const info=res();await handler({method:'GET',headers:{}},info);expect(info.body.historyVersion).toBe(1);
+  for(const patch of [{signature:'0x00'},{command:{...c,cursor:'bad'},signature:'0x00'}]){
+   const denied=res();await handler({method:'POST',headers:{'content-type':'application/json'},body:{command:c,...patch}},denied);expect(denied.code).toBe(401);
+  }
+  expect(fetcher).not.toHaveBeenCalled();fetcher.mockResolvedValue({ok:true,json:async()=>({result:['history']})});
+  const accepted=res();await handler({method:'POST',headers:{'content-type':'application/json'},body:{command:c,signature:await wallet.signMessage({message:mailSignMessage(c)})}},accepted);
+  expect(accepted.code).toBe(200);expect(accepted.body).toMatchObject({status:'history',wallet:c.wallet,ids:[],nextCursor:null});expect(fetcher).toHaveBeenCalledOnce();
+ });
+ it.each([{cursor:''},{cursor:'b'.repeat(63)},{cursor:2},{to:'a@example.com'},{extra:true}])('rejects malformed discovery scope %j',patch=>{expect(validMailCommand({...query(),...patch},env.CHIRPY_MAIL_SERVICE_URL)).toBe(false);});
+});

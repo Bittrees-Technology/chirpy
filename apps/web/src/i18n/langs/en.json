@@ -813,5 +813,20 @@
   "mail.history.attempts": "Processing attempts",
   "mail.history.retryUntil": "Retry window ends",
   "mail.history.unknown": "No retained service record was found. This does not prove that the email was never sent; check earlier receipts or contact support before resending.",
-  "mail.history.legacy": "Check this request to retrieve queue details. Older services may return only its status."
+  "mail.history.legacy": "Check this request to retrieve queue details. Older services may return only its status.",
+  "mailDiscovery.title": "Find missing forwarding request IDs",
+  "mailDiscovery.scope": "Sign a read-only lookup for this wallet. Each page contains up to 25 retained request IDs. No email is sent.",
+  "mailDiscovery.coverage": "Older requests appear only after the service indexes its existing records. Expired records cannot be recovered here. An empty result does not prove that no email was sent; keep your encrypted backups.",
+  "mailDiscovery.find": "Find recent requests",
+  "mailDiscovery.review": "Review found request IDs",
+  "mailDiscovery.count": "Found {count} request IDs on this page.",
+  "mailDiscovery.saveHint": "Review these IDs before saving them. Your active request is preserved; if none is active, the first found ID becomes active so you can check its status before composing again. Sending permissions and message contents are not restored.",
+  "mailDiscovery.save": "Save these request IDs",
+  "mailDiscovery.newer": "Newer requests",
+  "mailDiscovery.older": "Older requests",
+  "mailDiscovery.working": "Waiting for wallet authorization or request recovery…",
+  "mailDiscovery.empty": "No retained IDs were found on this page. This is not proof that earlier messages were never sent.",
+  "mailDiscovery.capacity": "This page will not fit in the 100 saved-ID limit. Back up and remove older saved IDs before finding this page again. Nothing was overwritten.",
+  "mailDiscovery.saved": "Request IDs saved. No email was sent. Check their current status before sending again.",
+  "mailDiscovery.failed": "Recovery could not finish. Your wallet, saved IDs or service history may have changed. Start a fresh lookup; existing recovery IDs were preserved."
 }

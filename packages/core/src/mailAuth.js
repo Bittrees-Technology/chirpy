@@ -8,6 +8,7 @@ export function normalizeMailAddress(value) {
   return `${local}@${domain.toLowerCase()}`;
 }
 export function mailSignMessage(command) {
+  if(command.action==='history')return ['Chat forwarding request discovery v1',`Service: ${command.service}`,`Wallet: ${command.wallet}`,`Request: ${command.id}`,`Before: ${command.cursor??'first page'}`,`Signature expires: ${command.expiresAt}`,'Read up to 25 retained forwarding request IDs for this wallet. This does not authorize sending email, transactions, or account changes.'].join('\n');
   const lines = ['Chirpy wallet-to-email v1', `Service: ${command.service}`, `Action: ${command.action}`, `Wallet: ${command.wallet}`, `Request: ${command.id}`, `Signature expires: ${command.expiresAt}`];
   if (command.action === 'send') lines.push(`Recipient: ${command.to}`, `Subject: ${command.subject}`, 'Authorize this email and queue retries for up to 23 hours. The email provider can read it. No blockchain transaction.', 'Message:', command.text);
   return lines.join('\n');

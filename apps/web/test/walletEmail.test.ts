@@ -1,5 +1,5 @@
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {submitWalletEmail} from '../src/walletEmail';
+import {submitWalletEmail,discoverWalletEmail} from '../src/walletEmail';
 import {clearActiveProvider,setActiveProvider,type WalletEventProvider} from '../src/walletProviders';
 import type {MailCommand} from '../../../packages/core/src/mailAuth.js';
 
@@ -70,4 +70,18 @@ it.each([{version:2},{attempts:6},{attempts:0},{createdAt:-1},{updatedAt:1},{ret
 it('does not attach receipt evidence to unknown requests or send responses',async()=>{
  fetcher.mockResolvedValue(Response.json({id:command().id,status:'unknown',receipt:details()}));await expect(submitWalletEmail(command())).rejects.toThrow();
  fetcher.mockResolvedValue(Response.json({id:command().id,status:'accepted',receipt:details()}));await expect(submitWalletEmail({...command(),action:'send',to:'fixture@example.com',subject:'Fixture',text:'Synthetic'})).rejects.toThrow();
+});
+
+const historyCommand=()=>({...command(),action:'history' as const,cursor:null});
+const historyResult=()=>({status:'history',...historyCommand(),ids:['b'.repeat(32)],nextCursor:null});
+it('signs bounded discovery and returns only matching IDs and pagination',async()=>{
+ fetcher.mockResolvedValue(Response.json({...historyResult(),private:'ignored'}));expect(await discoverWalletEmail(historyCommand())).toEqual({ids:['b'.repeat(32)],nextCursor:null});
+ expect(JSON.parse(fetcher.mock.calls[0][1].body).command.action).toBe('history');
+});
+it.each([{wallet:'0x'+'2'.repeat(40)},{service:'https://other.example/api/mail'},{cursor:'c'.repeat(64)},{ids:['x']},{ids:Array(26).fill('b'.repeat(32))},{ids:['b'.repeat(32),'b'.repeat(32)]},{nextCursor:'bad'},{status:'accepted'}])('rejects invalid or mismatched history results %j',async patch=>{
+ fetcher.mockResolvedValue(Response.json({...historyResult(),...patch}));await expect(discoverWalletEmail(historyCommand())).rejects.toThrow();
+});
+it('rejects history responses after provider replacement and invalid cursors before signing',async()=>{
+ await expect(discoverWalletEmail({...historyCommand(),cursor:'bad'})).rejects.toThrow();expect(request).not.toHaveBeenCalled();
+ fetcher.mockImplementation(async()=>{replacement();return Response.json(historyResult());});await expect(discoverWalletEmail(historyCommand())).rejects.toThrow();
 });

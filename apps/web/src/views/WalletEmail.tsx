@@ -6,6 +6,7 @@ import { mailEndpoint, submitWalletEmail, type WalletEmailResult } from '../wall
 import { normalizeMailAddress, type MailCommand } from '../../../../packages/core/src/mailAuth.js';
 import { getProviderRevision, subscribeProvider } from '../walletProviders';
 import { WalletEmailRecovery as WalletEmailRecoveryPanel } from './WalletEmailRecovery';
+import {WalletEmailDiscovery} from './WalletEmailDiscovery';
 import {readWalletEmailRecovery,reserveWalletEmailReceipt,finishWalletEmailReceipt,walletEmailReceiptKey,walletEmailLegacyReceiptKey,WALLET_EMAIL_RECEIPTS_CHANGED,WalletEmailReceiptError,type WalletEmailRecovery} from '../walletEmailReceipts';
 
 export function WalletEmail() {
@@ -31,7 +32,7 @@ function ReceiptDetails({value}:{value:ReceiptObservation}){
 }
 function WalletEmailSession() {
   const {identity,mode}=useIdentity(); const {t}=useI18n();
-  const [enabled,setEnabled]=useState(false);
+  const [enabled,setEnabled]=useState(false),[historyEnabled,setHistoryEnabled]=useState(false);
   const [to,setTo]=useState(''); const [subject,setSubject]=useState(''); const [text,setText]=useState('');
   const [pending,setPending]=useState<MailCommand|null>(null);
   const operation=useRef<AbortController|null>(null);
@@ -63,7 +64,7 @@ function WalletEmailSession() {
   },[wallet]);
   useEffect(()=>{
     const controller=new AbortController();
-    try {const endpoint=mailEndpoint(); void fetch(endpoint.requestUrl,{signal:controller.signal}).then(r=>r.ok?r.json():null).then(data=>setEnabled(data?.enabled===true && data.service===endpoint.service)).catch(()=>{});}
+    try {const endpoint=mailEndpoint(); void fetch(endpoint.requestUrl,{signal:controller.signal}).then(r=>r.ok?r.json():null).then(data=>{const enabled=data?.enabled===true&&data.service===endpoint.service;setEnabled(enabled);setHistoryEnabled(enabled&&data.historyVersion===1);}).catch(()=>{});}
     catch { /* Native builds without an API origin stay disabled. */ }
     return ()=>controller.abort();
   },[]);
@@ -128,6 +129,7 @@ function WalletEmailSession() {
         </li>)}</ul>
       </details>}
     </>}
+    {enabled&&historyEnabled&&mode==='wallet'&&<WalletEmailDiscovery wallet={wallet} service={mailEndpoint().service}/>}
     {mode==='wallet' && (()=>{try{return <WalletEmailRecoveryPanel wallet={wallet} service={mailEndpoint().service}/>;}catch{return null;}})()}
   </div>;
 }
