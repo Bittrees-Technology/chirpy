@@ -5,7 +5,9 @@ import { getUUID } from '../../packages/transport/node_modules/@pushprotocol/res
 import { PGPHelper } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/chat/helpers/pgp';
 import { decryptPGPKey, getPublicKey } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/helpers/crypto';
 import { decryptAndVerifyMessage } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/chat/helpers/crypto';
-import { aesEncrypt } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/chat/helpers/aes';
+import { aesEncrypt, aesDecrypt } from '../../packages/transport/node_modules/@pushprotocol/restapi/src/lib/chat/helpers/aes';
+import { PUSH_MAX_FILES, PUSH_FILE_BYTES, preparePushFile, writePushFiles } from '../../packages/transport/src/pushMedia';
+import { readPushHistory } from '../../packages/transport/src/pushMessages';
 const owner = `0x${'1'.repeat(40)}`;
 (window as any).runPushCompatibility = async () => {
   const originalStorage = { ...localStorage };
@@ -27,6 +29,23 @@ const owner = `0x${'1'.repeat(40)}`;
   const firstRead = await decryptAndVerifyMessage(groupMessage, keys.publicKeyArmored, keys.privateKeyArmored, 'prod' as any);
   const otherRead = await decryptAndVerifyMessage(groupMessage, keys.publicKeyArmored, otherKeys.privateKeyArmored, 'prod' as any);
   const isolatedRoomKeys = firstRead.messageContent === 'Private room content' && otherRead.messageContent === 'Unable to Decrypt Message';
+  // Exercise the largest batch with the real browser SDK crypto primitives.
+  // Synthetic keys and bytes stay local; this is not network-delivery acceptance.
+  const files = Array.from({ length: PUSH_MAX_FILES }, (_, index) => preparePushFile(`file-${index}.bin`, 'application/octet-stream',
+    Uint8Array.from({ length: PUSH_FILE_BYTES }, (_, byte) => (byte + index) % 256)));
+  const content = [{ messageType: 'Text', messageObj: { content: 'x'.repeat(16_000) } },
+    ...writePushFiles(files).map(content => ({ messageType: 'File', messageObj: { content } }))];
+  const combined = JSON.stringify({ content });
+  const combinedCipher = aesEncrypt({ plainText: combined, secretKey: roomSecret });
+  const combinedSignature = await PGPHelper.sign({ message: combinedCipher, signingKey: keys.privateKeyArmored });
+  await PGPHelper.verifySignature({ messageContent: combinedCipher, signatureArmored: combinedSignature, publicKeyArmored: keys.publicKeyArmored });
+  const combinedPlaintext = aesDecrypt({ cipherText: combinedCipher, secretKey: roomSecret });
+  const group = 'a'.repeat(64);
+  const recoveredBatch = readPushHistory([{ cid: 'QmMaximumFileBatch', link: null, fromDID: owner, toDID: group, timestamp: 1,
+    messageType: 'Composite', messageObj: JSON.parse(combinedPlaintext) }], `push:production:governance:${group}`);
+  const batchParts = recoveredBatch.messages[0].pushParts!;
+  const maxBatchCrypto = combinedPlaintext === combined && batchParts.length === PUSH_MAX_FILES + 1 &&
+    batchParts.slice(1).every((part, index) => part.pushAttachment?.base64 === files[index].base64 && part.pushAttachment?.bytes === PUSH_FILE_BYTES);
   const requests: string[] = []; let current = true; let captured!: PushSigner;
   const provider = { on() {}, removeListener() {}, async request({ method }: { method: string }) { requests.push(method); if (method === 'eth_accounts') return [owner]; if (method === 'eth_chainId') return '0x1'; if (method === 'eth_decrypt') return keys.privateKeyArmored; if (method === 'eth_getEncryptionPublicKey') return 'synthetic-encryption-public-key'; if (method === 'personal_sign' || method === 'eth_signTypedData_v4') return `0x${'a'.repeat(130)}`; throw new Error('Unexpected signing method'); } };
   const session = new PushRoomSession(owner, provider, () => current, async signer => {
@@ -54,7 +73,7 @@ const owner = `0x${'1'.repeat(40)}`;
   session.dispose(); current = false;
   let staleRejected = false;
   try { await captured.signMessage({ message: 'After disposal' }); } catch { staleRejected = true; }
-  return { isolatedRoomKeys, withoutInjectedReady, withoutInjectedPublicKey, realRuntimeReady, sdkLoaded: typeof PushAPI.initialize === 'function', uuid: getUUID(), decrypted, tamperedRejected, staleRejected,
+  return { maxBatchCrypto, isolatedRoomKeys, withoutInjectedReady, withoutInjectedPublicKey, realRuntimeReady, sdkLoaded: typeof PushAPI.initialize === 'function', uuid: getUUID(), decrypted, tamperedRejected, staleRejected,
     legacyRecoveryBound: recovered === keys.privateKeyArmored && wrongProviderCalls === 0, personalSigned: requests.includes('personal_sign'), typedSigned: requests.includes('eth_signTypedData_v4'), storageUnchanged: JSON.stringify(originalStorage) === JSON.stringify({ ...localStorage }) };
 };
 document.body.textContent = 'Push runtime ready';
