@@ -570,9 +570,9 @@ export class XmtpTransport implements Transport {
 
   private catalogCache: { at: number; rooms: Conversation[] } | null = null;
 
-  private async publishedRooms(): Promise<Conversation[]> {
+  private async publishedRooms(refresh = false): Promise<Conversation[]> {
     if (!this.org.gateUrl) return [];
-    if (this.catalogCache && Date.now() - this.catalogCache.at < 60_000) return this.catalogCache.rooms;
+    if (!refresh && this.catalogCache && Date.now() - this.catalogCache.at < 60_000) return this.catalogCache.rooms;
     const response = await fetch(this.gateEndpoint(), {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "catalog", namespace: this.org.namespace }),
@@ -718,6 +718,7 @@ export class XmtpTransport implements Transport {
             : { ...room };
           scoped.push(existing);
         } else existing.gate = room.gate;
+        existing.canAddMembers = false;
         // The directory supplies admission rules, not the joined group's current
         // posting policy. Preserve a pause and other group policy overrides.
         this.roomMeta.set(room.id, { ...this.roomMeta.get(room.id), namespace: room.namespace,
@@ -1008,6 +1009,12 @@ export class XmtpTransport implements Transport {
       const inboxId = await client.fetchInboxIdByIdentifier(await this.identifier(target));
       assertCurrent();
       if (!inboxId) throw new Error("That address hasn't activated XMTP messaging yet.");
+      // A published directory can impose a gate independently of the SDK description.
+      // Refresh configured directories and fail closed if they cannot be read.
+      const published = await this.publishedRooms(true);
+      if (published.some(room => room.id === conversationId) || hasGate(this.roomMeta.get(conversationId)?.gate ?? OPEN_GATE)) {
+        throw new Error("Gated rooms require admission through the gate service.");
+      }
       // Recipient lookup may be slow; recheck current metadata and role afterward.
       const group = await readOpenRoom();
       const members = await group.members();

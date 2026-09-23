@@ -103,3 +103,32 @@ it('keeps the latest readable group preview when membership updates are newer', 
   expect(messages).toHaveBeenCalledExactlyOnceWith({ contentTypes: ['text', 'reply'], direction: 'desc', limit: 1n });
   expect(lastMessage).not.toHaveBeenCalled();
 });
+
+it('refuses a directory-managed room even when its SDK description says open', async () => {
+  const { t, group } = setup();
+  t.publishedRooms = vi.fn().mockResolvedValue([{ id: 'room' }]);
+  await expect(t.addRoomMember('room', peer)).rejects.toThrow('gate service');
+  expect(t.publishedRooms).toHaveBeenCalledExactlyOnceWith(true);
+  expect(group.addMembers).not.toHaveBeenCalled();
+});
+it('does not override a previously observed published gate or an unavailable directory', async () => {
+  const { t, group } = setup();
+  t.roomMeta.set('room', { gate: { combine: 'all', rules: [{ kind: 'ens', name: 'members.eth' }] } });
+  await expect(t.addRoomMember('room', peer)).rejects.toThrow('gate service');
+  t.roomMeta.delete('room'); t.publishedRooms = vi.fn().mockRejectedValue(new Error('Directory unavailable'));
+  await expect(t.addRoomMember('room', peer)).rejects.toThrow('Directory unavailable');
+  expect(group.addMembers).not.toHaveBeenCalled();
+});
+it('bypasses a warm empty directory cache before a manual member addition', async () => {
+  const { t, group } = setup();
+  t.org = { ...PERSONAL_ORG, gateUrl: 'https://gate.example/catalog' };
+  t.catalogCache = { at: Date.now(), rooms: [] };
+  const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ rooms: [{
+    id: 'room', title: 'Managed room', namespace: PERSONAL_ORG.namespace,
+    gate: { combine: 'all', rules: [{ kind: 'ens', name: 'members.eth' }] },
+  }] }), { status: 200 }));
+  try {
+    await expect(t.addRoomMember('room', peer)).rejects.toThrow('gate service');
+    expect(fetch).toHaveBeenCalledTimes(1); expect(group.addMembers).not.toHaveBeenCalled();
+  } finally { fetch.mockRestore(); }
+});
