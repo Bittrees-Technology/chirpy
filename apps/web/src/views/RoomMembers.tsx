@@ -17,7 +17,7 @@ export function RoomMembers({ conversation }: { conversation: Conversation }) {
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const savedRoster = Boolean(conversation.deviceAccess && conversation.deviceAccess !== "active");
   const title = t(savedRoster ? "roomMembers.savedTitle" : "roomMembers.title");
-  const canAdd = (!conversation.deviceAccess || conversation.deviceAccess === "active") && !conversation.pending && !conversation.blocked && conversation.canAddMembers === true && conversation.isAdmin === true && !conversation.configurationError && !conversation.gate?.rules.length;
+  const canAdd = conversation.leaveState !== 'pending' && conversation.leaveState !== 'removed' && (!conversation.deviceAccess || conversation.deviceAccess === "active") && !conversation.pending && !conversation.blocked && conversation.canAddMembers === true && conversation.isAdmin === true && !conversation.configurationError && !conversation.gate?.rules.length;
   return <details className="join-banner room-members" onToggle={event => setExpanded(event.currentTarget.open)}>
     <summary>{title}</summary>
     {savedRoster && <p>{t('roomMembers.savedHint')}</p>}

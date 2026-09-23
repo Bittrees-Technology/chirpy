@@ -256,6 +256,8 @@ export class XmtpTransport implements Transport {
   private messageCursors = new Map<string, { conversationId: string; at: bigint }>();
   private historyRequest: Promise<void> | null = null;
   private historyRequestedAt: number | null = null;
+  private leaveRequests = new Set<string>();
+  private observedLeaveRequests = new WeakMap<XmtpClient, Set<string>>();
 
   constructor(
     private org: OrgConfig,
@@ -518,6 +520,35 @@ export class XmtpTransport implements Transport {
       (await group.isAdmin?.(myInboxId).catch(() => false) ?? false);
   }
 
+  private rememberLeaveRequest(client: XmtpClient, id: string) {
+    let requests = this.observedLeaveRequests.get(client);
+    if (!requests) { requests = new Set(); this.observedLeaveRequests.set(client, requests); }
+    requests.add(id);
+    while (requests.size > 1000) requests.delete(requests.values().next().value!);
+  }
+
+  private async roomLeaveState(conversation: XmtpConversation, deviceAccess: Conversation['deviceAccess']): Promise<NonNullable<Conversation['leaveState']>> {
+    try {
+      if (!('isPendingRemoval' in conversation)) return 'unavailable';
+      const client = this.requireClient();
+      const members = await conversation.members();
+      const self = client.inboxId;
+      if (!self || this.client !== client) return 'unavailable';
+      // A restored installation can have neither active access nor a complete
+      // roster. Only a leave request witnessed by this client supports completion.
+      if (!members.some(member => member.inboxId === self)) return deviceAccess === 'inactive' && this.observedLeaveRequests.get(client)?.has(conversation.id) ? 'removed' : 'unavailable';
+      if (deviceAccess !== 'active') return 'unavailable';
+      const pending = await conversation.isPendingRemoval();
+      if (pending === true) { this.rememberLeaveRequest(client, conversation.id); return 'pending'; }
+      if (pending !== false) return 'unavailable';
+      if (!this.leaveRequests.has(conversation.id)) this.observedLeaveRequests.get(client)?.delete(conversation.id);
+      const owner = await conversation.isSuperAdmin(self);
+      if (owner === true) return 'owner';
+      if (owner !== false) return 'unavailable';
+      return members.length > 1 ? 'available' : 'alone';
+    } catch { return 'unavailable'; }
+  }
+
   private async assertGateAllows(meta: RoomMeta) {
     if (meta.invalid) throw new Error(INVALID_ROOM_METADATA);
     if ((meta.gate.rules?.length ?? 0) === 0) return;
@@ -567,6 +598,7 @@ export class XmtpTransport implements Transport {
     }
 
     const deviceAccess = await this.groupDeviceAccess(conversation);
+    const leaveState = initialConsent === sdk.ConsentState.Denied ? undefined : await this.roomLeaveState(conversation, deviceAccess);
     const isAdmin = await this.isCurrentUserAdmin(conversation).catch(() => false);
     const unread = initialConsent === sdk.ConsentState.Denied ? 0 : await this.unreadCount(conversation);
     const consent = await conversation.consentState();
@@ -581,13 +613,14 @@ export class XmtpTransport implements Transport {
       peers: blocked ? [] : peers,
       consentSupported: true,
       deviceAccess,
+      leaveState,
       pending,
       blocked,
       namespace: meta.namespace,
       gate: meta.gate,
       policy: meta.policy,
       isAdmin,
-      canAddMembers: deviceAccess === "active" && !pending && !blocked && isAdmin && !meta.invalid && !hasGate(meta.gate) && meta.namespace === this.org.namespace,
+      canAddMembers: deviceAccess === "active" && leaveState !== 'pending' && !pending && !blocked && isAdmin && !meta.invalid && !hasGate(meta.gate) && meta.namespace === this.org.namespace,
       configurationError: meta.invalid === true,
       lastMessage: blocked ? undefined : lastMessage,
       unread: blocked ? 0 : unread,
@@ -943,6 +976,52 @@ export class XmtpTransport implements Transport {
     if (this.isRoomConversation(sdk, conversation) && await this.groupDeviceAccess(conversation) !== 'active') {
       throw new Error("Active access from this device is required. You can still read restored messages.");
     }
+    if (this.isRoomConversation(sdk, conversation) && (this.leaveRequests.has(conversation.id) ||
+      !('isPendingRemoval' in conversation) || await conversation.isPendingRemoval() !== false)) {
+      throw new Error("Room removal is pending or could not be checked. Sending and room changes are unavailable.");
+    }
+  }
+
+  async requestRoomLeave(conversationId: string, isCurrent: () => boolean = () => true): Promise<void> {
+    const client = this.requireClient();
+    const known = this.conversations.get(conversationId);
+    const sdk = await this.loadSdk();
+    const session = this.conversationSession();
+    const check = () => { session(); if (!isCurrent() || this.client !== client) throw new Error('Wallet or room changed. Check members before retrying.'); };
+    check();
+    if (!known || !this.isRoomConversation(sdk, known) || !('requestRemoval' in known)) throw new Error('Native room leaving is unavailable.');
+    if (this.leaveRequests.has(conversationId)) throw new Error('A leave request is already in progress.');
+    this.leaveRequests.add(conversationId);
+    const checkWallet = async () => {
+      if (!this.provider) throw new Error('Connect a wallet to request room removal.');
+      const accounts = await this.provider.request({ method: 'eth_accounts' });
+      check();
+      if (!Array.isArray(accounts) || String(accounts[0]).toLowerCase() !== this.myAddress) throw new Error('Wallet or room changed. Check members before retrying.');
+    };
+    try {
+      await checkWallet();
+      const access = await this.groupDeviceAccess(known); check();
+      if (access !== 'active') throw new Error('Active access from this device is required. You can still read restored messages.');
+      await known.sync(); check();
+      const group = await client.conversations.getConversationById(conversationId); check();
+      if (!group || group.id !== conversationId || !this.isRoomConversation(sdk, group) || !('requestRemoval' in group)) throw new Error('Native room leaving is unavailable.');
+      const meta = parseRoomMeta(group.description, this.org.policy);
+      if (meta.namespace !== this.org.namespace) throw new Error('Room not found in this organization.');
+      const state = await this.roomLeaveState(group, await this.groupDeviceAccess(group)); check();
+      if (state === 'pending') return;
+      if (state === 'owner') throw new Error('An owner must appoint another owner and step down before leaving.');
+      if (state === 'alone') throw new Error('The last member cannot leave this room.');
+      if (state !== 'available') throw new Error('Active room membership could not be confirmed.');
+      await checkWallet();
+      // The SDK broadcasts a leave request as a message. Never implicitly accept
+      // a blocked/incoming room, and preserve SDK authority as the final guard.
+      if (await group.consentState() !== sdk.ConsentState.Allowed || this.consentUpdates.has(conversationId)) throw new Error('Accept or unblock this conversation before sending messages or reactions.');
+      check();
+      await group.requestRemoval();
+      this.rememberLeaveRequest(client, conversationId);
+      this.consentRevision++; // Drain any inbox snapshot taken before the leave request.
+      check();
+    } finally { this.leaveRequests.delete(conversationId); this.invalidateConversation(conversationId); }
   }
 
   private consentUpdates = new Set<string>();

@@ -1,5 +1,12 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "An owner must appoint another owner and step down before leaving.": "roomLeave.owner",
+  "The last member cannot leave this room.": "roomLeave.alone",
+  "Active room membership could not be confirmed.": "roomLeave.unavailable",
+  "Connect a wallet to request room removal.": "roomLeave.connect",
+  "A leave request is already in progress.": "roomLeave.busy",
+  "Native room leaving is unavailable.": "roomLeave.unsupported",
+  "Room removal is pending or could not be checked. Sending and room changes are unavailable.": "roomLeave.actionsUnavailable",
   "Active access from this device is required. You can still read restored messages.": "status.activeAccessRequired",
   "Consent update already in progress.": "status.consentUpdatePending",
   "Wallet changed. Reload the conversation.": "status.historyWalletChanged",

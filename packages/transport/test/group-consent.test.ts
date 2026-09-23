@@ -14,7 +14,7 @@ function setup(initial = 0) {
     ReactionAction: { Added: 'added', Removed: 'removed' }, ReactionSchema: { Unicode: 'unicode' },
     isText: m => typeof m.content === 'string', isTextReply: () => false, isReply: () => false, encodeText: vi.fn(async s => s) };
   const raw = { id: 'm', conversationId: 'group', senderInboxId: 'peer', sentAtNs: 10n, content: 'private group message' };
-  const group = { isActive: vi.fn().mockResolvedValue(true), id: 'group', name: 'Group', description: JSON.stringify({ chirpyRoom: 1, namespace: 'personal', gate: { combine: 'any', rules: [] } }),
+  const group = { isPendingRemoval: vi.fn().mockResolvedValue(false), isActive: vi.fn().mockResolvedValue(true), id: 'group', name: 'Group', description: JSON.stringify({ chirpyRoom: 1, namespace: 'personal', gate: { combine: 'any', rules: [] } }),
     consentState: vi.fn(async () => consent), updateConsentState: vi.fn(async value => { consent = value; }),
     members: vi.fn().mockResolvedValue([{ inboxId: 'self' }, { inboxId: 'peer' }]),
     messages: vi.fn().mockResolvedValue([raw]), sync: vi.fn(), countMessages: vi.fn().mockResolvedValue(1n),
@@ -86,6 +86,22 @@ it.each(['send', 'reply', 'react'])('rechecks authority immediately before delay
     else expect(group.consentState).toHaveBeenCalled();
   });
   await t.setConversationConsent('group', 'denied'); gate.resolve(action === 'react' ? { conversationId: 'group' } : 'encoded'); await rejected;
+  expect(group.sendText).not.toHaveBeenCalled(); expect(group.sendReply).not.toHaveBeenCalled(); expect(group.sendReaction).not.toHaveBeenCalled();
+});
+it.each(['send', 'reply', 'react'])('stops delayed %s dispatch when removal becomes pending', async action => {
+  const { t, group, client } = setup(1); const gate = deferred<any>();
+  t.senderInboxByMessage.set('m', 'peer');
+  if (action === 'send') t.assertGateAllows = () => gate.promise;
+  if (action === 'reply') t.sdk.encodeText.mockImplementationOnce(() => gate.promise);
+  if (action === 'react') client.conversations.getMessageById.mockImplementationOnce(() => gate.promise);
+  const pending = action === 'react' ? t.react('group', 'm', '👍') : t.send('group', 'no', action === 'reply' ? { replyTo: 'm' } : undefined);
+  const rejected = expect(pending).rejects.toThrow('Room removal');
+  await vi.waitFor(() => {
+    if (action === 'reply') expect(t.sdk.encodeText).toHaveBeenCalled();
+    else if (action === 'react') expect(client.conversations.getMessageById).toHaveBeenCalled();
+    else expect(group.consentState).toHaveBeenCalled();
+  });
+  group.isPendingRemoval.mockResolvedValue(true); gate.resolve(action === 'react' ? { conversationId: 'group' } : 'encoded'); await rejected;
   expect(group.sendText).not.toHaveBeenCalled(); expect(group.sendReply).not.toHaveBeenCalled(); expect(group.sendReaction).not.toHaveBeenCalled();
 });
 it.each(['client', 'wallet', 'scope'])('rejects delayed consent updates after %s changes', async kind => {
