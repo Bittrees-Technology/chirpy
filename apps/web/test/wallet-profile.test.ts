@@ -69,3 +69,29 @@ it('rejects invalid labels and reports failed persistence without changing the s
   f.storage.set(walletProfileKey(b),JSON.stringify({name:'bad'}));expect(walletLabel(b)).toBe('');
  }finally{await f.close();}
 });
+
+it('strict recovery reads preserve corrupt records instead of treating them as default names', async()=>{
+ const {readWalletLabelRaw,parseWalletLabelRaw}=await import('../src/walletProfile');
+ const f=await fixture();
+ try{
+  expect(parseWalletLabelRaw(null)).toBeUndefined();expect(parseWalletLabelRaw('""')).toBe('');
+  for(const raw of ['{invalid','null','{}','"x\\n"',' '.repeat(1025)+'"name"']){
+   f.storage.set(walletProfileKey(a),raw);expect(()=>readWalletLabelRaw(a)).toThrow();expect(f.storage.get(walletProfileKey(a))).toBe(raw);
+  }
+ }finally{await f.close();}
+});
+
+it('ignores the old wallet profile listener during an account event before React commits',async()=>{
+ const {WALLET_PROFILE_CHANGED}=await import('../src/walletProfile');
+ const f=await fixture();
+ try{
+  await f.connect();await act(async()=>f.current.setHandle('Wallet A'));
+  await act(async()=>{
+   mock.account=b;mock.handlers.get('accountsChanged')?.([b]);
+   window.dispatchEvent(new Event(WALLET_PROFILE_CHANGED));
+   await f.current.setHandle('Stale UI edit');
+  });
+  expect(f.current.identity.address).toBe(b);expect(f.current.identity.handle).toBeUndefined();
+  expect(f.storage.get(walletProfileKey(a))).toBe('"Wallet A"');expect(f.storage.has(walletProfileKey(b))).toBe(false);
+ }finally{await f.close();}
+});

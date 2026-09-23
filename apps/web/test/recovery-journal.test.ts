@@ -28,3 +28,18 @@ it('never lets journal apply or undo enable sync or alter the promised undo pref
     { ...data, undoPrefs: serializeSettings({ ...defaultSettings(), readReceiptsDefault: true }, 2) },
     { ...data, beforePrefs: '{bad' }]) expect(() => validateJournal(bad, owner)).toThrow();
 });
+
+it('preserves all original name choices in v2 backups while retaining legacy journals', () => {
+  expect(validateJournal(journal(), owner)).not.toHaveProperty('labelChange');
+  for (const original of [null, '', 'Before']) {
+    const data = validateJournal({ ...journal(), version: 2, labelChange: { before: original === null ? null : JSON.stringify(original), after: JSON.stringify('After') } }, owner);
+    expect(backupArchive(data)).toMatchObject({ version: 2, localDisplayName: original });
+  }
+});
+it('rejects incomplete, malformed and unexpected journal label changes', () => {
+  for (const data of [
+    { ...journal(), version: 2 }, { ...journal(), labelChange: { before: null, after: null } },
+    ...[null, {}, { before: null }, { before: null, after: '{}' }, { before: '"\u202e"', after: null },
+      { before: null, after: null, publicName: 'forbidden' }].map(labelChange => ({ ...journal(), version: 2, labelChange })),
+  ]) expect(() => validateJournal(data, owner)).toThrow();
+});

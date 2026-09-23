@@ -114,3 +114,22 @@ describe('recovery schema boundary', () => {
     expect(() => validateRecoveryData({})).toThrow();
   });
 });
+
+describe('private name recovery v2', () => {
+  it.each([null, '', 'Private 🌳 name'])('preserves exact local choice %s inside authenticated encryption', async localDisplayName => {
+    const data = { ...fixture(), version: 2, localDisplayName };
+    const raw = await encryptRecoveryArchive(data, password);
+    expect(raw).not.toContain('Private 🌳 name');
+    expect(await decryptRecoveryArchive(raw, password, wallet)).toEqual(data);
+    await expect(decryptRecoveryArchive(raw, password, other)).rejects.toThrow('different wallet');
+  });
+  it('keeps legacy archives unchanged and rejects invalid or ambiguous new fields', () => {
+    expect(validateRecoveryData(fixture())).not.toHaveProperty('localDisplayName');
+    for (const mutation of [
+      { ...fixture(), localDisplayName: '' }, { ...fixture(), version: 2 },
+      ...[undefined, false, {}, ['name'], 'x'.repeat(81), 'hidden\u202ename', 'line\nname'].map(localDisplayName => ({ ...fixture(), version: 2, localDisplayName })),
+      { ...fixture(), version: 2, source: 'governance', localDisplayName: '' },
+      { ...fixture(), version: 2, localDisplayName: '', publicProfile: { name: 'Do not publish' } },
+    ]) expect(() => validateRecoveryData(mutation)).toThrow();
+  });
+});

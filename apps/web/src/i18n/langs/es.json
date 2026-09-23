@@ -385,7 +385,7 @@
   "settings.historyRequested": "Historial solicitado. Mantén abierta la sesión anterior mientras se sincronizan los mensajes y el consentimiento de las conversaciones. Una solicitud no confirma que haya llegado todo el historial; comprueba tus conversaciones antes de salir de la sesión anterior.",
   "settings.historyFailed": "No se pudo confirmar la solicitud del historial. Comprueba la conexión y la cartera conectada y vuelve a intentarlo. Los mensajes existentes no han cambiado.",
   "recovery.settingsTitle": "Copia de seguridad de datos locales",
-  "recovery.settingsScope": "Exporta contactos, notas locales, preferencias de confirmación y direcciones bloqueadas antiguas de esta billetera en este navegador. No incluye historial de mensajes, organizaciones ni claves. Usa Restaurar datos locales para revisar un archivo; conserva el navegador anterior hasta verificar todos los datos.",
+  "recovery.settingsScope": "Exporta contactos, notas locales, tu elección de nombre privado, preferencias de confirmación y direcciones bloqueadas antiguas de esta billetera en este navegador. No incluye historial de mensajes, perfiles públicos, organizaciones ni claves. Usa Restaurar datos locales para revisar un archivo; conserva el navegador anterior hasta verificar todos los datos.",
   "recovery.passwordHelp": "Elige una frase de contraseña única de al menos 12 caracteres. Guárdala separada del archivo; Chat no puede restablecerla. Antes de exportar, firmarás una comprobación de propiedad de la cartera de un solo uso.",
   "recovery.password": "Frase de contraseña de recuperación",
   "recovery.confirmPassword": "Confirmar frase de contraseña",
@@ -663,5 +663,9 @@
   "push.replyUnavailable": "El mensaje original no está en esta página",
   "mailbox.download.checking": "Verificando {filename} antes de guardar…",
   "mailbox.download.preparing": "Preparando {filename} ({bytes} bytes)…",
-  "mailbox.downloadProgress": "Progreso de descarga del archivo adjunto"
+  "mailbox.downloadProgress": "Progreso de descarga del archivo adjunto",
+  "restore.localNameHelp": "Opcional. Reemplaza la elección mostrada arriba y conserva la original para deshacer. No publica un perfil público ni cambia la identidad de tu billetera.",
+  "restore.nameDefault": "Usar el nombre ENS predeterminado, si está disponible",
+  "restore.nameBlank": "Mostrar mi dirección de billetera sin nombre",
+  "restore.localName": "Restaurar mi elección de nombre privado en este dispositivo"
 }

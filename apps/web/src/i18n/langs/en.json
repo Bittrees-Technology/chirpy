@@ -385,7 +385,7 @@
   "settings.historyRequested": "History requested. Keep your old session open while messages and conversation consent sync. A request does not confirm that all history has arrived; check your conversations before leaving the old session.",
   "settings.historyFailed": "The history request could not be confirmed. Check your connection and connected wallet, then try again. Existing messages are unchanged.",
   "recovery.settingsTitle": "Back up local data",
-  "recovery.settingsScope": "Exports contacts, local notes, receipt preferences and legacy blocked-address preferences for this wallet in this browser. Message history, organizations and keys are not included. Use Restore local data to review a recovery file; keep the old browser until all data is verified.",
+  "recovery.settingsScope": "Exports contacts, local notes, your private display-name choice, receipt preferences and legacy blocked-address preferences for this wallet in this browser. Message history, public profiles, organizations and keys are not included. Use Restore local data to review a recovery file; keep the old browser until all data is verified.",
   "recovery.passwordHelp": "Choose a unique passphrase of at least 12 characters. Keep it separately from the file; Chat cannot reset it. You will sign a one-time wallet ownership check before export.",
   "recovery.password": "Recovery passphrase",
   "recovery.confirmPassword": "Confirm recovery passphrase",
@@ -663,5 +663,9 @@
   "push.replyUnavailable": "Original message is not on this page",
   "mailbox.download.checking": "Checking {filename} before saving…",
   "mailbox.download.preparing": "Preparing {filename} ({bytes} bytes)…",
-  "mailbox.downloadProgress": "Attachment download progress"
+  "mailbox.downloadProgress": "Attachment download progress",
+  "restore.localNameHelp": "Optional. Replaces the choice shown above and keeps the original for undo. This does not publish a public profile or change your wallet identity.",
+  "restore.nameDefault": "Use the default ENS name, if available",
+  "restore.nameBlank": "Show my wallet address without a name",
+  "restore.localName": "Restore my private display-name choice on this device"
 }
