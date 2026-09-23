@@ -682,5 +682,15 @@
   "push.fileReplyCaption": "Las respuestas con archivos no pueden incluir una descripción. Borra la descripción o cancela la respuesta.",
   "push.previewImage": "Ver imagen",
   "push.hidePreview": "Ocultar vista previa",
-  "push.previewFailed": "No se puede mostrar esta imagen. Descarga el archivo original."
+  "push.previewFailed": "No se puede mostrar esta imagen. Descarga el archivo original.",
+  "push.addReaction": "Añadir reacción",
+  "push.reactionAdded": "Tu reacción está en esta vista del historial.",
+  "push.reactionAddOnly": "Push permite añadir estas reacciones. No se pueden eliminar.",
+  "push.reactionPending": "Añadiendo reacción…",
+  "push.reactionFailed": "No se pudo confirmar la reacción. Actualiza los mensajes recientes antes de volver a intentarlo.",
+  "push.reactionSnapshot": "Reacciones en esta vista del historial. Vuelve a los mensajes recientes para actualizar.",
+  "push.reactionEvent": "Reaccionó con {emoji}",
+  "push.reactionLimit": "Esta vista de reacciones alcanzó su límite. Vuelve a los mensajes recientes.",
+  "push.chooseReaction": "Elige una reacción compatible con Push.",
+  "push.chooseReactionOriginal": "Elige un mensaje original de esta sala al que reaccionar."
 }

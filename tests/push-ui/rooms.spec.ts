@@ -665,3 +665,67 @@ test('releases a preview rejected by the browser decoder and keeps the original 
   const download=await pending,path=testInfo.outputPath('original-rejected.jpg');await download.saveAs(path);
   expect((await readFile(path)).equals(Buffer.from(original,'base64'))).toBe(true);
 });
+
+async function reactionHistory(page: Page) {
+ await page.evaluate(({owner,other,group})=>{
+  const original={cid:'QmReactionOriginal',link:null,fromDID:other,toDID:group,timestamp:0,messageType:'Text',messageContent:'Original with reactions'};
+  const event=(cid:string,link:string,sender:string,emoji:string)=>({cid,link,fromDID:sender,toDID:group,timestamp:1,messageType:'Reaction',messageObj:{content:emoji,reference:original.cid}});
+  (window as any).__pushFixture.pages={latest:[event('QmReactionNewest','QmReactionDuplicate',owner,'👍'),event('QmReactionDuplicate','QmReactionOther',owner,'👍'),event('QmReactionOther',original.cid,other,'❤️')],QmReactionOriginal:[original]};
+ },{owner,other,group});
+}
+test('preserves reaction-only pages and carries deduplicated counts to older originals and back',async({page},testInfo)=>{
+ await openRoom(page);await reactionHistory(page);await enable(page);
+ await expect(page.locator('.push-reaction-event')).toHaveCount(3);await expect(page.getByRole('button',{name:'Reply',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Older messages',exact:true}).click();await expect(page.getByText('Original with reactions',{exact:true})).toBeVisible();
+ await expect(page.locator('.reaction-chip')).toHaveText(['❤️ 1','👍 1']);
+ await page.locator('.push-reaction-controls summary').click();
+ await expect(page.getByRole('button',{name:'React with 👍',exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'React with ❤️',exact:true})).toBeEnabled();
+ await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ const bubble=await page.locator('.msg-bubble').boundingBox(),picker=await page.locator('.push-reaction-controls').boundingBox();expect(picker!.y).toBeGreaterThanOrEqual(bubble!.y+bubble!.height);
+ const target=await page.getByRole('button',{name:'React with ❤️',exact:true}).boundingBox();expect(target!.width).toBeGreaterThanOrEqual(44);expect(target!.height).toBeGreaterThanOrEqual(44);
+ await page.screenshot({path:testInfo.outputPath('push-reactions-mobile.png')});
+ await page.getByRole('button',{name:'Newer messages',exact:true}).click();await expect(page.locator('.push-reaction-event')).toHaveCount(3);
+ await page.getByRole('button',{name:'Older messages',exact:true}).click();await expect(page.locator('.reaction-chip')).toHaveText(['❤️ 1','👍 1']);
+});
+test('sends one native reaction to a room-bound original and waits for history instead of inventing a count',async({page})=>{
+ await openRoom(page);await page.evaluate(()=>{const s=(window as any).__pushFixture;s.pages.QmLatestMessage=[...s.pages.latest];s.hold.send=true;});await enable(page);
+ await page.locator('.push-reaction-controls summary').click();await page.getByRole('button',{name:'React with 🔥',exact:true}).click();
+ await expect(page.getByText('Adding reaction…',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'React with 👍',exact:true})).toBeDisabled();await expect(page.locator('.reaction-chip')).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).__pushFixture.calls.filter((c:any)=>c.kind==='send'))).toEqual([{kind:'send',room:group,owner,extra:{type:'Reaction',content:'🔥',reference:'QmLatestMessage'}}]);
+ await page.evaluate(({owner,group})=>{const s=(window as any).__pushFixture;s.pages.latest.unshift({cid:'QmPostedReaction',link:'QmLatestMessage',fromDID:owner,toDID:group,timestamp:2,messageType:'Reaction',messageObj:{content:'🔥',reference:'QmLatestMessage'}});s.release('send');},{owner,group});
+ await expect(page.locator('.reaction-chip')).toHaveText(['🔥 1']);await expect(page.locator('.push-reaction-event')).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).__pushFixture.calls.filter((c:any)=>c.kind==='send').length)).toBe(1);
+});
+test('reports an uncertain reaction without retrying or displaying an invented reaction',async({page})=>{
+ await openRoom(page);await page.evaluate(()=>{const s=(window as any).__pushFixture;s.pages.QmLatestMessage=[...s.pages.latest];s.failSend=true;});await enable(page);
+ await page.locator('.push-reaction-controls summary').click();await page.getByRole('button',{name:'React with 👍',exact:true}).click();
+ await expect(page.getByRole('alert')).toContainText('Refresh latest messages');await expect(page.locator('.reaction-chip')).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).__pushFixture.calls.filter((c:any)=>c.kind==='send').length)).toBe(1);
+});
+for(const change of ['source','wallet','permission'])test(`rejects a delayed reaction original after ${change} changes`,async({page})=>{
+ await openRoom(page);await enable(page);await expect(page.getByText('Preserved Push history',{exact:true})).toBeVisible();await page.evaluate(()=>{const s=(window as any).__pushFixture;s.pages.QmLatestMessage=[...s.pages.latest];s.hold.history=true;});
+ await page.locator('.push-reaction-controls summary').click();await page.getByRole('button',{name:'React with 👍',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).__pushFixture.pending.history?.length??0)).toBe(1);
+ if(change==='source')await page.getByLabel('Include existing rooms').selectOption('research');
+ if(change==='wallet')await page.evaluate(other=>{const s=(window as any).__pushFixture;s.address=other;s.emit('accountsChanged',[other]);},other);
+ if(change==='permission')await page.evaluate(()=>{(window as any).__pushFixture.permissions.chat=false;});
+ await page.evaluate(()=>(window as any).__pushFixture.release('history'));
+ if(change==='permission')await expect(page.locator('.push-reaction-controls')).toHaveCount(0);else await expect(page.locator('.thread-title')).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).__pushFixture.calls.filter((c:any)=>c.kind==='send'))).toEqual([]);
+ await expect(page.getByText('The reaction could not be confirmed.',{exact:false})).toHaveCount(0);
+});
+test('clears visible reaction counts when private room membership is lost',async({page})=>{
+ await openRoom(page);await reactionHistory(page);await enable(page);await page.getByRole('button',{name:'Older messages',exact:true}).click();await expect(page.locator('.reaction-chip')).toHaveCount(2);
+ await page.evaluate(()=>{(window as any).__pushFixture.membership.participant=false;});await page.getByRole('button',{name:'Latest messages',exact:true}).click();
+ await expect(page.locator('.reaction-chip')).toHaveCount(0);await expect(page.getByText('Original with reactions',{exact:true})).toHaveCount(0);
+});
+test('discards a retired reaction completion without retrying into the replacement source',async({page})=>{
+ await openRoom(page);await enable(page);await expect(page.getByText('Preserved Push history',{exact:true})).toBeVisible();
+ await page.evaluate(()=>{const s=(window as any).__pushFixture;s.pages.QmLatestMessage=[...s.pages.latest];s.hold.send=true;s.failSend=true;});
+ await page.locator('.push-reaction-controls summary').click();await page.getByRole('button',{name:'React with 👍',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).__pushFixture.pending.send?.length??0)).toBe(1);
+ await page.getByLabel('Include existing rooms').selectOption('research');await page.evaluate(()=>(window as any).__pushFixture.release('send'));
+ await expect(page.locator('.thread-title')).toHaveCount(0);await expect(page.locator('.reaction-chip')).toHaveCount(0);await expect(page.locator('.push-reaction-controls')).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).__pushFixture.calls.filter((c:any)=>c.kind==='send').length)).toBe(1);
+ await expect(page.getByText('The reaction could not be confirmed.',{exact:false})).toHaveCount(0);
+});

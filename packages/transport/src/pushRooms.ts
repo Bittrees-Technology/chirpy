@@ -5,6 +5,7 @@ import type { Conversation, MessagePage } from './types.js';
 import { loadPushRegistry, type PushCatalog, type PushCatalogRoom, type PushSource } from './pushRegistry.js';
 import { PushRoomSession, type PushRoomClient, type PushSessionStatus } from './pushSession.js';
 import { PUSH_HISTORY_LIMIT, PushHistoryBudgetError, readPushHistory } from './pushMessages.js';
+import { isPushReactionEmoji, pushReactionEvents, withPushReactions, type PushReactionEvent } from './pushReactions.js';
 
 type Session = Pick<PushRoomSession, 'getSnapshot' | 'subscribe' | 'enable' | 'dispose'>;
 export interface PushRoomDetails {
@@ -28,7 +29,7 @@ export interface PushRoomsSnapshot {
 // Cursors share compact traversal metadata, not message bodies or private keys.
 // It grows only when the reader explicitly requests another bounded page, and
 // is released when the last retained cursor expires or the session changes.
-interface HistoryPath { positions: Map<string, number>; fingerprints: Map<number, string> }
+interface HistoryPath { positions: Map<string, number>; fingerprints: Map<number, string>; reactionPages: Map<number, PushReactionEvent[]>; reactionCount: number }
 interface HistoryCursor { room: string; reference: string; epoch: number; path: HistoryPath; depth: number }
 interface RoomState { title: string; description: string; details: PushRoomDetails }
 function object(value: unknown): Record<string, unknown> {
@@ -96,6 +97,13 @@ export class PushRooms {
     this.#ensure(epoch, id);
     if (this.#details.get(id)?.details !== access) throw new Error('Room permissions changed while this action was in progress. Refresh the room.');
   }
+  #forgetHistory(id: string) {
+    for (const [token, cursor] of this.#cursors) if (cursor.room === id) this.#cursors.delete(token);
+  }
+  #trimHistory() {
+    const reactions = () => [...new Set([...this.#cursors.values()].map(cursor => cursor.path))].reduce((sum, path) => sum + path.reactionCount, 0);
+    while (this.#cursors.size > 200 || reactions() > 6000) this.#cursors.delete(this.#cursors.keys().next().value!);
+  }
   async discover() {
     if (this.#disposed) throw new Error('Room source closed.');
     this.#abort?.abort(); const controller = new AbortController(); this.#abort = controller;
@@ -105,7 +113,7 @@ export class PushRooms {
       const next = await this.load(this.source, { signal: controller.signal });
       if (this.#disposed || request !== this.#registryRequest) return;
       this.#catalog = next;
-      for (const id of this.#details.keys()) if (!next.rooms.some(room => room.id === id)) this.#details.delete(id);
+      for (const id of this.#details.keys()) if (!next.rooms.some(room => room.id === id)) { this.#details.delete(id); this.#forgetHistory(id); }
       this.#publish({ loading: false, error: undefined });
     } catch (error) {
       if (this.#disposed || request !== this.#registryRequest) return;
@@ -141,10 +149,12 @@ export class PushRooms {
       const details: PushRoomDetails = { source: this.source, membership: status.pending ? 'pending' : member ? 'member' : 'none',
         publicRoom: info.isPublic, canSend: member && permissions.chat, canJoin: !member && !status.pending && permissions.entry,
         canModerate: member && status.role === 'admin' };
+      const previous = this.#details.get(id)?.details;
+      if (previous && (previous.membership !== details.membership || previous.publicRoom !== details.publicRoom)) this.#forgetHistory(id);
       this.#details.set(id, { title: text(info.groupName, 256) || room.title, description: text(info.groupDescription, 4096, true), details });
       this.#publish(); return details;
     } catch (error) {
-      if (!this.#disposed && epoch === this.#epoch && this.#roomRequests.get(id) === request) { this.#details.delete(id); this.#publish(); }
+      if (!this.#disposed && epoch === this.#epoch && this.#roomRequests.get(id) === request) { this.#details.delete(id); this.#forgetHistory(id); this.#publish(); }
       throw error;
     }
   }
@@ -168,7 +178,7 @@ export class PushRooms {
         limit = Math.max(1, Math.floor(Math.min(raw.length, limit) / 2));
       }
     }
-    const path = cursor?.path ?? { positions: new Map<string, number>(), fingerprints: new Map<number, string>() };
+    const path = cursor?.path ?? { positions: new Map<string, number>(), fingerprints: new Map<number, string>(), reactionPages: new Map<number, PushReactionEvent[]>(), reactionCount: 0 };
     const depth = cursor?.depth ?? 0;
     // The backend must not splice an already visited page into this traversal.
     for (const message of page.messages) {
@@ -183,13 +193,18 @@ export class PushRooms {
     const fingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     const previous = path.fingerprints.get(depth);
     if (previous !== undefined && previous !== fingerprint) throw new Error('Push changed an existing history page. Return to latest messages.');
+    const events = pushReactionEvents(page.messages);
+    if (!path.reactionPages.has(depth) && path.reactionCount + events.length > 6000) throw new Error('This reaction history snapshot reached its limit. Return to latest messages.');
+    if (!path.reactionPages.has(depth)) { path.reactionPages.set(depth, events); path.reactionCount += events.length; }
     path.fingerprints.set(depth, fingerprint);
     for (const message of page.messages) path.positions.set(message.id, depth);
-    if (!page.nextReference) return { messages: page.messages };
+    const newer = [...path.reactionPages].filter(([position]) => position < depth).flatMap(([, values]) => values);
+    const messages = withPushReactions(page.messages, newer);
+    if (!page.nextReference) { this.#trimHistory(); return { messages }; }
     const token = crypto.randomUUID();
-    if (this.#cursors.size >= 200) this.#cursors.delete(this.#cursors.keys().next().value!);
     this.#cursors.set(token, { room: id, reference: page.nextReference, epoch, path, depth: depth + 1 });
-    return { messages: page.messages, olderCursor: token };
+    this.#trimHistory();
+    return { messages, olderCursor: token };
   }
   async members(id: string, page = 1, pending = false): Promise<PushMemberPage> {
     if (!Number.isSafeInteger(page) || page < 1 || page > 1_000_000 || typeof pending !== 'boolean') throw new Error('Choose a valid member page.');
@@ -218,28 +233,37 @@ export class PushRooms {
     const replyTo = opts?.replyTo;
     if (replyTo !== undefined && fileContent !== undefined && body.trim()) throw new Error('File replies cannot include a caption. Clear the caption or cancel the reply.');
     if (replyTo !== undefined && (typeof replyTo !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(replyTo))) throw new Error('Choose an original message in this room to reply to.');
-    let access = await this.refreshRoom(id);
-    if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
-    const { room, client, epoch } = await this.#client(id);
-    this.#ensureAccess(id, access, epoch);
-    if (replyTo !== undefined) {
-      // A CID alone is not a room binding. Resolve just that original message,
-      // validate its recipients/reference, then recheck posting authority.
-      const raw = await client.history(room.chatId, { reference: replyTo, limit: 1 });
-      this.#ensureAccess(id, access, epoch);
-      if (!Array.isArray(raw) || raw.length !== 1) throw new Error('Choose an original message in this room to reply to.');
-      const parent = readPushHistory(raw, id, replyTo);
-      if (parent.messages.length !== 1 || parent.messages[0].id !== replyTo) throw new Error('Choose an original message in this room to reply to.');
-      access = await this.refreshRoom(id);
-      if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
-      this.#ensureAccess(id, access, epoch);
-    }
     const payload: PushSdkMessage = replyTo !== undefined
       ? { type: 'Reply', content: fileContent === undefined ? { type: 'Text', content: body } : { type: 'File', content: fileContent }, reference: replyTo }
       : fileContent !== undefined
         ? body.trim() ? { type: 'Composite', content: [{ type: 'Text', content: body }, { type: 'File', content: fileContent }] }
           : { type: 'File', content: fileContent }
         : { type: 'Text', content: body };
+    await this.#post(id, payload, replyTo);
+  }
+  async react(id: string, reference: string, emoji: string): Promise<void> {
+    if (!isPushReactionEmoji(emoji)) throw new Error('Choose a supported Push reaction.');
+    if (typeof reference !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(reference)) throw new Error('Choose an original message in this room to react to.');
+    await this.#post(id, { type: 'Reaction', content: emoji, reference }, reference);
+  }
+  async #post(id: string, payload: PushSdkMessage, reference?: string): Promise<void> {
+    const referenceError = payload.type === 'Reaction' ? 'Choose an original message in this room to react to.' : 'Choose an original message in this room to reply to.';
+    let access = await this.refreshRoom(id);
+    if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
+    const { room, client, epoch } = await this.#client(id);
+    this.#ensureAccess(id, access, epoch);
+    if (reference !== undefined) {
+      // A CID alone is not a room binding. Resolve just that original message,
+      // validate its recipients/reference, then recheck posting authority.
+      const raw = await client.history(room.chatId, { reference, limit: 1 });
+      this.#ensureAccess(id, access, epoch);
+      if (!Array.isArray(raw) || raw.length !== 1) throw new Error(referenceError);
+      const parent = readPushHistory(raw, id, reference);
+      if (parent.messages.length !== 1 || parent.messages[0].id !== reference || (payload.type === 'Reaction' && object(raw[0]).messageType === 'Reaction')) throw new Error(referenceError);
+      access = await this.refreshRoom(id);
+      if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
+      this.#ensureAccess(id, access, epoch);
+    }
     await client.send(room.chatId, payload);
     this.#ensure(epoch, id);
     // A resolved SDK send is not evidence of delivery/read. The caller refreshes history.

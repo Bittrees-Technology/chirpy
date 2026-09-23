@@ -1173,10 +1173,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const react = useCallback(async (messageId: string, emoji: string) => {
     if (!activeId) return;
-    if (parsePushConversationId(activeId)) throw new Error('Reactions are not supported for Push rooms yet.');
-    await transportRef.current?.react(activeId, messageId, emoji);
+    if (parsePushConversationId(activeId)) {
+      const rooms = getPushAdapter(); if (!rooms) throw new Error('Push rooms are reconnecting.');
+      await rooms.react(activeId, messageId, emoji);
+      if (getPushAdapter() !== rooms) throw new Error('Room connection changed. Check history before retrying.');
+      if (activeIdRef.current === activeId) { resetHistory(); await reloadMessages(activeId); }
+      return;
+    }
+    const transport = transportRef.current;
+    if (!transport) throw new Error('Messaging is reconnecting. Try again shortly.');
+    await transport.react(activeId, messageId, emoji);
+    if (activeIdRef.current !== activeId || transportRef.current !== transport) return;
     await reloadMessages(activeId);
-  }, [activeId, reloadMessages]);
+  }, [activeId, reloadMessages, resetHistory, getPushAdapter]);
 
   const startDm = useCallback(async (address: string, handle?: string) => {
     const conv = await transportRef.current?.startDm(address, handle);

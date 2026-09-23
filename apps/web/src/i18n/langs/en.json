@@ -682,5 +682,15 @@
   "push.fileReplyCaption": "File replies cannot include a caption. Clear the caption or cancel the reply.",
   "push.previewImage": "Preview image",
   "push.hidePreview": "Hide preview",
-  "push.previewFailed": "This image cannot be previewed. Download the original instead."
+  "push.previewFailed": "This image cannot be previewed. Download the original instead.",
+  "push.addReaction": "Add reaction",
+  "push.reactionAdded": "Your reaction is in this history snapshot.",
+  "push.reactionAddOnly": "Push supports adding these reactions. Removal is unavailable.",
+  "push.reactionPending": "Adding reaction…",
+  "push.reactionFailed": "The reaction could not be confirmed. Refresh latest messages before trying again.",
+  "push.reactionSnapshot": "Reactions in this history snapshot. Return to latest messages to update.",
+  "push.reactionEvent": "Reacted with {emoji}",
+  "push.reactionLimit": "This reaction history snapshot reached its limit. Return to latest messages.",
+  "push.chooseReaction": "Choose a supported Push reaction.",
+  "push.chooseReactionOriginal": "Choose an original message in this room to react to."
 }
