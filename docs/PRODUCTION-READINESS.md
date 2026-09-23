@@ -14,13 +14,19 @@ See [REMAINING-WORK.md](REMAINING-WORK.md) for the consolidated unfinished backl
 | 8 | Production gate deployment and multi-wallet acceptance | Needs hosting/bot identity and reviewed room registry |
 | 9 | Public support/security/privacy/terms material | Support/security pages merged in PR #5 and GitHub private reporting enabled; privacy/terms still need actual operator/retention decisions |
 | 10 | Native release/signing, iOS real-device and TestFlight acceptance | Needs release credentials and device/store access |
-| 11 | Shared UI/embed and Governance/Research integration | Consumer inspection and migration contract in INTEGRATION.md; history/authority decisions and implementation pending |
+| 11 | Governance/Research integration | Standalone Chat migration selected; source registries, core Push rooms and Governance encrypted export implemented; Research alignment and live history/member/device/cutover acceptance pending. Shared UI/embed is optional later work |
 | 12 | Final artwork and documentation reconciliation | Operations/roadmap/native guides reconciled; final artwork pending |
 | 13 | Recipient routing and wallet/email channels | Web recipient routing, external email handoff and wallet invitations in PR #53; bounded HTTPS links in PR #54 |
 | 14 | Wallet-authorized outbound email | Disabled encrypted outbox pilot in PR #55; atomic signature expiry in PR #56 |
 | 15 | Mail operations and recipient protection | Worker liveness/backlog in PR #57; durable suppression in PR #58; signed provider events in PR #59; explicit recipient opt-out in PR #60 |
 | 16 | Remaining known wallet/sync/ENS status translations | English/Spanish follow-up merged in PR #61; catalog, web and native checks pass |
 | 17 | Recipient quota case normalization | PR #62 reproduces and closes a verified-address case-variant quota bypass; 444 tests and 24 browser tests pass |
+| 18 | Chat branding and dual-domain migration | PRs #65–66 and domain rollout preserve compatibility identities; default forwarding and infrastructure rename remain gated |
+| 19 | Encrypted local data and profile recovery | PRs #67–72 and #115 provide reviewed recovery; public profile controls in #108–110 passed pilot publication/withdrawal checks; device/operator acceptance remains |
+| 20 | Original-protocol Push rooms | PRs #73–75 and #113–119 provide registry/runtime, core history/member actions, incoming structured media, text/file replies and bounded PNG/JPEG previews; live source-room and device parity remains |
+| 21 | Connected Mail pilot | PRs #78–87, #101 and #111–112 with Mail/Acer provide inbox/conversations, read/send/reply, duration choices, formatted previews and attachments; approved self-addressed tests include exact 256 KiB integrity |
+| 22 | Verified wallet↔email bridge foundations | Authority, encrypted queues, dedicated sender/source workers, health, provisioning and backup/recovery implemented in subsequent hardening increments; production Wallet/identity/credentials, live delivery and operations still required |
+| 23 | Wallet-email request recovery | PRs #105–107 provide cancellation, durable receipt recovery and reviewed encrypted receipt backup; actual cross-origin/device acceptance remains |
 | Later | Voice, presence, optional relays | Product expansion, after core production readiness |
 
 ## HTTP hardening acceptance
