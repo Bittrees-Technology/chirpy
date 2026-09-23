@@ -13,6 +13,17 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
     const keyA = generatePrivateKey();
     const walletA = await injectSyntheticWallet(contextA, keyA);
     const walletB = await injectSyntheticWallet(contextB);
+    // Count only action names at the real browser SDK worker boundary; never
+    // retain message bodies, wallet signatures or worker request parameters.
+    for (const context of [contextA, contextB]) await context.addInitScript(() => {
+      const counts = (window as any).__xmtpReads = { targeted: 0, listed: 0 };
+      const post = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function (...args: any[]) {
+        if (args[0]?.action === 'conversations.getConversationById') counts.targeted++;
+        if (args[0]?.action === 'conversations.list') counts.listed++;
+        return (post as any).apply(this, args);
+      };
+    });
     const pageA = await contextA.newPage();
     const pageB = await contextB.newPage();
 
@@ -44,6 +55,8 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await pageA.bringToFront();
       await expect(pageA.getByTestId("peer-receipt")).toContainText("Last read receipt", { timeout: 120_000 });
       await expect(pageA.locator(".list-item", { hasText: "receipt acceptance message" })).toBeVisible();
+      await expect.poll(() => pageA.evaluate(() => (window as any).__xmtpReads.targeted)).toBeGreaterThan(0);
+      await expect.poll(() => pageB.evaluate(() => (window as any).__xmtpReads.targeted)).toBeGreaterThan(0);
       // A separate browser context has no XMTP database or application storage.
       // Keep the old installation online; the same wallet alone is not recovery proof.
       const freshContext = await browser.newContext();

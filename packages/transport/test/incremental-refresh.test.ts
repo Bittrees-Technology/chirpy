@@ -51,6 +51,8 @@ it('remaps only the affected conversation in a 10,000-conversation streamed inbo
     const list = await f.t.listConversations();
     expect(list).toHaveLength(10_000);
     expect(list.find((c: any) => c.id === '777').title).toBe('revision 1');
+    expect(f.api.list).toHaveBeenCalledOnce();
+    expect(f.api.getConversationById).toHaveBeenCalledExactlyOnceWith('777');
     expect(f.t.mapConversation).toHaveBeenCalledOnce();
     expect(f.api.syncAll).toHaveBeenCalledOnce();
     expect(f.api.sync).toHaveBeenCalledOnce();
@@ -167,5 +169,144 @@ it('refreshes local read counts and reactions without waiting for the next poll'
     await f.t.react('0', 'message', '👍');
     expect((await f.t.listConversations()).find((c: any) => c.id === '0').title).toBe('revision 1');
     expect(f.api.syncAll).toHaveBeenCalledOnce();
+  } finally { await f.close(); }
+});
+
+it('uses fresh SDK wrappers for known metadata and preserves list-based discovery', async () => {
+  const f = await setup();
+  try {
+    const replacement = { ...f.records[0], version: 2, consent: 2 };
+    f.records[0] = replacement;
+    f.t.invalidateConversation('0');
+    const result = await f.t.listConversations();
+    expect(f.api.list).toHaveBeenCalledOnce(); expect(f.api.getConversationById).toHaveBeenCalledOnce();
+    expect(f.t.conversations.get('0')).toBe(replacement);
+    expect(result.find((c: any) => c.id === '0')).toMatchObject({ title: 'revision 2', blocked: true });
+    f.records.push({ id: 'new', version: 3, consent: 1 }); f.t.invalidateConversation('new');
+    expect((await f.t.listConversations()).find((c: any) => c.id === 'new')).toMatchObject({ title: 'revision 3' });
+    expect(f.api.list).toHaveBeenCalledTimes(2); expect(f.api.getConversationById).toHaveBeenCalledOnce();
+    expect(f.api.syncAll).toHaveBeenCalledOnce();
+  } finally { await f.close(); }
+});
+it('falls back to local enumeration for missing IDs and removes only records absent from that list', async () => {
+  const f = await setup();
+  try {
+    f.records.shift(); f.t.invalidateConversation('0');
+    const result = await f.t.listConversations();
+    expect(result.map((c: any) => c.id)).toEqual(['1', '2']);
+    expect(f.api.list).toHaveBeenCalledTimes(2); expect(f.api.syncAll).toHaveBeenCalledOnce();
+    f.api.getConversationById.mockResolvedValueOnce(undefined);
+    f.records[0] = { ...f.records[0], version: 8 }; f.t.invalidateConversation('1');
+    expect((await f.t.listConversations()).find((c: any) => c.id === '1').title).toBe('revision 8');
+    expect(f.api.list).toHaveBeenCalledTimes(3);
+  } finally { await f.close(); }
+});
+it('retains summaries on a lookup failure and forces full recovery on the next refresh', async () => {
+  const f = await setup();
+  try {
+    const previous = f.t.mappedConversations;
+    f.api.getConversationById.mockRejectedValueOnce(new Error('local lookup unavailable'));
+    f.t.invalidateConversation('0');
+    await expect(f.t.listConversations()).rejects.toThrow('local lookup unavailable');
+    expect(f.t.mappedConversations).toBe(previous); expect(f.t.fullRefreshRequired).toBe(true);
+    expect(f.t.dirtyConversations.has('0')).toBe(true);
+    await f.t.listConversations(); expect(f.api.syncAll).toHaveBeenCalledTimes(2);
+  } finally { await f.close(); }
+});
+it('rejects a mismatched lookup without replacing cached conversations', async () => {
+  const f = await setup();
+  try {
+    const previous = f.t.conversations.get('0');
+    f.api.getConversationById.mockResolvedValueOnce({ id: 'foreign', version: 7 } as any);
+    f.t.invalidateConversation('0');
+    await expect(f.t.listConversations()).rejects.toThrow('different conversation');
+    expect(f.t.conversations.get('0')).toBe(previous); expect(f.t.conversations.has('foreign')).toBe(false);
+    expect(f.t.mapConversation).not.toHaveBeenCalled();
+  } finally { await f.close(); }
+});
+it('bounds targeted reads to eight in flight and enumerates once for larger invalidation bursts', async () => {
+  const f = await setup(101); let release!: () => void;
+  try {
+    let active = 0, maximum = 0;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    f.api.getConversationById.mockImplementation(async id => {
+      active++; maximum = Math.max(maximum, active); await held; active--;
+      return f.records.find(record => record.id === id);
+    });
+    for (let index = 0; index < 100; index++) f.t.invalidateConversation(String(index));
+    const pending = f.t.listConversations();
+    await vi.waitFor(() => expect(f.api.getConversationById).toHaveBeenCalledTimes(8));
+    release(); await pending;
+    expect(maximum).toBe(8); expect(f.api.getConversationById).toHaveBeenCalledTimes(100); expect(f.api.list).toHaveBeenCalledOnce();
+    for (let index = 0; index < 101; index++) f.t.invalidateConversation(String(index));
+    await f.t.listConversations();
+    expect(f.api.getConversationById).toHaveBeenCalledTimes(100); expect(f.api.list).toHaveBeenCalledTimes(2);
+    expect(f.api.syncAll).toHaveBeenCalledOnce();
+  } finally { release?.(); await f.close(); }
+});
+it('keeps new invalidations arriving during targeted lookup for the next refresh', async () => {
+  const f = await setup(); let release!: () => void;
+  try {
+    f.api.getConversationById.mockImplementationOnce(async id => {
+      const value = { ...f.records.find(record => record.id === id) };
+      await new Promise<void>(resolve => { release = resolve; }); return value;
+    });
+    f.t.invalidateConversation('0'); const first = f.t.listConversations();
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    f.records[0].version = 5; f.t.invalidateConversation('0'); release();
+    expect((await first).find((c: any) => c.id === '0').title).toBe('revision 0');
+    expect((await f.t.listConversations()).find((c: any) => c.id === '0').title).toBe('revision 5');
+    expect(f.api.list).toHaveBeenCalledOnce(); expect(f.api.getConversationById).toHaveBeenCalledTimes(2);
+  } finally { release?.(); await f.close(); }
+});
+
+it('applies fresh room restrictions and namespace changes through the real room mapper', async () => {
+  const f = await setup();
+  try {
+    const room = { id: 'room', name: 'Original title', metadata: { conversationType: 'group' },
+      description: JSON.stringify({ chirpyRoom: 1, namespace: 'personal', policy: { mode: 'active' } }),
+      lastMessage: async () => undefined, members: async () => [], countMessages: async () => 0n,
+      isAdmin: async () => false, isSuperAdmin: async () => false, sendText: vi.fn() };
+    f.records.push(room); f.t.invalidateConversation('room');
+    f.t.mapConversation.mockImplementation((record: any) => record.id === 'room'
+      ? (XmtpTransport.prototype as any).mapRoomConversation.call(f.t, record) : f.summarize(record));
+    f.t.unreadCount = async () => 0; f.t.addressesForMembers = async () => [];
+    expect((await f.t.listConversations()).find((c: any) => c.id === 'room').policy.mode).toBe('active');
+    f.records[f.records.length - 1] = { ...room, name: 'Changed title',
+      description: JSON.stringify({ chirpyRoom: 1, namespace: 'personal', policy: { mode: 'read-only' } }) };
+    f.t.invalidateConversation('room');
+    expect((await f.t.listConversations()).find((c: any) => c.id === 'room')).toMatchObject({ title: 'Changed title', policy: { mode: 'read-only' } });
+    f.t.assertConversationAccepted = vi.fn(); f.t.assertGateAllows = vi.fn();
+    await expect(f.t.send('room', 'must stay blocked')).rejects.toThrow('read-only'); expect(room.sendText).not.toHaveBeenCalled();
+    f.records[f.records.length - 1] = { ...room,
+      description: JSON.stringify({ chirpyRoom: 1, namespace: 'other', policy: { mode: 'read-only' } }) };
+    f.t.invalidateConversation('room');
+    expect((await f.t.listConversations()).some((c: any) => c.id === 'room')).toBe(false);
+    expect(f.api.list).toHaveBeenCalledTimes(2);
+  } finally { await f.close(); }
+});
+
+it('does not postpone full reconciliation and prunes unrelated silent removals on that pass', async () => {
+  const f = await setup(); const completed = f.t.fullRefreshCompletedAt;
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(completed + 30_000);
+  try {
+    f.records.pop(); f.t.invalidateConversation('0');
+    expect((await f.t.listConversations()).some((c: any) => c.id === '2')).toBe(true);
+    expect(f.t.fullRefreshCompletedAt).toBe(completed);
+    f.t.fullRefreshRequired = true;
+    expect((await f.t.listConversations()).some((c: any) => c.id === '2')).toBe(false);
+    expect(f.api.syncAll).toHaveBeenCalledTimes(2); expect(f.api.list).toHaveBeenCalledTimes(2);
+  } finally { clock.mockRestore(); await f.close(); }
+});
+
+it('does not add an unlisted or duplicate DM through a direct lookup of an unknown ID', async () => {
+  const f = await setup();
+  try {
+    f.api.getConversationById.mockResolvedValue({ id: 'unlisted-duplicate', version: 1 } as any);
+    f.t.invalidateConversation('unlisted-duplicate');
+    const result = await f.t.listConversations();
+    expect(result.map((c: any) => c.id)).toEqual(['0', '1', '2']);
+    expect(f.api.getConversationById).not.toHaveBeenCalled(); expect(f.api.list).toHaveBeenCalledTimes(2);
+    expect(f.t.conversations.has('unlisted-duplicate')).toBe(false);
   } finally { await f.close(); }
 });

@@ -674,12 +674,29 @@ export class XmtpTransport implements Transport {
         await client.conversations.sync();
         await client.conversations.syncAll();
       }
-      // Streamed messages are already persisted by the SDK. Listing local
-      // conversations also picks up newly received conversations and metadata.
-      const list = await client.conversations.list();
-      this.conversations = new Map(list.map((conversation) => [conversation.id, conversation]));
+      // Streams persist updates in the SDK. Read fresh wrappers for a bounded
+      // set of changed IDs rather than serializing the complete local inbox.
+      // Fresh wrappers matter: group metadata on a cached wrapper can be stale.
+      // Unknown IDs must use list() to preserve SDK inbox/duplicate-DM filtering.
+      let changed: XmtpConversation[] | undefined;
+      if (!full && dirty.size > 0 && dirty.size <= 100 && [...dirty].every(id => this.conversations.has(id))) {
+        const found = await mapConversations([...dirty], async id => {
+          const conversation = await client.conversations.getConversationById(id);
+          if (conversation && conversation.id !== id) throw new Error("Conversation lookup returned a different conversation.");
+          return conversation;
+        });
+        if (found.every((conversation): conversation is XmtpConversation => Boolean(conversation))) {
+          changed = found;
+          for (const conversation of changed) this.conversations.set(conversation.id, conversation);
+        }
+        // A missing lookup is not proof of deletion. Reconcile the local list.
+      }
+      if (!changed) {
+        const list = await client.conversations.list();
+        this.conversations = new Map(list.map((conversation) => [conversation.id, conversation]));
+        changed = full ? list : list.filter(conversation => dirty.has(conversation.id) || !this.mappedConversations.has(conversation.id));
+      }
       // Keep known restrictions available while asynchronous mapping is in flight.
-      const changed = full ? list : list.filter(conversation => dirty.has(conversation.id) || !this.mappedConversations.has(conversation.id));
       const updates = await mapConversations(changed, (conversation) => this.mapConversation(conversation));
       const next = full ? new Map<string, Conversation>() : new Map(this.mappedConversations);
       for (const conversation of updates) next.set(conversation.id, conversation);

@@ -418,3 +418,11 @@ metadata is unavailable to the current GitHub credential (403); an organization
 administrator must confirm any inherited platform credentials. Secret values were not read
 or copied during this audit. These are concrete configuration dependencies,
 not failures that synthetic tests can turn into production acceptance.
+
+## Targeted local inbox reads (23 September 2026)
+
+After an initial reconciliation, a healthy stream or local action with up to 100 known changed conversation IDs loads fresh SDK wrappers by ID instead of listing every local conversation. Reads use the existing eight-operation concurrency bound. Fresh wrappers preserve current room metadata and consent mapping; cached wrappers are not treated as current authority. Unknown IDs still use SDK list-based discovery, preserving its conversation-selection and duplicate-DM behavior. Missing results fall back to local list enumeration, rather than being treated as proof of deletion. More than 100 changed IDs and unscoped refreshes also use one list operation.
+
+A failed or mismatched lookup preserves mapped summaries, restores invalidations and requires a full refresh next time. Changes and full-refresh requests arriving during a read remain pending. Initial load, periodic reconciliation, stream failure/restart, focus/online/visibility recovery and room admission retain existing full synchronization behavior. Full-list results still prune absent records. Targeted refreshes do not reset the periodic reconciliation clock. The returned application list is still filtered and sorted; this change removes repeated SDK enumeration/serialization for targeted updates, not every O(inbox-size) operation or the initial full-sync cost. Real-device large-inbox acceptance remains open.
+
+Tests count SDK calls for a 10,000-conversation inbox, cover new/missing/failed/wrong records, concurrent invalidations, burst fallback and fresh room policy/namespace changes. The opt-in real XMTP dev browser scenario also records only worker action counts to require actual targeted SDK reads while preserving DM, consent, receipts and fresh-installation history recovery. It never records wallet signatures or message payloads for those counters.
