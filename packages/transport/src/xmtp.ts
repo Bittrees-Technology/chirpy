@@ -98,16 +98,26 @@ function humanError(error: unknown) {
   return message;
 }
 
-function loadPeerCache(): Map<string, string> {
+const MAX_PEER_CACHE = 2500;
+function loadPeerCache(scope: string): Map<string, string> {
   try {
-    return new Map(Object.entries(JSON.parse(localStorage.getItem(PEER_KEY) || "{}")));
-  } catch {
-    return new Map();
-  }
+    const raw = localStorage.getItem(`${PEER_KEY}.${scope}`);
+    if (!raw || raw.length > 1_000_000) return new Map();
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return new Map();
+    const peers = new Map<string, string>();
+    for (const [id, address] of Object.entries(value)) {
+      if (!id || id.length > 256 || typeof address !== 'string' || !ETH_ADDRESS.test(address)) continue;
+      peers.set(id, address.toLowerCase());
+      if (peers.size > MAX_PEER_CACHE) peers.delete(peers.keys().next().value!);
+    }
+    return peers;
+  } catch { return new Map(); }
 }
 
-function savePeerCache(peers: Map<string, string>) {
-  try { localStorage.setItem(PEER_KEY, JSON.stringify(Object.fromEntries(peers))); } catch { /* ignore */ }
+function savePeerCache(scope: string, peers: Map<string, string>) {
+  while (peers.size > MAX_PEER_CACHE) peers.delete(peers.keys().next().value!);
+  try { localStorage.setItem(`${PEER_KEY}.${scope}`, JSON.stringify(Object.fromEntries(peers))); } catch { /* A cache write must not prevent messaging. */ }
 }
 
 function previewOf(sdk: Sdk, message: DecodedMessage) {
@@ -224,7 +234,8 @@ export class XmtpTransport implements Transport {
   private client: XmtpClient | null = null;
   private conversations = new Map<string, XmtpConversation>();
   private roomMeta = new Map<string, RoomMeta>();
-  private peerByConversation = loadPeerCache();
+  private readonly peerCacheScope: string;
+  private peerByConversation: Map<string, string>;
   private peerInboxByConversation = new Map<string, string>();
   private senderInboxByMessage = new Map<string, string>();
   private reader: ChainReader | null = null;
@@ -251,6 +262,9 @@ export class XmtpTransport implements Transport {
     private provider: Eip1193Provider | null,
   ) {
     this.myAddress = identity.address.toLowerCase();
+    this.peerCacheScope = `${xmtpEnv()}:${this.myAddress}`;
+    // The legacy unscoped cache cannot establish which wallet a peer belongs to.
+    this.peerByConversation = loadPeerCache(this.peerCacheScope);
     this.readState = new ReadState(`${xmtpEnv()}:${this.myAddress}`);
     void this.org;
   }
@@ -452,7 +466,7 @@ export class XmtpTransport implements Transport {
       if (this.client !== client || this.status !== 'ready') return undefined;
       if (address) {
         this.peerByConversation.set(id, address);
-        savePeerCache(this.peerByConversation);
+        savePeerCache(this.peerCacheScope, this.peerByConversation);
       }
       return address;
     } catch {
@@ -906,7 +920,7 @@ export class XmtpTransport implements Transport {
     const sdk = await this.loadSdk();
     if (await conversation.consentState() === sdk.ConsentState.Unknown) await conversation.updateConsentState(sdk.ConsentState.Allowed);
     this.peerByConversation.set(conversation.id, target);
-    savePeerCache(this.peerByConversation);
+    savePeerCache(this.peerCacheScope, this.peerByConversation);
     const mapped = await this.mapConversation(conversation);
     this.invalidateConversation(conversation.id);
     return { ...mapped, title: handle || mapped.title };
