@@ -42,6 +42,14 @@ export function createPublicProfiles(config,kv=mailKv(config)){
   const invalid=diagnostic=>{console.error('chat_profile_storage_invalid',diagnostic);throw Error('Invalid profile storage');};
   if(typeof raw!=='string'||raw.length>4096)return invalid({reason:'representation'});
   let data;try{data=JSON.parse(raw);}catch{return invalid({reason:'json'});}
+  // The original deployed Lua codec omitted a null label on withdrawal.
+  // Recognize only that exact legacy shape, retaining its positive revision
+  // and timestamp. Keep the original raw bytes for the later atomic comparison;
+  // reading never resets or rewrites the permanent replay fence.
+  if(data&&typeof data==='object'&&!Array.isArray(data)&&
+   Object.keys(data).sort().join(',')==='revision,updatedAt,version,wallet'&&data.revision>0&&data.updatedAt>0){
+   const withdrawn={...data,label:null};if(validPublicProfile(withdrawn,wallet))return withdrawn;
+  }
   if(!validPublicProfile(data,wallet)){
    // Only fixed schema checks enter logs. Never log keys, raw values, identity,
    // name, signature, request bodies or parser errors derived from stored data.
