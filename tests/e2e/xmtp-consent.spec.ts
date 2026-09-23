@@ -17,13 +17,15 @@ test.describe('XMTP consent ordering @xmtp', () => {
     await injectSyntheticWallet(recovered, creatorKey);
     for (const context of [creator, recipient, recovered]) await context.addInitScript(() => {
       const trace = (window as any).__consentTrace = [];
+      const startedAt = Date.now();
       const pending = new Map<string, any>();
       const previous = new Map<string, string>();
       const OriginalWorker = Worker;
-      const add = (entry: any) => { trace.push(entry); if (trace.length > 100) trace.shift(); };
+      const add = (entry: any) => { trace.push({ ms: Date.now() - startedAt, ...entry }); if (trace.length > 200) trace.shift(); };
       (window as any).Worker = class extends OriginalWorker {
         constructor(url: string | URL, options?: WorkerOptions) {
           super(url, options);
+          (window as any).__consentWorker = this;
           this.addEventListener('message', event => {
             const { id, action, result, error } = event.data ?? {};
             const request = pending.get(id); pending.delete(id);
@@ -43,7 +45,8 @@ test.describe('XMTP consent ordering @xmtp', () => {
         }
         postMessage(...args: any[]) {
           const message = args[0];
-          if (['conversation.consentState', 'conversation.updateConsentState', 'client.sendSyncRequest', 'conversations.list', 'dm.peerInboxId', 'preferences.getInboxStates', 'preferences.fetchInboxStates'].includes(message?.action)) {
+          if (['conversations.sync', 'conversations.syncAll', 'preferences.sync', 'conversation.consentState', 'conversation.updateConsentState', 'client.sendSyncRequest', 'conversations.list', 'dm.peerInboxId', 'preferences.getInboxStates', 'preferences.fetchInboxStates'].includes(message?.action)) {
+            if (['conversations.sync', 'conversations.syncAll', 'client.sendSyncRequest'].includes(message.action)) add({ action: message.action, phase: 'requested' });
             pending.set(message.id, { action: message.action, conversation: message.data?.id, state: message.data?.state, inboxIds: message.data?.inboxIds });
             if (pending.size > 100) pending.delete(pending.keys().next().value!);
           }
@@ -79,6 +82,10 @@ test.describe('XMTP consent ordering @xmtp', () => {
       await expect(first.locator('.composer-input')).toHaveCount(0);
       console.info('Consent acceptance: creator block/unblock/reblock passed.');
 
+      // Model the old installation remaining open in a background tab. This is
+      // explicit because headless contexts do not reliably change visibility.
+      await first.evaluate(() => Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }));
+
       // Recovery may supply a default for a creator's conversations. That default
       // must not outrank this explicit block, irrespective of archive/welcome order.
       await enable(fresh, address);
@@ -111,6 +118,7 @@ test.describe('XMTP consent ordering @xmtp', () => {
       await expect(fresh.locator('.list-item', { hasText: 'consent creator recovery trigger' })).toBeVisible({ timeout: 120_000 });
       await expect(fresh.getByRole('button', { name: 'Block conversation', exact: true })).toBeVisible();
       await first.bringToFront();
+      await first.evaluate(() => { delete (document as any).visibilityState; });
       await first.getByRole('button', { name: 'Inbox', exact: true }).click();
       await expect(first.locator('.list-item', { hasText: 'consent creator recovery trigger' })).toBeVisible({ timeout: 120_000 });
       await first.getByRole('button', { name: 'Block conversation', exact: true }).click();
@@ -122,6 +130,7 @@ test.describe('XMTP consent ordering @xmtp', () => {
       console.info('Consent acceptance: newer choices synchronized in both directions.');
     } catch (error) {
       for (const [name, page] of [['original', first], ['fresh', fresh]] as const) {
+        console.info(name, 'archive evidence', await archiveEvidence(page));
         console.info(name, 'consent trace', JSON.stringify(await page.evaluate(() => (window as any).__consentTrace).catch(() => [])));
         console.info(name, 'synthetic UI', (await page.locator('body').innerText().catch(() => '')).slice(0, 4000));
       }
@@ -140,4 +149,23 @@ async function enable(page: Page, address: string) {
   await page.getByRole('button', { name: 'Enable messaging', exact: true }).click();
   await expect(page.getByText('Messaging enabled on this device.')).toBeVisible({ timeout: 120_000 });
   await page.locator('.nav-item', { hasText: 'Chats' }).click();
+}
+
+// Read-only diagnostics for disposable acceptance identities. Never print archive
+// pins, URLs, encryption material, payloads, or private keys.
+async function archiveEvidence(page: Page) {
+  return page.evaluate(() => new Promise(resolve => {
+    const worker = (window as any).__consentWorker as Worker | undefined;
+    if (!worker) { resolve({ available: false }); return; }
+    const id = crypto.randomUUID();
+    const timeout = setTimeout(() => { worker.removeEventListener('message', receive); resolve({ timedOut: true }); }, 5_000);
+    function receive(event: MessageEvent) {
+      if (event.data?.id !== id) return;
+      clearTimeout(timeout); worker!.removeEventListener('message', receive);
+      resolve({ failed: Boolean(event.data.error), archiveCount: Array.isArray(event.data.result) ? event.data.result.length : null,
+        visibility: document.visibilityState });
+    }
+    worker.addEventListener('message', receive);
+    worker.postMessage({ id, action: 'client.listAvailableArchives', data: { daysCutoff: 1n } });
+  })).catch(() => ({ unavailable: true }));
 }

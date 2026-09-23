@@ -3,6 +3,7 @@ import { generatePrivateKey } from 'viem/accounts';
 import { expect, injectSyntheticWallet, test } from "./fixtures/wallet";
 
 test.describe("XMTP two-wallet direct messages @xmtp", () => {
+  test.use({ actionTimeout: 30_000 });
   test.describe.configure({ retries: process.env.CI ? 2 : 0, timeout: 480_000 });
 
   test("two synthetic wallets exchange DMs and recover history on a fresh installation", async ({ browser }) => {
@@ -17,9 +18,22 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
     const labels = new Map([[walletA.toLowerCase(), "Group creator"], [walletB.toLowerCase(), "Group member"]]);
     for (const context of [contextA, contextB]) await groupProfiles(context, labels);
     // Count only action names at the real browser SDK worker boundary; never
-    // retain message bodies, wallet signatures or worker request parameters.
+    // retain message bodies, conversation metadata, wallet signatures or worker request parameters.
     for (const context of [contextA, contextB]) await context.addInitScript(() => {
       const counts = (window as any).__xmtpReads = { targeted: 0, listed: 0 };
+      const trace = (window as any).__xmtpConsentTrace = [];
+      const OriginalWorker = Worker;
+      (window as any).Worker = class extends OriginalWorker {
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super(url, options);
+          this.addEventListener('message', event => {
+            const { action, result } = event.data ?? {};
+            if (!['conversations.list', 'conversations.getConversationById', 'conversation.consentState', 'conversation.updateConsentState'].includes(action)) return;
+            trace.push({ action, ...(action === 'conversation.consentState' && typeof result === 'number' ? { state: result } : {}) });
+            if (trace.length > 40) trace.shift();
+          });
+        }
+      };
       const post = Worker.prototype.postMessage;
       Worker.prototype.postMessage = function (...args: any[]) {
         if (args[0]?.action === 'conversations.getConversationById') counts.targeted++;
@@ -60,6 +74,7 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await expect(pageA.locator(".list-item", { hasText: "receipt acceptance message" })).toBeVisible();
       await expect.poll(() => pageA.evaluate(() => (window as any).__xmtpReads.targeted)).toBeGreaterThan(0);
       await expect.poll(() => pageB.evaluate(() => (window as any).__xmtpReads.targeted)).toBeGreaterThan(0);
+      console.info('XMTP acceptance: DM and receipt checks passed; creating group.');
       await pageA.locator('.nav-item', { hasText: 'Rooms' }).click();
       await pageA.getByRole('button', { name: '+ Room', exact: true }).click();
       await pageA.getByLabel('Room name').fill('dev acceptance room');
@@ -73,7 +88,12 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await pageA.locator('.room-members summary').click();
       await sendMessage(pageA, 'group message after adding B');
       await pageB.locator('.nav-item', { hasText: 'Rooms' }).click();
+      await pageB.getByRole('button', { name: 'Requests', exact: true }).click();
       await openConversationWithMessage(pageB, 'group message after adding B');
+      await expect(pageB.locator('.composer-input')).toHaveCount(0);
+      await pageB.getByRole('button', { name: 'Accept request', exact: true }).click();
+      await expect(pageB.locator('.composer-input')).toBeVisible();
+      await pageB.getByRole('button', { name: 'Inbox', exact: true }).click();
       await expect(pageB.locator('.msg-body', { hasText: 'group message after adding B' })).toBeVisible({ timeout: 120_000 });
       await expect(pageB.getByRole('button', { name: 'Add member', exact: true })).toHaveCount(0);
       await sendMessage(pageB, 'group reply from B');
@@ -85,18 +105,37 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await replyRow.getByRole('button', { name: 'React with 👍', exact: true }).click();
       await expect(replyRow.locator('.reaction-chip')).toContainText('👍 1', { timeout: 120_000 });
       await expect(pageB.locator('.msg-row', { has: pageB.locator('.msg-body', { hasText: 'group reply from B' }) }).locator('.reaction-chip')).toContainText('👍 1', { timeout: 120_000 });
+      console.info('XMTP acceptance: group acceptance, messaging and reactions passed.');
       labels.delete(walletB.toLowerCase());
       await pageA.evaluate(() => window.dispatchEvent(new Event('chat:public-profile-changed')));
       await expect(replyRow.locator('.profile-wallet')).not.toContainText('Group member');
       await expect(replyRow.locator('.profile-wallet')).toHaveAttribute('title', walletB.toLowerCase());
       labels.set(walletB.toLowerCase(), 'Group member');
 
+      console.info('XMTP acceptance: label withdrawal passed; checking block/unblock.');
+      await pageB.bringToFront();
+      // Block hides the existing group without silently removing membership.
+      await pageB.getByRole('button', { name: 'Block conversation', exact: true }).click();
+      console.info('XMTP acceptance: block action clicked.');
+      await expect(pageB.locator('.msg-body')).toHaveCount(0);
+      await expect(pageB.locator('.composer-input')).toHaveCount(0);
+      console.info('XMTP acceptance: blocked content hidden.');
+      await pageB.getByRole('button', { name: 'Blocked', exact: true }).click();
+      await expect(pageB.locator('.list-item', { hasText: 'dev acceptance room' })).toBeVisible();
+      console.info('XMTP acceptance: blocked room listed.');
+      await pageB.getByRole('button', { name: 'Unblock conversation', exact: true }).click();
+      await expect(pageB.locator('.msg-body', { hasText: 'group reply from B' })).toBeVisible();
+      await pageB.getByRole('button', { name: 'Block conversation', exact: true }).click();
+      await expect(pageB.locator('.composer-input')).toHaveCount(0);
 
+
+      console.info('XMTP acceptance: block/unblock passed; checking fresh installations.');
       // A separate browser context has no XMTP database or application storage.
       // Keep the old installation online; the same wallet alone is not recovery proof.
       for (const [key, wallet, other, label] of [[keyA, walletA, walletB, "Group member"], [keyB, walletB, walletA, "Group creator"]] as const) {
       const freshContext = await browser.newContext();
       try {
+        console.info(wallet === walletA ? 'XMTP acceptance: recovering creator.' : 'XMTP acceptance: recovering blocked invitee.');
         await injectSyntheticWallet(freshContext, key);
         await groupProfiles(freshContext, labels);
         const freshPage = await freshContext.newPage();
@@ -111,9 +150,36 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
         // The imported accepted consent makes the recovered DM usable without accepting again.
         await expect(freshPage.locator('.composer-input')).toBeVisible();
         await freshPage.locator('.nav-item', { hasText: 'Rooms' }).click();
+        if (wallet === walletB) {
+          await freshPage.getByRole('button', { name: 'Blocked', exact: true }).click();
+          await freshPage.locator('.list-item', { hasText: 'dev acceptance room' }).click({ timeout: 120_000 });
+          await expect(freshPage.locator('.msg-body')).toHaveCount(0);
+          await expect(freshPage.locator('.composer-input')).toHaveCount(0);
+          await freshPage.getByRole('button', { name: 'Unblock conversation', exact: true }).click();
+          await freshPage.getByRole('button', { name: 'Inbox', exact: true }).click();
+        }
         await openConversationWithMessage(freshPage, 'group reply from B');
         await expect(freshPage.locator('.msg-body', { hasText: 'group message after adding B' })).toBeVisible({ timeout: 120_000 });
         await expect(freshPage.locator('.msg-body', { hasText: 'group reply from B' })).toBeVisible({ timeout: 120_000 });
+        if (wallet === walletB) {
+          await expect(freshPage.locator('.composer-input')).toHaveCount(0);
+          await expect(freshPage.getByText('Saved messages are available. Sending is unavailable until active access is restored on this device.')).toBeVisible();
+          console.info('XMTP acceptance: blocked invitee local history restored with inactive access.');
+          // An existing member's normal send updates installation membership.
+          // Only verified active access may make this device writable again.
+          await pageA.bringToFront();
+          await pageA.locator('.composer-input').fill('restore invitee installation access');
+          await pageA.getByRole('button', { name: 'Send', exact: true }).click();
+          await freshPage.bringToFront();
+          await expect(freshPage.locator('.msg-body', { hasText: 'restore invitee installation access' })).toBeVisible({ timeout: 120_000 });
+        }
+        await expect(freshPage.locator('.composer-input')).toBeVisible({ timeout: 120_000 });
+        if (wallet === walletB) {
+          await freshPage.locator('.composer-input').fill('restored invitee can reply');
+          await freshPage.getByRole('button', { name: 'Send', exact: true }).click();
+          await expect(pageA.locator('.msg-body', { hasText: 'restored invitee can reply' })).toBeVisible({ timeout: 120_000 });
+          console.info('XMTP acceptance: restored invitee active access and reply verified.');
+        }
         await freshPage.locator('.room-members summary').click();
         await expect(freshPage.getByRole('list', { name: 'Room members' }).getByText(other.toLowerCase(), { exact: true })).toBeVisible();
         if (wallet === walletA) await expect(freshPage.getByRole('button', { name: 'Add member', exact: true })).toBeDisabled();
@@ -121,14 +187,17 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
         const author = freshPage.locator('.profile-wallet').filter({ hasText: label });
         await expect(author.first()).toHaveAttribute('title', other.toLowerCase());
 
-      } finally { await freshContext.close(); }
+      } catch (error) { console.error('XMTP fresh-installation acceptance failed:', error); throw error; }
+      finally { await freshContext.close(); }
       }
       // Actual production gated-room acceptance still requires the configured gate and reviewed policy.
 
-    } finally {
-      await contextB.close();
-      await contextA.close();
+    } catch (error) {
+      console.error('XMTP acceptance failed:', error instanceof Error ? error.stack : String(error));
+      console.info('Recipient SDK consent/list diagnostics:', JSON.stringify(await pageB.evaluate(() => (window as any).__xmtpConsentTrace).catch(() => [])));
+      throw error;
     }
+    finally { await Promise.all([contextB.close(), contextA.close()]); }
   });
 });
 

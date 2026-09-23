@@ -147,7 +147,7 @@ export class MockTransport implements Transport {
   }
 
   async listConversations(): Promise<Conversation[]> {
-    return this.snap.conversations.map((c) => c.blocked ? { ...c, lastMessage: undefined, unread: 0 } : { ...c }).sort(
+    return this.snap.conversations.map((c) => c.blocked ? { ...c, consentSupported: c.kind === "room", peers: c.kind === "room" ? [] : c.peers, lastMessage: undefined, unread: 0 } : { ...c, consentSupported: c.kind === "room" }).sort(
       (a, b) => (b.lastMessage?.sentAt ?? 0) - (a.lastMessage?.sentAt ?? 0),
     );
   }
@@ -232,9 +232,10 @@ export class MockTransport implements Transport {
     if (conv.unread > unread) { conv.unread = unread; this.persist(); this.emit(); }
   }
 
-  async setConversationConsent(conversationId: string, state: "allowed" | "denied"): Promise<void> {
+  async setConversationConsent(conversationId: string, state: "allowed" | "denied", isCurrent: () => boolean = () => true): Promise<void> {
     const conversation = this.snap.conversations.find((c) => c.id === conversationId);
-    if (!conversation || conversation.kind !== "dm") throw new Error("Direct message not found.");
+    if (!isCurrent()) throw new Error("Wallet changed. Reload the conversation.");
+    if (!conversation) throw new Error("Conversation not found.");
     conversation.blocked = state === "denied";
     conversation.pending = false;
     if (conversation.blocked) conversation.unread = 0;
@@ -260,6 +261,7 @@ export class MockTransport implements Transport {
     const room = this.snap.conversations.find(c => c.id === conversationId);
     if (!isCurrent()) throw new Error("Wallet or room changed. Check members before retrying.");
     if (!room || room.kind !== 'room' || room.namespace !== this.org.namespace) throw new Error("Room not found in this organization.");
+    if (room.pending || room.blocked) throw new Error("Accept or unblock this conversation before sending messages or reactions.");
     if (!room.isAdmin) throw new Error("Admins only.");
     if (room.configurationError || room.gate?.rules.length) throw new Error("Gated rooms require admission through the gate service.");
     const target = address.trim().toLowerCase();

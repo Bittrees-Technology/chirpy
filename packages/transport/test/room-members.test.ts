@@ -7,8 +7,8 @@ const meta = (extra = {}) => JSON.stringify({ chirpyRoom: 1, namespace: PERSONAL
 function setup() {
   const provider = { request: vi.fn().mockResolvedValue([self]) };
   const t = new XmtpTransport(PERSONAL_ORG, { address: self }, provider) as any;
-  t.status = 'ready'; t.sdk = { ConversationType: { Group: 'group' }, IdentifierKind: { Ethereum: 0 } };
-  const group = { id: 'room', name: 'Room', description: meta(), sync: vi.fn(),
+  t.status = 'ready'; t.sdk = { ConsentState: { Unknown: 0, Allowed: 1, Denied: 2 }, ConversationType: { Group: 'group' }, IdentifierKind: { Ethereum: 0 } };
+  const group = { isActive: vi.fn().mockResolvedValue(true), consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Room', description: meta(), sync: vi.fn(),
     isSuperAdmin: vi.fn().mockResolvedValue(true), isAdmin: vi.fn().mockResolvedValue(false),
     members: vi.fn().mockResolvedValue([{ inboxId: 'self' }]), addMembers: vi.fn().mockResolvedValue(undefined) };
   const stale = { ...group, description: meta(), sync: vi.fn() };
@@ -26,6 +26,12 @@ it('syncs fresh metadata, resolves one activated inbox and adds it without chang
   expect(client.fetchInboxIdByIdentifier).toHaveBeenCalledWith({ identifier: peer, identifierKind: 0 });
   expect(group.addMembers).toHaveBeenCalledExactlyOnceWith(['peer']);
   expect(t.dirtyConversations.has('room')).toBe(true);
+});
+
+it('does not add a member from an inactive installation even with a retained admin role', async () => {
+  const { t, group } = setup(); group.isActive.mockResolvedValue(false);
+  await expect(t.addRoomMember('room', peer)).rejects.toThrow('Active access');
+  expect(group.addMembers).not.toHaveBeenCalled();
 });
 it.each([
   ['future metadata', { chirpyRoom: 2 }], ['foreign namespace', { namespace: 'elsewhere' }],

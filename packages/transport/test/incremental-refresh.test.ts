@@ -153,6 +153,48 @@ it.each(['focus', 'online', 'visibilitychange'])('forces network reconciliation 
   } finally { await f.close(); vi.unstubAllGlobals(); }
 });
 
+it('reconciles a hidden installation so missed device history requests can be serviced', async () => {
+  const f = await setup();
+  const doc = Object.assign(new EventTarget(), { visibilityState: 'hidden' });
+  vi.stubGlobal('document', doc);
+  vi.useFakeTimers();
+  try {
+    f.t.startPoll(f.changed);
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(f.changed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(f.changed).toHaveBeenCalledOnce();
+    await f.t.listConversations();
+    expect(f.api.sync).toHaveBeenCalledTimes(2);
+    expect(f.api.syncAll).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(f.changed).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); await f.close(); vi.unstubAllGlobals(); }
+});
+
+it('briefly checks requested history every ten seconds, then restores normal polling', async () => {
+  const f = await setup();
+  f.t.provider = { request: async () => [f.t.myAddress] };
+  f.t.client.sendSyncRequest = vi.fn().mockResolvedValue(undefined);
+  vi.useFakeTimers();
+  try {
+    f.t.startPoll(f.changed);
+    await f.t.requestHistorySync();
+    for (let tick = 1; tick <= 11; tick++) {
+      f.changed.mockClear();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(f.changed).toHaveBeenCalledOnce();
+      await f.t.listConversations();
+    }
+    f.changed.mockClear();
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(f.changed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(f.changed).toHaveBeenCalledOnce();
+    expect(f.t.client.sendSyncRequest).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); await f.close(); }
+});
+
 it('refreshes local read counts and reactions without waiting for the next poll', async () => {
   const f = await setup(); const record = f.records[0];
   record.consentState = async () => 1;
@@ -264,7 +306,7 @@ it('keeps new invalidations arriving during targeted lookup for the next refresh
 it('applies fresh room restrictions and namespace changes through the real room mapper', async () => {
   const f = await setup();
   try {
-    const room = { consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Original title', metadata: { conversationType: 'group' },
+    const room = { isActive: vi.fn().mockResolvedValue(true), consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Original title', metadata: { conversationType: 'group' },
       description: JSON.stringify({ chirpyRoom: 1, namespace: 'personal', policy: { mode: 'active' } }),
       lastMessage: async () => undefined, members: async () => [], countMessages: async () => 0n,
       isAdmin: async () => false, isSuperAdmin: async () => false, sendText: vi.fn() };

@@ -22,7 +22,7 @@ async function type(value: string) { await act(async () => {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }); }
 async function submit() { await act(async () => { container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); }); }
-it.each([{ isAdmin: false }, { canAddMembers: false }, { configurationError: true }, { gate: { combine: 'all', rules: [{ kind: 'ens', name: 'members.eth' }] } }])('hides additions when authority is unavailable: %j', async restriction => {
+it.each([{ pending: true }, { blocked: true }, { isAdmin: false }, { canAddMembers: false }, { configurationError: true }, { gate: { combine: 'all', rules: [{ kind: 'ens', name: 'members.eth' }] } }])('hides additions when authority is unavailable: %j', async restriction => {
   await render({ ...room, ...restriction } as any);
   expect(container.querySelector('form')).toBeNull();
   expect(container.querySelector('li')!.textContent).toBe(address);

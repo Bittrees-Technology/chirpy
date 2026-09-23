@@ -51,9 +51,13 @@ export interface Conversation {
   /** Latest peer receipt time; XMTP receipts do not identify an exact message. */
   lastReadReceiptAt?: number;
   unread: number;
-  /** A DM that the peer has not yet accepted (request state). */
+  /** Existing native group supports per-user consent; directory entries do not. */
+  consentSupported?: boolean;
+  /** Native group access on this installation; restored history can be inactive. */
+  deviceAccess?: "active" | "inactive" | "unavailable";
+  /** A native conversation the current user has not yet accepted. */
   pending?: boolean;
-  /** A denied DM stays discoverable in the blocked list without message previews. */
+  /** A denied conversation stays discoverable without message previews. */
   blocked?: boolean;
 }
 
@@ -85,7 +89,7 @@ export interface Transport {
   send(conversationId: string, body: string, opts?: { replyTo?: string }): Promise<ChatMessage>;
   react(conversationId: string, messageId: string, emoji: string): Promise<void>;
   markRead(conversationId: string, options?: { sendReceipt: boolean; throughMessageId?: string }): Promise<void>;
-  setConversationConsent(conversationId: string, state: "allowed" | "denied"): Promise<void>;
+  setConversationConsent(conversationId: string, state: "allowed" | "denied", isCurrent?: () => boolean): Promise<void>;
   startDm(address: string, handle?: string): Promise<Conversation>;
   createRoom(input: StartRoomInput): Promise<Conversation>;
   /** Add one activated wallet to an open room; recheck authority before dispatch. */

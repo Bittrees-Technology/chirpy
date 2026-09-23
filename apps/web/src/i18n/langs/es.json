@@ -712,5 +712,12 @@
   "roomMembers.gated": "Las salas restringidas requieren admisión mediante el servicio de acceso.",
   "roomMembers.duplicate": "Esa cartera ya es miembro de la sala.",
   "roomMembers.unavailable": "No está disponible la opción de añadir miembros.",
-  "status.historyWalletChanged": "La cartera ha cambiado. Vuelve a cargar la conversación."
+  "status.historyWalletChanged": "La cartera ha cambiado. Vuelve a cargar la conversación.",
+  "thread.groupConsentNote": "Bloquear oculta esta conversación; no te elimina de la sala.",
+  "status.consentUpdatePending": "Ya hay una actualización de consentimiento en curso.",
+  "thread.deviceInactive": "Los mensajes guardados están disponibles. No puedes enviar hasta que se restablezca el acceso activo en este dispositivo.",
+  "thread.deviceUnavailable": "Los mensajes guardados están disponibles. No se pudo confirmar el acceso activo; actualiza para volver a intentarlo.",
+  "status.activeAccessRequired": "Se requiere acceso activo desde este dispositivo. Aún puedes leer los mensajes restaurados.",
+  "roomMembers.savedTitle": "Lista de miembros guardada",
+  "roomMembers.savedHint": "Esta lista guardada puede no reflejar los miembros actuales."
 }
