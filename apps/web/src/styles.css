@@ -354,3 +354,12 @@ input, textarea, select { font-family: inherit; }
 .push-file-compose p { flex-basis: 100%; margin: 0; }
 
 .push-image-preview { display: block; max-width: min(100%, 480px); max-height: 360px; width: auto; height: auto; object-fit: contain; border-radius: 8px; }
+
+.push-reaction-controls { min-width: 0; max-width: 100%; }
+.push-reaction-controls summary { cursor: pointer; padding: 4px; }
+.push-reaction-picker { display: flex; flex-wrap: wrap; gap: 4px; max-width: 260px; }
+.push-reaction-picker .react-btn { min-width: 44px; min-height: 44px; }
+.push-reaction-controls small, .push-reaction-hint { display: block; color: var(--muted); font-size: 12px; max-width: 300px; }
+.push-reaction-event { display: grid; gap: 4px; }
+.push-reaction-event small { color: var(--muted); }
+.msg-tools.push-msg-tools { position: static; opacity: 1; flex-wrap: wrap; align-items: flex-start; margin-top: 4px; width: fit-content; max-width: 100%; }

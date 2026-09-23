@@ -1,5 +1,6 @@
 import type { ChatMessage, PushMessagePart } from './types.js';
 import { readPushAttachment, readPushMediaLink } from './pushMedia.js';
+import { isPushReactionEmoji } from './pushReactions.js';
 const MAX_BODY = 16_000, MAX_PARTS = 8;
 const simpleTypes = ['Text', 'Image', 'File', 'Audio', 'Video', 'MediaEmbed'];
 const unsupported = () => ({ body: 'This Push message type is not supported in Chat yet.' });
@@ -29,9 +30,14 @@ function wirePart(value: unknown): PushMessagePart | undefined {
     || !inner || !exact(inner, ['content']) || typeof inner.content !== 'string') return;
   return part(wire.messageType, inner.content);
 }
-export function readPushContent(row: Record<string, unknown>, id: string): Pick<ChatMessage, 'body' | 'pushAttachment' | 'pushMediaUrl' | 'pushParts' | 'replyTo'> {
+export function readPushContent(row: Record<string, unknown>, id: string): Pick<ChatMessage, 'body' | 'pushAttachment' | 'pushMediaUrl' | 'pushParts' | 'replyTo' | 'pushReaction'> {
   if (row.messageContent === 'Unable to Decrypt Message' || row.messageObj === 'Unable to Decrypt Message') return { body: 'This Push message could not be decrypted.' };
   const object = record(row.messageObj);
+  if (row.messageType === 'Reaction') {
+    if (!object || !exact(object, ['content', 'reference']) || !isPushReactionEmoji(object.content)
+      || typeof object.reference !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(object.reference) || object.reference === id) return unsupported();
+    return { body: object.content, pushReaction: { emoji: object.content, reference: object.reference } };
+  }
   if (row.messageType === 'Reply') {
     if (!object || !exact(object, ['content', 'reference']) || typeof object.reference !== 'string'
       || !/^[a-zA-Z0-9]{10,128}$/.test(object.reference) || object.reference === id) return unsupported();

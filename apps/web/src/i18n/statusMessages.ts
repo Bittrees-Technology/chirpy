@@ -1,5 +1,8 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "This reaction history snapshot reached its limit. Return to latest messages.": "push.reactionLimit",
+  "Choose a supported Push reaction.": "push.chooseReaction",
+  "Choose an original message in this room to react to.": "push.chooseReactionOriginal",
   "This Push history page exceeds the display limit. No messages were replaced.": "push.historyBudget",
   "File replies cannot include a caption. Clear the caption or cancel the reply.": "push.fileReplyCaption",
   "Choose a file of at most 1 MB.": "push.fileTooLarge",

@@ -1,4 +1,5 @@
 import { PushImagePreviewScope } from "./PushImagePreviewScope";
+import { PushReactionControls } from "./PushReactionControls";
 import { PushFilePicker } from "./PushFilePicker";
 import type { PushAttachment } from "@app/transport";
 import { PushMembers } from "./PushMembers";
@@ -263,7 +264,10 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         }}>
         {messages.length === 0 && !historyLoading && !historyError && (!pushRoom || (pushStatus === "ready" && (pushRoom.publicRoom || pushRoom.membership === "member"))) && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
         <PushImagePreviewScope key={`${draftKey}:${pushStatus}:${pushRoom?.membership}`}>
-        {(activeConversation.blocked ? [] : messages).map((m) => {
+        {(activeConversation.blocked ? [] : messages).map((m, index) => {
+          // Keep native events in transport history so cursors/fingerprints stay
+          // intact. Show an activity row when the original is outside this page.
+          if (pushRoom && m.pushReaction && messages.slice(0, index).some(parent => parent.id === m.pushReaction!.reference && !parent.pushReaction)) return null;
           const mine = m.sender.toLowerCase() === selfAddress;
           const senderRecord = profiles.get(m.sender.toLowerCase());
           const parent = m.replyTo ? messages.find((x) => x.id === m.replyTo && x.conversationId === m.conversationId) : null;
@@ -280,7 +284,8 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                   {pushRoom ? <PushMessageBody message={m}/> : <MessageBody body={m.body}/>}
                   <span className="msg-time">{fmtTime(m.sentAt, lang)}</span>
                 </div>
-                {(!pushRoom || !postingBlocked) && <div className="msg-tools">
+                {(!pushRoom || (!postingBlocked && !m.pushReaction)) && <div className={`msg-tools${pushRoom ? ' push-msg-tools' : ''}`}>
+                  {pushRoom && <PushReactionControls key={`${draftKey}:${m.id}`} messageId={m.id} owner={selfAddress} reactions={m.reactions} react={react}/>}
                   {!pushRoom && EMOJIS.map((e) => (
                     <button key={e} className="react-btn" disabled={Boolean(needsConsent || postingBlocked)} aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
                       void react(m.id, e).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
@@ -289,12 +294,13 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                   <button className="react-btn" disabled={Boolean(needsConsent || postingBlocked || fileReading)} aria-label={t("thread.reply", "Reply")} onClick={() => setReply({ id: m.id, preview: m.body.slice(0, 80), scope: draftKey })}>↩</button>
                 </div>}
                 {m.reactions && Object.keys(m.reactions).length > 0 && (
-                  <div className="msg-reactions">
+                  <div className="msg-reactions" aria-label={pushRoom ? t('push.reactionSnapshot') : undefined}>
                     {Object.entries(m.reactions).map(([e, who]) => (
                       <span key={e} className="reaction-chip">{e} {who.length}</span>
                     ))}
                   </div>
                 )}
+                {pushRoom && m.reactions && <small className="push-reaction-hint">{t('push.reactionSnapshot')}</small>}
               </div>
             </div>
           );

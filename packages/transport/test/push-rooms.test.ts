@@ -306,3 +306,71 @@ describe('Push file replies', () => {
     expect(f.client.send).not.toHaveBeenCalled();
   });
 });
+
+describe('Push reaction authority and linked snapshots',()=>{
+ const target='QmReactionTarget',first='QmNewestReaction',second='QmOlderReaction';
+ const row=(cid:string,link:string|null,extra={})=>({cid,link,fromDID:owner,toDID:group,timestamp:1,messageType:'Text',messageContent:'Original',...extra});
+ const reaction=(cid:string,link:string|null,emoji='👍',reference=target)=>row(cid,link,{messageType:'Reaction',messageObj:{content:emoji,reference}});
+ it('binds a reaction to the original room and refreshes posting permission after reading it',async()=>{
+  const f=setup();await f.rooms.discover();await f.rooms.enable();vi.mocked(f.client.history).mockResolvedValue([row(target,null)]);
+  await f.rooms.react(id,target,'👍');expect(f.client.history).toHaveBeenCalledExactlyOnceWith(group,{reference:target,limit:1});
+  expect(f.client.permissions).toHaveBeenCalledTimes(2);expect(f.client.send).toHaveBeenCalledExactlyOnceWith(group,{type:'Reaction',content:'👍',reference:target});
+ });
+ it('rejects unsupported/removal input before any authority or SDK call',async()=>{
+  const f=setup();await f.rooms.discover();await f.rooms.enable();
+  for(const emoji of ['', '🎉', '__proto__']) await expect(f.rooms.react(id,target,emoji)).rejects.toThrow('supported');
+  await expect(f.rooms.react(id,'../foreign','👍')).rejects.toThrow('original');expect(f.client.info).not.toHaveBeenCalled();expect(f.client.send).not.toHaveBeenCalled();
+ });
+ it.each([[],[row(target,null,{toDID:'b'.repeat(64)})],[row('QmSubstitutedTarget',null)],[reaction(target,null)],[row(target,null),row(target,null)]].map(rows=>({rows})))('rejects missing, foreign, substituted, reaction and excessive originals %#',async({rows})=>{
+  const f=setup();await f.rooms.discover();await f.rooms.enable();vi.mocked(f.client.history).mockResolvedValue(rows);
+  await expect(f.rooms.react(id,target,'👍')).rejects.toThrow();expect(f.client.send).not.toHaveBeenCalled();
+ });
+ it.each(['permission','disconnect','dispose'])('rejects a delayed original after %s changes',async change=>{
+  const f=setup();await f.rooms.discover();await f.rooms.enable();const wait=deferred<unknown>();vi.mocked(f.client.history).mockReturnValue(wait.promise);
+  const pending=f.rooms.react(id,target,'👍');await vi.waitFor(()=>expect(f.client.history).toHaveBeenCalledOnce());
+  if(change==='permission')vi.mocked(f.client.permissions).mockResolvedValue({entry:true,chat:false});
+  if(change==='disconnect')f.disconnect();if(change==='dispose')f.rooms.dispose();
+  wait.resolve([row(target,null)]);await expect(pending).rejects.toThrow();expect(f.client.send).not.toHaveBeenCalled();
+ });
+ it('never retries or falls back to text after an uncertain reaction send',async()=>{
+  const f=setup();await f.rooms.discover();await f.rooms.enable();vi.mocked(f.client.history).mockResolvedValue([row(target,null)]);vi.mocked(f.client.send).mockRejectedValue(Error('Uncertain'));
+  await expect(f.rooms.react(id,target,'👍')).rejects.toThrow('Uncertain');expect(f.client.send).toHaveBeenCalledTimes(1);
+ });
+ it('retains deduplicated reactions across older pages, revisits and a newer independent snapshot',async()=>{
+  const f=setup();await f.rooms.discover();await f.rooms.enable();
+  vi.mocked(f.client.history).mockImplementation(async(_,options)=>options.reference===target?[row(target,null)]:options.reference===second?[reaction(second,target)]:[reaction(first,second)]);
+  const latest=await f.rooms.history(id),middle=await f.rooms.history(id,latest.olderCursor),oldest=await f.rooms.history(id,middle.olderCursor);
+  expect(oldest.messages[0].reactions).toEqual({'👍':[owner]});expect((await f.rooms.history(id,middle.olderCursor)).messages).toEqual(oldest.messages);
+  vi.mocked(f.client.history).mockResolvedValueOnce([reaction(second,target,'🔥')]);
+  await expect(f.rooms.history(id,latest.olderCursor)).rejects.toThrow('changed an existing history page');
+  vi.mocked(f.client.history).mockResolvedValue([row(target,null)]);expect((await f.rooms.history(id)).messages[0].reactions).toBeUndefined();
+ });
+ it.each(['membership','visibility','malformed','catalog'])('forgets cached reaction snapshots after %s changes',async change=>{
+  const f=setup();await f.rooms.discover();await f.rooms.enable();vi.mocked(f.client.history).mockResolvedValue([reaction(first,target)]);const latest=await f.rooms.history(id);
+  if(change==='membership')vi.mocked(f.client.participantStatus).mockResolvedValue({participant:false,pending:false,role:'member'});
+  if(change==='visibility')vi.mocked(f.client.info).mockResolvedValue({chatId:group,groupName:'Public',groupDescription:'',isPublic:true});
+  if(change==='malformed')vi.mocked(f.client.info).mockResolvedValue({});
+  if(change==='catalog'){f.load.mockResolvedValueOnce({...catalog(),rooms:[]});await f.rooms.discover();await f.rooms.discover();}
+  else await f.rooms.refreshRoom(id).catch(()=>{});
+  vi.mocked(f.client.participantStatus).mockResolvedValue({participant:true,pending:false,role:'member'});vi.mocked(f.client.info).mockResolvedValue({chatId:group,groupName:'Room',groupDescription:'',isPublic:false});
+  await expect(f.rooms.history(id,latest.olderCursor)).rejects.toThrow('expired');
+ });
+});
+
+it('bounds reaction snapshots without silently truncating counts or resetting linked history',async()=>{
+ const f=setup();await f.rooms.discover();await f.rooms.enable();
+ const target='QmFinalOriginal';
+ vi.mocked(f.client.history).mockImplementation(async(_,options)=>{
+  const start=options.reference?Number(options.reference.slice('QmEvent'.length)):0;
+  return Array.from({length:30},(_,offset)=>({cid:'QmEvent'+String(start+offset).padStart(7,'0'),link:'QmEvent'+String(start+offset+1).padStart(7,'0'),fromDID:owner,toDID:group,timestamp:0,messageType:'Reaction',messageObj:{content:'👍',reference:target}}));
+ });
+ let page=await f.rooms.history(id);for(let index=1;index<200;index++)page=await f.rooms.history(id,page.olderCursor);
+ await expect(f.rooms.history(id,page.olderCursor)).rejects.toThrow('snapshot reached its limit');
+ vi.mocked(f.client.history).mockResolvedValue([{cid:'QmNewSnapshotReaction',link:target,fromDID:owner,toDID:group,timestamp:0,messageType:'Reaction',messageObj:{content:'❤️',reference:target}}]);
+ const fresh=await f.rooms.history(id);
+ // A new snapshot evicts the old 6,000-event path as a whole; it cannot mix or
+ // truncate those counts into the new path to meet the aggregate cache limit.
+ await expect(f.rooms.history(id,page.olderCursor)).rejects.toThrow('expired');
+ vi.mocked(f.client.history).mockResolvedValue([{cid:target,link:null,fromDID:owner,toDID:group,timestamp:0,messageType:'Text',messageContent:'New snapshot'}]);
+ expect((await f.rooms.history(id,fresh.olderCursor)).messages[0].reactions).toEqual({'❤️':[owner]});
+});

@@ -11,6 +11,8 @@ export interface ChatMessage {
   pushMediaUrl?: string;
   /** Original order of bounded, non-nested Push composite parts. */
   pushParts?: PushMessagePart[];
+  /** A native Push reaction event, retained in linked history for pagination. */
+  pushReaction?: import('./pushReactions.js').PushReaction;
   reactions?: Record<string, string[]>; // emoji -> addresses
   replyTo?: string;        // message id
   replyPreview?: string;   // bounded text excerpt, including parents outside this page

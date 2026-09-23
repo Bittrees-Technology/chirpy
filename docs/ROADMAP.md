@@ -14,7 +14,7 @@ The [production readiness ledger](PRODUCTION-READINESS.md) records implementatio
 - Public support and security reporting paths.
 - Chat branding and dual-domain serving with preserved compatibility identifiers.
 - Reviewed encrypted application-data recovery and user-controlled public/private profile labels.
-- Original-protocol Push room integration, bounded history/membership, text/file/reply composition and explicit PNG/JPEG previews.
+- Original-protocol Push room integration, bounded history/membership, text/file/reply composition and explicit PNG/JPEG previews and native add-only reactions.
 - Connected Mail inbox/conversations, scoped duration choices, read/send/reply, formatted previews and bounded attachments.
 - Disabled wallet↔email bridge authority, queues, source/sender workers, health and recovery foundations.
 
@@ -34,7 +34,7 @@ The [production readiness ledger](PRODUCTION-READINESS.md) records implementatio
 - Broader translations and mobile/accessibility acceptance (room administrator controls are implemented).
 - Trusted role/power/delegate/multi-chain resolvers and verified presets where needed.
 - Long-running multi-device sync/conflict acceptance and explicit deletion/unblock merge semantics.
-- Complete remaining Push media/reaction/composite parity, larger Mail attachments and source integration acceptance with rollback tests. Shared UI/embed packaging is optional later work; framing requires an intentional origin allowlist.
+- Complete remaining Push media/composite parity, larger Mail attachments and source integration acceptance with rollback tests. Shared UI/embed packaging is optional later work; framing requires an intentional origin allowlist.
 - Shared abuse limits where deployment topology needs them.
 
 ## Later
