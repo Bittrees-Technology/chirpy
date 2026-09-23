@@ -75,7 +75,8 @@ export async function injectSyntheticWallet(target: WalletInjectionTarget, priva
 
 export const test = base.extend<WalletFixtures>({
   walletAddress: async ({ page }, use) => {
-    await use(await injectSyntheticWallet(page));
+    try { await use(await injectSyntheticWallet(page)); }
+    finally { await page.unrouteAll({ behavior: "wait" }); }
   },
 });
 
