@@ -264,3 +264,37 @@ test('a stalled send expires, keeps its draft and cannot complete into the fresh
   await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('Timed out draft');
   expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send').length)).toBe(1);
 });
+
+test('downloads original Push attachments without rendering content or fetching external media', async ({ page }, testInfo) => {
+  const { readFile } = await import('node:fs/promises');
+  const bytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="window.untrustedExecuted=true"></svg>');
+  const target = 'https://media.example.test/clip?private=fixture';
+  let mediaRequests = 0; page.on('request', request => { if (request.url().startsWith('https://media.example.test/')) mediaRequests++; });
+  await openRoom(page);
+  await page.evaluate(({ messages, file, target }) => {
+    const s = (window as any).__pushFixture;
+    s.pages.latest = [
+      {...messages[0],messageType:'File',messageObj:{content:JSON.stringify({content:'data:image/svg+xml;base64,'+file,name:'../fixture.svg'})}},
+      {...messages[1],messageType:'Image',messageObj:{content:'data:image/png;base64,AQID'}},
+      {...messages[2],messageType:'MediaEmbed',messageObj:{content:target}},
+      {...messages[3],messageType:'File',messageObj:{content:'data:text/html,<script>window.untrustedExecuted=true</script>'}},
+    ];
+  },{messages:[row('QmMediaNewest','QmMediaImage'),row('QmMediaImage','QmMediaLink'),row('QmMediaLink','QmMediaBroken'),row('QmMediaBroken',null)],file:bytes.toString('base64'),target});
+  await enable(page);
+  await expect(page.getByRole('button',{name:'Download file',exact:true})).toHaveCount(2);
+  await expect(page.getByText('This Push attachment is invalid or exceeds the 1 MB download limit.')).toBeVisible();
+  const link=page.getByRole('link',{name:target,exact:true});
+  await expect(link).toHaveAttribute('href',target);await expect(link).toHaveAttribute('rel','noopener noreferrer');await expect(link).toHaveAttribute('referrerpolicy','no-referrer');
+  await expect(page.locator('.msg-bubble img,.msg-bubble video,.msg-bubble iframe,.msg-bubble object,.msg-bubble embed')).toHaveCount(0);
+  expect(mediaRequests).toBe(0);expect(await page.evaluate(()=>(window as any).untrustedExecuted)).toBeUndefined();
+  const fileCard=page.locator('.push-attachment').filter({hasText:'fixture.svg'});
+  const pending=page.waitForEvent('download');await fileCard.getByRole('button',{name:'Download file',exact:true}).click();const download=await pending;
+  expect(download.suggestedFilename()).toBe('__fixture.svg');const path=testInfo.outputPath('fixture.svg');await download.saveAs(path);expect(await readFile(path)).toEqual(bytes);
+  expect(await page.evaluate(()=>(window as any).untrustedExecuted)).toBeUndefined();expect(mediaRequests).toBe(0);
+  await page.setViewportSize({width:390,height:844});await fileCard.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:testInfo.outputPath('push-file-mobile.png')});
+  await page.evaluate(()=>{(window as any).__pushFixture.membership.participant=false;});
+  await page.getByRole('button',{name:'Refresh messages',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Download file',exact:true})).toHaveCount(0);await expect(link).toHaveCount(0);
+});

@@ -343,3 +343,5 @@ input, textarea, select { font-family: inherit; }
 .card[data-insights-ignore] code { overflow-wrap: anywhere; }
 
 .public-profile { overflow-wrap: anywhere; }
+
+.push-attachment{display:flex;flex-direction:column;align-items:flex-start;gap:8px;max-width:100%;overflow-wrap:anywhere}.push-attachment small{color:var(--muted)}

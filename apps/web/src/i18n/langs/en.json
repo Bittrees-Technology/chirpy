@@ -655,5 +655,9 @@
   "mailbox.outgoingAttachmentHint": "Up to 4 files, 256 KiB total. Files stay in this draft until you send. Drafts are cleared when you refresh or leave Email.",
   "mailbox.removeAttachment": "Remove {filename}",
   "mailbox.removeFile": "Remove",
-  "mailbox.error.attachmentFiles": "Choose up to 4 files totaling 256 KiB or less. Use filenames without slashes or hidden control characters."
+  "mailbox.error.attachmentFiles": "Choose up to 4 files totaling 256 KiB or less. Use filenames without slashes or hidden control characters.",
+  "push.downloadFile": "Download file",
+  "push.fileHint": "Up to 1 MB. Files are not scanned or opened automatically.",
+  "push.downloadFailed": "The file could not be prepared. Try again.",
+  "push.externalMedia": "External media — opens another website"
 }

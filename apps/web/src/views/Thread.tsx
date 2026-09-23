@@ -1,4 +1,5 @@
 import { PushMembers } from "./PushMembers";
+import { PushAttachment } from "./PushAttachment";
 import { MessageBody } from "./MessageBody";
 import { receiptOverride } from "../receiptPreferences";
 import React, { useEffect, useRef, useState } from "react";
@@ -262,7 +263,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                 )}
                 {pushRoom && !/^0x[a-fA-F0-9]{40}$/.test(m.sender) && <div className="push-identity">{t("push.sourceIdentity")}: <code>{m.sender}</code></div>}
                 <div className="msg-bubble">
-                  <MessageBody body={m.body} />
+                  {!(pushRoom && (m.pushAttachment || m.pushMediaUrl)) && <MessageBody body={m.body} />}
+                  {pushRoom && m.pushAttachment && <PushAttachment file={m.pushAttachment}/>}
+                  {pushRoom && m.pushMediaUrl && <div className="push-attachment"><span>{t('push.externalMedia')}</span><a href={m.pushMediaUrl} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{m.pushMediaUrl}</a></div>}
                   <span className="msg-time">{fmtTime(m.sentAt, lang)}</span>
                 </div>
                 {!pushRoom && <div className="msg-tools">
