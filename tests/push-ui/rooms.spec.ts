@@ -47,7 +47,7 @@ async function enable(page: Page) {
 test('recovers original history and sends only through the selected Push room', async ({ page }) => {
   await openRoom(page); expect(await page.evaluate(() => (window as any).__pushFixture.signCount)).toBe(0);
   await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Reply', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'Write a message' }).fill('A Push message'); await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('');
   expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((call: any) => call.kind === 'send'))).toEqual([{ kind: 'send', owner, room: group, extra: { type: 'Text', content: 'A Push message' } }]);
@@ -323,4 +323,84 @@ test('preserves reply context and combined content order without fetching missin
   await page.setViewportSize({width:390,height:844});await combined.scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath('push-combined-mobile.png')});
   await page.evaluate(address=>{const s=(window as any).__pushFixture;s.address=address;s.emit('accountsChanged',[address]);},other);
   await expect(page.locator('.msg-reply-ref')).toHaveCount(0);await expect(page.getByRole('button',{name:'Download file',exact:true})).toHaveCount(0);await expect(page.getByText('Caption before',{exact:true})).toHaveCount(0);
+});
+
+for (const mobile of [false, true]) {
+  test(`composes a Push reply with a retained original excerpt across pages (${mobile ? 'mobile' : 'desktop'})`, async ({ page }, testInfo) => {
+    await openRoom(page);
+    await page.evaluate(({ latest, older }) => { const s = (window as any).__pushFixture; s.pages = { latest: [latest], QmOlderMessage: [older], QmLatestMessage: [latest] }; }, { latest: row('QmLatestMessage', 'QmOlderMessage'), older: row('QmOlderMessage', null, 'Older original') });
+    await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Reply', exact: true }).click();
+    await expect(page.locator('.reply-banner')).toContainText('Preserved Push history');
+    await page.getByRole('button', { name: 'Older messages', exact: true }).click();
+    await expect(page.getByText('Older original', { exact: true })).toBeVisible();
+    await expect(page.locator('.reply-banner')).toContainText('Preserved Push history');
+    await page.getByRole('textbox', { name: 'Write a message' }).fill('A contextual reply');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('push-reply-compose.png') });
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('');
+    await expect(page.locator('.reply-banner')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send'))).toEqual([{ kind: 'send', owner, room: group, extra: { type: 'Reply', content: { type: 'Text', content: 'A contextual reply' }, reference: 'QmLatestMessage' } }]);
+    expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'history' && c.extra.limit === 1))).toEqual([{ kind: 'history', owner, room: group, extra: { reference: 'QmLatestMessage', limit: 1 } }]);
+  });
+}
+test('canceling a reply retains the draft and sends plain text only by that choice', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Reply', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Write a message' }).fill('Keep the draft');
+  await page.getByRole('button', { name: 'Cancel reply' }).click();
+  await expect(page.locator('.reply-banner')).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Write a message' }).press('Enter');
+  await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('');
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send').map((c: any) => c.extra))).toEqual([{ type: 'Text', content: 'Keep the draft' }]);
+});
+test('a foreign parent refuses reply dispatch and keeps the draft and selection for explicit retry', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Reply', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Write a message' }).fill('Reply draft');
+  await page.evaluate(message => { (window as any).__pushFixture.pages.QmLatestMessage = [message]; }, { ...row(), toDID: 'b'.repeat(64) });
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('unsupported room history');
+  await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('Reply draft');
+  await expect(page.locator('.reply-banner')).toContainText('Preserved Push history');
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send'))).toEqual([]);
+  await page.evaluate(message => { (window as any).__pushFixture.pages.QmLatestMessage = [message]; }, row());
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('');
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send').map((c: any) => c.extra.type))).toEqual(['Reply']);
+});
+for (const change of ['wallet', 'source', 'permission']) {
+  test(`reply parent lookup cannot send or retain a private excerpt after ${change} changes`, async ({ page }) => {
+    await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Reply', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Write a message' }).fill('Do not send');
+    await page.evaluate(message => { const s = (window as any).__pushFixture; s.pages.QmLatestMessage = [message]; s.hold.history = true; }, row());
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).__pushFixture.pending.history?.length ?? 0)).toBe(1);
+    if (change === 'wallet') await page.evaluate(other => { const s = (window as any).__pushFixture; s.address = other; s.emit('accountsChanged', [other]); }, other);
+    if (change === 'source') await page.getByLabel('Include existing rooms').selectOption('research');
+    if (change === 'permission') await page.evaluate(() => { (window as any).__pushFixture.permissions.chat = false; });
+    await page.evaluate(() => (window as any).__pushFixture.release('history'));
+    await expect(page.locator('.reply-banner')).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send'))).toEqual([]);
+  });
+}
+test('completion of an earlier reply preserves a newly chosen target and edited draft', async ({ page }) => {
+  await openRoom(page);
+  await page.evaluate(({ latest, older }) => { const s = (window as any).__pushFixture; s.pages = { latest: [latest, older], QmLatestMessage: [latest] }; s.hold.send = true; }, { latest: row('QmLatestMessage', 'QmOlderMessage'), older: row('QmOlderMessage', null, 'Another original') });
+  await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.locator('.msg-row').filter({ hasText: 'Preserved Push history' }).getByRole('button', { name: 'Reply', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Write a message' }).fill('First reply');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__pushFixture.pending.send?.length ?? 0)).toBe(1);
+  await page.locator('.msg-row').filter({ hasText: 'Another original' }).getByRole('button', { name: 'Reply', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Write a message' }).fill('Next reply');
+  await page.evaluate(() => (window as any).__pushFixture.release('send'));
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+  await expect(page.locator('.reply-banner')).toContainText('Another original');
+  await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('Next reply');
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send').length)).toBe(1);
 });
