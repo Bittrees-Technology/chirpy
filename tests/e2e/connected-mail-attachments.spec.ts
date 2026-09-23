@@ -17,18 +17,18 @@ test('connected email sends the selected binary file once and guards uncertain d
  await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();
  await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Email/}).click();await page.getByRole('button',{name:'New email',exact:true}).click();
  await page.getByLabel('To',{exact:true}).fill('fixture@bittrees.org');await page.getByLabel('Subject',{exact:true}).fill('Synthetic files');await page.getByLabel('Message',{exact:true}).fill('Synthetic attachment acceptance.');
- const bytes=Buffer.from([0,1,127,128,255]);
+ const bytes=Buffer.alloc(1048576,37);
  await page.getByLabel('Attach files',{exact:true}).setInputFiles({name:'fixture.bin',mimeType:'application/octet-stream',buffer:bytes});
- await expect(page.getByText('fixture.bin · 5 B',{exact:true})).toBeVisible();
+ await expect(page.getByText('fixture.bin · 1048576 B',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Remove fixture.bin',exact:true}).click();expect(sends).toHaveLength(0);
  await page.getByLabel('Attach files',{exact:true}).setInputFiles({name:'fixture.bin',mimeType:'application/octet-stream',buffer:bytes});
- await expect(page.getByText('fixture.bin · 5 B',{exact:true})).toBeVisible();
+ await expect(page.getByText('fixture.bin · 1048576 B',{exact:true})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath('email-attachments-mobile.png'),fullPage:true});
  await page.getByRole('button',{name:'Send email',exact:true}).click();
  // Successful send and the following inbox refresh have independent status regions.
  await expect(page.getByRole('status').filter({hasText:'Email sent.'})).toHaveText('Email sent.');
  await expect(page.getByRole('status').filter({hasText:'Working'})).toBeVisible();
- expect(sends).toHaveLength(1);expect(sends[0].attachments).toEqual([{filename:'fixture.bin',content:bytes.toString('base64')}]);
+ expect(sends).toHaveLength(1);expect(sends[0].transferVersion).toBe(2);expect(sends[0].attachments).toEqual([{filename:'fixture.bin',content:bytes.toString('base64')}]);
  releaseRefresh();await expect(page.getByRole('button',{name:'New email',exact:true})).toBeEnabled();
  uncertain=true;await page.getByRole('button',{name:'New email',exact:true}).click();await page.getByLabel('To',{exact:true}).fill('fixture@bittrees.org');await page.getByLabel('Message',{exact:true}).fill('Uncertain fixture');await page.getByLabel('Attach files',{exact:true}).setInputFiles({name:'uncertain.txt',mimeType:'text/plain',buffer:Buffer.from('fixture')});
  await expect(page.getByText('uncertain.txt · 7 B',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Send email',exact:true}).click();await expect(page.getByText('Check your previous send',{exact:true})).toBeVisible();

@@ -110,7 +110,7 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
    if(!address(input.wallet)||!liveGrant(grant,now()))throw denied();
    const scope=input.action==='send'?'send':['folders','messages','message','threads','thread','attachments','attachment','attachmentFile','html'].includes(input.action)?'read':null;
    if(!scope||!grant.scopes.includes(scope))throw new ConnectedMailError(403,'This connection does not allow that action.');
-   if(input.action==='send'&&input.input?.attachments!==undefined&&!validOutgoingAttachments(input.input.attachments))throw new ConnectedMailError(400,'Invalid email attachments.');
+   if(input.action==='send'&&input.input?.attachments!==undefined&&!validOutgoingAttachments(input.input.attachments,input.input.transferVersion===2?1048576:262144))throw new ConnectedMailError(400,'Invalid email attachments.');
    const result=await mail('operation',input,grant.token);
    const latest=await session(token,input.wallet);if(latest.value.connection?.grantId!==grant.grantId||!liveGrant(grant,now()))throw denied();
    return result;

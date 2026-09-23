@@ -233,6 +233,6 @@ it('cancelled file selection cannot repopulate the next draft',async()=>{
 });
 it('rejects oversized selections before reading and clears files when access expires',async()=>{
  vi.useFakeTimers();vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),expiresAt:new Date(Date.now()+1000).toISOString()});await render();await click('New email');
- const read=vi.fn();await chooseFiles([{...fileFixture(),size:262145,arrayBuffer:read} as File]);expect(read).not.toHaveBeenCalled();expect(container.querySelector('[role=alert]')?.textContent).toContain('256 KiB');
+ const read=vi.fn();await chooseFiles([{...fileFixture(),size:1048577,arrayBuffer:read} as File]);expect(read).not.toHaveBeenCalled();expect(container.querySelector('[role=alert]')?.textContent).toContain('1 MiB');
  await chooseFiles([fileFixture()]);expect(container.textContent).toContain('private.txt');await act(async()=>vi.advanceTimersByTimeAsync(1001));expect(container.textContent).not.toContain('private.txt');expect(container.querySelector('input[type=file]')).toBeNull();
 });

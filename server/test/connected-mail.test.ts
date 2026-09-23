@@ -222,3 +222,16 @@ it('complete attachment reads require read scope and discard a result after disc
  const onlySend=fixture();onlySend.grant.scopes=['send'];const q=await onlySend.connected();await expect(onlySend.api.operation(q.session.token,input)).rejects.toMatchObject({status:403});
  let once=true;f.onRequest(async()=>{if(once){once=false;await f.api.disconnect(p.session.token);}});await expect(f.api.operation(p.session.token,input)).rejects.toMatchObject({status:401});
 });
+
+
+it('relays a 1 MiB batch only with the explicit transfer contract and preserves legacy limits',async()=>{
+ const f=fixture(),p=await f.connected(),call=httpFixture(f),cookie='__Host-chat_mail_session='+p.session.token;
+ const attachment={filename:'maximum.bin',content:Buffer.alloc(1048576,37).toString('base64')};
+ const input={wallet,action:'send',input:{transferVersion:2,to:f.grant.mailbox,subject:'Files',text:'Body',idempotencyKey:'large-request-12345',attachments:[attachment]}};
+ expect((await call('operation',input,{cookie})).code).toBe(200);expect(f.calls.at(-1).body).toEqual(input);
+ for(const changed of [{...input.input,transferVersion:undefined},{...input.input,attachments:[{...attachment,content:Buffer.alloc(1048577).toString('base64')}]},{...input.input,attachments:[attachment,{filename:'one.bin',content:'eA=='}]}]){
+  const before=f.calls.length;expect([400,413]).toContain((await call('operation',{...input,input:changed},{cookie})).code);expect(f.calls).toHaveLength(before);
+ }
+ expect((await call('operation',{...input,input:{...input.input,padding:'x'.repeat(1450001)}},{cookie})).code).toBe(413);
+ const read=fixture();read.grant.scopes=['read'];const q=await read.connected();await expect(read.api.operation(q.session.token,input)).rejects.toMatchObject({status:403});
+});
