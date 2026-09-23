@@ -578,7 +578,13 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
     reschedule.current = false; if (timer.current) clearTimeout(timer.current); timer.current = null;
   };
   const stopLocally = async () => {
-    try { await setPrefs(current => ({ ...current, syncAcrossDevices: false })); return true; }
+    try {
+      guardStorage();
+      // A failed enable must not give unchanged legacy receipt choices a new
+      // whole-record timestamp merely because sync was already off.
+      if (!prefsRef.current.syncAcrossDevices) return true;
+      await setPrefs(current => ({ ...current, syncAcrossDevices: false })); return true;
+    }
     catch { if (active.current) { prefsRef.current = { ...prefsRef.current, syncAcrossDevices: false }; setPrefsState(prefsRef.current); } return false; }
   };
   const assertWallet = async (provider: ReturnType<typeof getActiveProvider>, address: string, ensureCurrent: () => void) => {

@@ -159,6 +159,6 @@ it.each(['settingsSyncBlob', 'settingsPrefsUpdatedAt'])('preserves changed legac
     await act(async () => { result = await current.enableSyncAcrossDevices(); });
     expect(result.ok).toBe(false); expect(current.syncState.hasSessionKey).toBe(false); expect(mocks.push).not.toHaveBeenCalled();
     expect(storage.get(key)).toBe('newer bytes from another tab');
-    expect(JSON.parse(storage.get(`chat:settingsPrefs:v1:wallet:${mocks.address}`)!)).not.toHaveProperty('syncPayload');
+    expect(storage.get(`chat:settingsPrefs:v1:wallet:${mocks.address}`)).toBeUndefined();
   } finally { await act(async () => root.unmount()); }
 });
