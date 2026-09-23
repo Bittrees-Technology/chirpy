@@ -3,8 +3,8 @@ import { PUSH_FILE_BYTES, preparePushFile, type PushAttachment } from '@app/tran
 import { useI18n } from '../i18n';
 import { translateStatus } from '../i18n/statusMessages';
 
-export function PushFilePicker({ file, disabled, onChange, onReading }: {
-  file?: PushAttachment; disabled: boolean; onChange(file?: PushAttachment): void; onReading(value: boolean): void;
+export function PushFilePicker({ file, replying, disabled, onChange, onReading }: {
+  file?: PushAttachment; replying: boolean; disabled: boolean; onChange(file?: PushAttachment): void; onReading(value: boolean): void;
 }) {
   const { t } = useI18n();
   const input = useRef<HTMLInputElement>(null), request = useRef(0);
@@ -29,7 +29,7 @@ export function PushFilePicker({ file, disabled, onChange, onReading }: {
     <input ref={input} type="file" hidden aria-label={t('push.attachFile')} disabled={disabled || reading}
       onChange={event => { const chosen = event.target.files?.[0]; event.target.value = ''; void choose(chosen); }}/>
     <button className="btn btn-ghost" type="button" disabled={disabled || reading} onClick={() => input.current?.click()}>{t(reading ? 'push.preparingFile' : 'push.attachFile')}</button>
-    {file ? <><span><strong>{file.filename}</strong> · {file.bytes.toLocaleString()} B</span><button className="btn btn-ghost" type="button" disabled={disabled || reading} onClick={() => { setError(null); onChange(); }}>{t('push.removeFile')}</button><small>{t('push.fileReplyHint')}</small></> : <small>{t('push.fileSendLimit')}</small>}
+    {file ? <><span><strong>{file.filename}</strong> · {file.bytes.toLocaleString()} B</span><button className="btn btn-ghost" type="button" disabled={disabled || reading} onClick={() => { setError(null); onChange(); }}>{t('push.removeFile')}</button><small>{t(replying ? 'push.fileReplyHint' : 'push.fileSendLimit')}</small></> : <small>{t('push.fileSendLimit')}</small>}
     {error && <p role="alert">{translateStatus(t, error)}</p>}
   </div>;
 }

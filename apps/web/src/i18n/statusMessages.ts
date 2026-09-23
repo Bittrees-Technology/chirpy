@@ -1,7 +1,7 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
   "This Push history page exceeds the display limit. No messages were replaced.": "push.historyBudget",
-  "Remove the file to reply to a message.": "push.fileReplyHint",
+  "File replies cannot include a caption. Clear the caption or cancel the reply.": "push.fileReplyCaption",
   "Choose a file of at most 1 MB.": "push.fileTooLarge",
   "The selected file is invalid. Choose it again.": "push.fileInvalid",
   "The selected file could not be read. Choose it again.": "push.fileReadFailed",

@@ -41,6 +41,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const [attachment, setAttachment] = useState<{ file: PushAttachment; scope: string } | null>(null);
   const selectedFile = attachment?.scope === draftKey ? attachment.file : undefined;
   const [fileReading, setFileReading] = useState(false);
+  const fileReplyCaption = Boolean(selectedReply && selectedFile && draft.trim());
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [consentPending, setConsentPending] = useState(false);
   const [joinPending, setJoinPending] = useState(false);
@@ -108,7 +109,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (sendingRef.current || fileReading || (!draft.trim() && !selectedFile)) return;
+    if (sendingRef.current || fileReading || fileReplyCaption || (!draft.trim() && !selectedFile)) return;
     const body = draft;
     const id = activeConversation.id;
     sendingRef.current = true;
@@ -283,7 +284,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                       void react(m.id, e).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
                     }}>{e}</button>
                   ))}
-                  <button className="react-btn" disabled={Boolean(needsConsent || postingBlocked || selectedFile || fileReading)} aria-label={t("thread.reply", "Reply")} title={selectedFile ? t("push.fileReplyHint") : undefined} onClick={() => setReply({ id: m.id, preview: m.body.slice(0, 80), scope: draftKey })}>↩</button>
+                  <button className="react-btn" disabled={Boolean(needsConsent || postingBlocked || fileReading)} aria-label={t("thread.reply", "Reply")} onClick={() => setReply({ id: m.id, preview: m.body.slice(0, 80), scope: draftKey })}>↩</button>
                 </div>}
                 {m.reactions && Object.keys(m.reactions).length > 0 && (
                   <div className="msg-reactions">
@@ -307,8 +308,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         </div>
       )}
 
-      {pushRoom && !postingBlocked && <PushFilePicker key={draftKey} file={selectedFile} disabled={sending !== null || Boolean(selectedReply)}
+      {pushRoom && !postingBlocked && <PushFilePicker key={draftKey} file={selectedFile} replying={Boolean(selectedReply)} disabled={sending !== null}
         onReading={setFileReading} onChange={file => setAttachment(file ? { file, scope: draftKey } : null)}/>}
+      {fileReplyCaption && !postingBlocked && <div className="join-banner" role="status">{t("push.fileReplyCaption")}</div>}
       {sendError?.id === draftKey && <div className="join-banner error" role="alert">{translateStatus(t, sendError.message)} {t("thread.draftKept", "Your draft has been kept.")}</div>}
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
       {readOnly && isAdmin && !configurationError && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chat. Administrators can still post; other clients may ignore this policy.")}</div>}
@@ -324,7 +326,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
             onChange={(e) => setDraft(e.target.value)}
             autoFocus
           />
-          <button className="btn btn-primary" type="submit" disabled={(!draft.trim() && !selectedFile) || sending !== null || fileReading}>{sending === conversationKey ? t("thread.sending", "Sending…") : t("thread.send", "Send")}</button>
+          <button className="btn btn-primary" type="submit" disabled={(!draft.trim() && !selectedFile) || sending !== null || fileReading || fileReplyCaption}>{sending === conversationKey ? t("thread.sending", "Sending…") : t("thread.send", "Send")}</button>
         </form>
       )}
     </div>

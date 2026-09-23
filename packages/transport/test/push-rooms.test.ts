@@ -237,9 +237,9 @@ describe('Push file dispatch', () => {
     await pending; const [, payload] = vi.mocked(f.client.send).mock.calls[0];
     expect(readPushAttachment(payload.type, payload.content)).toEqual(original);
   });
-  it('rejects invalid files, oversized captions and reply/file combinations before network access', async () => {
+  it('rejects invalid files, oversized captions and captioned file replies before network access', async () => {
     const f = setup(); await f.rooms.discover(); await f.rooms.enable();
-    for (const [body, opts] of [['', { file: { ...selected(), bytes: 0 } }], ['x'.repeat(16_001), { file: selected() }], ['', { file: selected(), replyTo: replyCid }]] as const) {
+    for (const [body, opts] of [['', { file: { ...selected(), bytes: 0 } }], ['x'.repeat(16_001), { file: selected() }], ['Caption', { file: selected(), replyTo: replyCid }]] as const) {
       await expect(f.rooms.send(id, body, opts)).rejects.toThrow();
     }
     expect(f.client.info).not.toHaveBeenCalled(); expect(f.client.send).not.toHaveBeenCalled();
@@ -283,5 +283,26 @@ describe('bounded file-heavy Push history', () => {
     vi.mocked(f.client.history).mockResolvedValue([{ ...rows[0], messageType: 'Composite', messageObj: { content: Array(7).fill({ messageType: 'File', messageObj: { content: file.content } }) } }]);
     await expect(f.rooms.history(id)).rejects.toThrow('display limit'); expect(f.client.history).toHaveBeenCalledTimes(2);
     expect(vi.mocked(f.client.history).mock.calls.map(c => c[1].limit)).toEqual([30, 1]);
+  });
+});
+
+
+describe('Push file replies', () => {
+  it('sends a file as a single native reply after binding the original and rechecking permissions', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const file = preparePushFile('reply.txt', 'text/plain', new TextEncoder().encode('Exact reply bytes'));
+    vi.mocked(f.client.history).mockResolvedValue([replyRow()]);
+    await f.rooms.send(id, '', { replyTo: replyCid, file });
+    const [room, payload] = vi.mocked(f.client.send).mock.calls[0];
+    expect(room).toBe(group); expect(payload.type).toBe('Reply'); expect(payload.reference).toBe(replyCid);
+    expect(readPushAttachment(payload.content.type, payload.content.content)).toEqual(file);
+    expect(f.client.history).toHaveBeenCalledExactlyOnceWith(group, { reference: replyCid, limit: 1 });
+    expect(f.client.permissions).toHaveBeenCalledTimes(2); expect(f.client.send).toHaveBeenCalledOnce();
+  });
+  it('refuses a foreign original without dropping the reply or sending a standalone file', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.history).mockResolvedValue([replyRow({ toDID: 'b'.repeat(64) })]);
+    await expect(f.rooms.send(id, '', { replyTo: replyCid, file: preparePushFile('empty.bin', '', new Uint8Array()) })).rejects.toThrow('unsupported');
+    expect(f.client.send).not.toHaveBeenCalled();
   });
 });

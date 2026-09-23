@@ -672,11 +672,12 @@
   "push.attachFile": "Attach file",
   "push.preparingFile": "Preparing file…",
   "push.removeFile": "Remove file",
-  "push.fileReplyHint": "Remove the file to reply to a message.",
+  "push.fileReplyHint": "Reply with this file. Captions are available when sending without a reply.",
   "push.fileSendLimit": "One file up to 1 MB. Add an optional caption below.",
   "push.fileTooLarge": "Choose a file of at most 1 MB.",
   "push.fileInvalid": "The selected file is invalid. Choose it again.",
   "push.fileReadFailed": "The selected file could not be read. Choose it again.",
   "push.fileOnly": "File sending is available in Push rooms only.",
-  "push.historyBudget": "This Push history page exceeds the display limit. No messages were replaced."
+  "push.historyBudget": "This Push history page exceeds the display limit. No messages were replaced.",
+  "push.fileReplyCaption": "File replies cannot include a caption. Clear the caption or cancel the reply."
 }
