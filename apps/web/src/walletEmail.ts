@@ -1,11 +1,12 @@
 import { stringToHex } from 'viem';
-import { mailSignMessage, type MailCommand } from '../../../packages/core/src/mailAuth.js';
+import { mailSignMessage, parseMailReceiptDetails, type MailCommand, type MailReceiptDetails } from '../../../packages/core/src/mailAuth.js';
 import { getActiveProvider, getProviderRevision, subscribeProvider } from './walletProviders';
 import { syncEndpoint } from './apiEndpoint';
 export function mailEndpoint() {
   const endpoint=syncEndpoint();
   return {requestUrl:endpoint.requestUrl.replace(/\/usersync$/, '/mail'),service:endpoint.service.replace(/\/usersync$/, '/mail')};
 }
+export type WalletEmailResult={status:string;id:string;receipt?:MailReceiptDetails};
 export async function submitWalletEmail(command: MailCommand, signal?: AbortSignal) {
   const endpoint=mailEndpoint();
   if(command.service!==endpoint.service) throw Error('Email service identity changed.');
@@ -37,7 +38,9 @@ export async function submitWalletEmail(command: MailCommand, signal?: AbortSign
   await check();
   if(!response.ok && !['denied','limited','conflict'].includes(result.status)) throw Error('Email service unavailable. Check the request status before creating another message.');
   if(result.id!==command.id || !['queued','sending','accepted','stopped','unknown','denied','limited','conflict'].includes(result.status)) throw Error('Invalid email status response.');
-  return result as {status:string;id:string};
+  if(result.receipt!==undefined&&command.action!=='status')throw Error('Unexpected forwarding receipt.');
+  const receipt=result.receipt===undefined?undefined:parseMailReceiptDetails(result.receipt,result.status);
+  return {status:result.status,id:result.id,...(receipt?{receipt}:{})} as WalletEmailResult;
   } finally {
     unsubscribe();
     provider.removeListener?.('accountsChanged',cancel);

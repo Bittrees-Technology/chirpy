@@ -1,7 +1,7 @@
 import { redirectFixture } from './helpers/mail-redirect-fixture.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
-import { mailConfig, validMailCommand, verifyMailCommand, validMailBinding, suppressMailRecipient, mailKv } from '../mail-service.js';
+import { mailConfig, validMailCommand, verifyMailCommand, validMailBinding, suppressMailRecipient, mailKv, createMailService, hash } from '../mail-service.js';
 import { mailSignMessage } from '../../packages/core/src/mailAuth.js';
 import handler from '../../api/mail.js';
 import worker from '../../api/mail-worker.js';
@@ -72,4 +72,25 @@ describe('wallet email authorization',()=>{
     const b=res();await handler({method:'POST',body:{command:command(),signature:'0x00'},headers:{'content-type':'application/json'}},b);expect(b.code).toBe(401);
     const d=res();await worker({method:'POST',headers:{authorization:'Bearer wrong'}},d);expect(d.code).toBe(401);expect(fetcher).not.toHaveBeenCalled();
   });
+});
+
+describe('private forwarding receipt projection',()=>{
+ const createdAt=1700000000000;
+ const job=()=>({...command(),createdAt,updatedAt:createdAt+1000,deadline:createdAt+82800000,attempts:1,status:'accepted',providerId:'private-provider-id',lease:'private-lease',bindingKey:'private-binding',suppressionKey:'private-suppression',digest:'private-digest',identityScope:{private:'authority'}});
+ it('returns only bounded receipt details from the wallet-specific key without reading payloads',async()=>{
+  const c={...command(),action:'status'},config=mailConfig(env)!,kv=vi.fn(async()=>JSON.stringify(job()));
+  const result=await createMailService(config,kv).execute(c);
+  expect(result).toEqual({id:c.id,status:'accepted',receipt:{version:1,createdAt,updatedAt:createdAt+1000,attempts:1,retryUntil:createdAt+82800000}});
+  expect(kv).toHaveBeenCalledExactlyOnceWith(['GET',`${config.prefix}job:${hash(`${c.wallet}\n${c.id}`)}`]);
+  expect(JSON.stringify(result)).not.toMatch(/private|recipient|email|subject|lease|providerId/);
+ });
+ it('keeps unknown and legacy records honest without fabricating update times',async()=>{
+  const config=mailConfig(env)!,c={...command(),action:'status'};
+  expect(await createMailService(config,async()=>null).execute(c)).toEqual({status:'unknown',id:c.id});
+  const old=job();delete old.updatedAt;
+  expect((await createMailService(config,async()=>JSON.stringify(old)).execute(c)).receipt.updatedAt).toBeNull();
+ });
+ it.each([{wallet:'0x'+'f'.repeat(40)},{id:'cd'.repeat(16)},{status:'delivered'},{attempts:6},{updatedAt:0}])('rejects corrupt or mismatched job evidence %j',async patch=>{
+  await expect(createMailService(mailConfig(env)!,async()=>JSON.stringify({...job(),...patch})).execute({...command(),action:'status'})).rejects.toThrow();
+ });
 });

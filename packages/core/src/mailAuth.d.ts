@@ -4,3 +4,7 @@ export interface MailCommand {
 }
 export declare function normalizeMailAddress(value: unknown): string | null;
 export declare function mailSignMessage(command: MailCommand): string;
+export interface MailReceiptDetails {
+  version: 1; createdAt: number; updatedAt: number | null; attempts: number; retryUntil: number;
+}
+export declare function parseMailReceiptDetails(value: unknown, status: string): MailReceiptDetails;

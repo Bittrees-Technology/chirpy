@@ -609,8 +609,8 @@
   "mailbox.noFormattedBody": "This email has no formatted body.",
   "mail.storageError": "Chat could not safely reserve this request. Check saved requests and browser storage before sending. Earlier IDs have not been cleared.",
   "mail.storageRetry": "Check recovery storage",
-  "mail.savedRequests": "Saved request IDs",
-  "mail.savedRequestsHint": "These IDs stay on this device when you start another message. Check an earlier result before resending. If 100 IDs are saved, new sends pause rather than remove recovery history.",
+  "mail.savedRequests": "Forwarding request history",
+  "mail.savedRequestsHint": "Each signed check shows a snapshot, not a live delivery tracker. Checked results last for this session; saved IDs stay on this device when you start another message. Check earlier results before resending. New sends pause at 100 saved IDs rather than removing recovery history.",
   "mail.retryExpired": "This request is too old to retry safely, or the device clock has changed. Check its status before composing another message.",
   "mailRecovery.title": "Back up or restore email request IDs",
   "mailRecovery.scope": "Save an encrypted copy of request IDs for this wallet and email service. It contains no messages, wallet keys or permission to resend. Restore on another device using the same wallet and service. Check unresolved requests before composing a new message.",
@@ -805,5 +805,13 @@
   "status.syncUnconfirmed": "Sync was not confirmed. Keep local data and reread before retrying.",
   "status.syncAccessPaused": "Sync is paused. Existing data was preserved; refresh access before retrying.",
   "status.syncCipherInvalid": "Encrypted sync could not be safely read or prepared. Existing data must be preserved.",
-  "status.syncFormatInvalid": "Invalid or unsupported versioned sync data. Existing data must be preserved."
+  "status.syncFormatInvalid": "Invalid or unsupported versioned sync data. Existing data must be preserved.",
+  "mail.history.checked": "Last checked on this device:",
+  "mail.history.queued": "Queued by the service",
+  "mail.history.updated": "Latest recorded state change",
+  "mail.history.unavailable": "Not recorded for this older request",
+  "mail.history.attempts": "Processing attempts",
+  "mail.history.retryUntil": "Retry window ends",
+  "mail.history.unknown": "No retained service record was found. This does not prove that the email was never sent; check earlier receipts or contact support before resending.",
+  "mail.history.legacy": "Check this request to retrieve queue details. Older services may return only its status."
 }
