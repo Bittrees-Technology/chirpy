@@ -17,7 +17,7 @@ for _,key in ipairs(candidates) do
       elseif j.status=='sending' and tonumber(j.leaseUntil or 0)>now then
         redis.call('ZADD',KEYS[1],j.leaseUntil,key)
       else
-        j.status='sending';j.token=ARGV[2];j.leaseUntil=now+120000;j.attempts=tonumber(j.attempts or 0)+1
+        j.status='sending';j.updatedAt=now;j.token=ARGV[2];j.leaseUntil=now+120000;j.attempts=tonumber(j.attempts or 0)+1
         redis.call('SET',key,cjson.encode(j),'KEEPTTL');redis.call('ZADD',KEYS[1],j.leaseUntil,key)
         return cjson.encode({key=key,job=j})
       end
