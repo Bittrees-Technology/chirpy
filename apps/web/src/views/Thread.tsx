@@ -2,6 +2,7 @@ import { PushImagePreviewScope } from "./PushImagePreviewScope";
 import { PushReactionControls } from "./PushReactionControls";
 import { PushFilePicker } from "./PushFilePicker";
 import type { PushAttachment } from "@app/transport";
+import { RoomOwnership } from "./RoomOwnership";
 import { RoomLeave } from "./RoomLeave";
 import { RoomMembers } from "./RoomMembers";
 import { PushMembers } from "./PushMembers";
@@ -204,6 +205,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         ) : null}
       </header>
       {isRoom && !pushRoom && !activeConversation.blocked && <RoomMembers key={draftKey} conversation={activeConversation} />}
+      {isRoom && !pushRoom && activeConversation.consentSupported && <RoomOwnership key={`ownership:${draftKey}`} conversation={activeConversation} />}
       {isRoom && !pushRoom && activeConversation.consentSupported && <RoomLeave key={`leave:${draftKey}`} conversation={activeConversation} />}
       {pushRoom && <div className="join-banner">
         <span>{t("push.provenance")}</span>

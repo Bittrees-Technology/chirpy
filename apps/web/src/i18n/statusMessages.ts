@@ -1,5 +1,15 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "Room authority changed. Refresh before changing ownership.": "ownership.changed",
+  "Gate-managed room ownership must be managed by its operator.": "ownership.managed",
+  "Native room ownership is unavailable.": "ownership.unavailable",
+  "Only a current room owner can change ownership.": "ownership.ownerOnly",
+  "Choose an existing room member as the new owner.": "ownership.memberOnly",
+  "Appoint another room member as owner before stepping down.": "ownership.lastOwner",
+  "An ownership change is already in progress.": "ownership.busy",
+  "Connect a wallet to manage room ownership.": "ownership.connect",
+  "You already own this room.": "ownership.self",
+  "Unknown ownership action.": "ownership.unknown",
   "An owner must appoint another owner and step down before leaving.": "roomLeave.owner",
   "The last member cannot leave this room.": "roomLeave.alone",
   "Active room membership could not be confirmed.": "roomLeave.unavailable",
