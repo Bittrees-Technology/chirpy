@@ -62,6 +62,8 @@ Production access remains restricted to configured acceptance wallets. Contract-
 
 ## Chat Email view
 
+Opening an email moves keyboard focus to its subject heading; starting a new email focuses the recipient, and replying focuses the message body. Individual, conversation and conversation-member rows expose the current selection to assistive technology. Delayed reads preserve focus if the user moves to another control or leaves the tab; background polling does not move focus. Cancelled or superseded reads cannot restore content or focus. Physical-device and screen-reader acceptance remain open.
+
 The Email navigation opens a wallet-owned inbox with folders, pages of up to 25
 messages, plain-text reading, composition and reply drafts. It checks the visible,
 idle reading view every 45 seconds; it does not refresh while composing. Background
