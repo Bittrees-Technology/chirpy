@@ -982,6 +982,76 @@ export class XmtpTransport implements Transport {
     }
   }
 
+  private ownershipUpdates = new Set<string>();
+
+  async updateRoomOwnership(conversationId: string, action: 'appoint' | 'step-down', address?: string, isCurrent: () => boolean = () => true): Promise<void> {
+    const client = this.requireClient();
+    const self = this.requireInboxId();
+    if (action !== 'appoint' && action !== 'step-down') throw new Error('Unknown ownership action.');
+    const target = action === 'appoint' ? normalizeAddress(address ?? '') : undefined;
+    if (target === this.myAddress) throw new Error('You already own this room.');
+    if (this.ownershipUpdates.has(conversationId)) throw new Error('An ownership change is already in progress.');
+    const current = () => {
+      if (!isCurrent() || this.client !== client || this.status !== 'ready') throw new Error('Wallet or room changed. Check members before retrying.');
+    };
+    const checkWallet = async () => {
+      current();
+      if (!this.provider) throw new Error('Connect a wallet to manage room ownership.');
+      const accounts = await this.provider.request({ method: 'eth_accounts' });
+      current();
+      if (!Array.isArray(accounts) || typeof accounts[0] !== 'string' || accounts[0].toLowerCase() !== this.myAddress) throw new Error('Wallet or room changed. Check members before retrying.');
+    };
+    this.ownershipUpdates.add(conversationId);
+    try {
+      await checkWallet();
+      const sdk = await this.loadSdk(); current();
+      const readRoom = async () => {
+        const cached = await client.conversations.getConversationById(conversationId); current();
+        if (!cached || cached.id !== conversationId || !this.isRoomConversation(sdk, cached)) throw new Error('Native room ownership is unavailable.');
+        await cached.sync(); current();
+        const group = await client.conversations.getConversationById(conversationId); current();
+        if (!group || group.id !== conversationId || !this.isRoomConversation(sdk, group) || !('addSuperAdmin' in group)) throw new Error('Native room ownership is unavailable.');
+        const meta = parseRoomMeta(group.description, this.org.policy);
+        if (meta.invalid) throw new Error(INVALID_ROOM_METADATA);
+        if (meta.namespace !== this.org.namespace) throw new Error('Room not found in this organization.');
+        if (hasGate(meta.gate)) throw new Error('Gate-managed room ownership must be managed by its operator.');
+        await this.assertConversationAccepted(group); current();
+        const members = await group.members(); current();
+        const owners = await group.listSuperAdmins(); current();
+        if (!members.some(member => member.inboxId === self) || !owners.includes(self)) throw new Error('Only a current room owner can change ownership.');
+        return { group, members, owners };
+      };
+      await readRoom();
+      // Directory authority may impose a gate independently of SDK metadata.
+      const published = await this.publishedRooms(true); current();
+      if (published.some(room => room.id === conversationId) || hasGate(this.roomMeta.get(conversationId)?.gate ?? OPEN_GATE)) throw new Error('Gate-managed room ownership must be managed by its operator.');
+      const targetInbox = target ? await client.fetchInboxIdByIdentifier(await this.identifier(target)) : undefined;
+      current();
+      if (target && !targetInbox) throw new Error("That address hasn't activated XMTP messaging yet.");
+      // Resolve the target and confirm the wallet first; then repeat current membership and owner checks.
+      await checkWallet();
+      const { group } = await readRoom();
+      const authorityRevision = this.consentRevision;
+      await this.assertConversationAccepted(group); current();
+      const [members, owners] = await Promise.all([group.members(), group.listSuperAdmins()]); current();
+      if (this.consentRevision !== authorityRevision || this.consentUpdates.has(conversationId) || this.leaveRequests.has(conversationId)) throw new Error('Room authority changed. Refresh before changing ownership.');
+      if (!members.some(member => member.inboxId === self) || !owners.includes(self)) throw new Error('Only a current room owner can change ownership.');
+      if (action === 'appoint') {
+        if (targetInbox === self) throw new Error('You already own this room.');
+        if (!members.some(member => member.inboxId === targetInbox)) throw new Error('Choose an existing room member as the new owner.');
+      } else if (!owners.some(owner => owner !== self && members.some(member => member.inboxId === owner))) {
+        throw new Error('Appoint another room member as owner before stepping down.');
+      }
+      // The native SDK enforces the final commit, including concurrent last-owner
+      // protection. Each call changes one role only, making partial outcomes clear.
+      if (action === 'appoint') {
+        if (!owners.includes(targetInbox!)) await group.addSuperAdmin(targetInbox!);
+      } else await group.removeSuperAdmin(self);
+      this.consentRevision++;
+      current();
+    } finally { this.ownershipUpdates.delete(conversationId); this.invalidateConversation(conversationId); }
+  }
+
   async requestRoomLeave(conversationId: string, isCurrent: () => boolean = () => true): Promise<void> {
     const client = this.requireClient();
     const known = this.conversations.get(conversationId);

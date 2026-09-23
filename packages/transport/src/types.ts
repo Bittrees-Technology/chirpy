@@ -96,6 +96,8 @@ export interface Transport {
   createRoom(input: StartRoomInput): Promise<Conversation>;
   /** Add one activated wallet to an open room; recheck authority before dispatch. */
   addRoomMember?(conversationId: string, address: string, isCurrent?: () => boolean): Promise<void>;
+  /** Separate confirmed owner actions; never combine promotion, demotion and leave. */
+  updateRoomOwnership?(conversationId: string, action: 'appoint' | 'step-down', address?: string, isCurrent?: () => boolean): Promise<void>;
   /** Request native group removal; acknowledgement does not mean removal completed. */
   requestRoomLeave?(conversationId: string, isCurrent?: () => boolean): Promise<void>;
   /** Ask the configured gatekeeper bot to add this wallet/inbox to a gated room. */
