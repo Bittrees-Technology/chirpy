@@ -119,7 +119,7 @@ data. Existing `chirpy:mail-receipt:<wallet>` values are read without deletion o
 replacement. Editing a manual status lookup does not overwrite recovery storage.
 
 Starting a new message clears only the matching active selection, preserving old
-IDs for separate signed lookups in **Saved request IDs**. A stale tab cannot clear
+IDs for separate signed lookups in **Forwarding request history**. A stale tab cannot clear
 a newer reservation. Storage changes update other open forms, and late status
 responses cannot replace the result for a newly selected request. Cancelling a
 browser request does not recall an already submitted email.

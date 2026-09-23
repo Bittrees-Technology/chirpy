@@ -30,7 +30,7 @@ test('wallet email signs scoped requests, retries with the same ID and recovers 
   await page.getByRole('button',{name:'Check request status'}).click();await expect(page.getByRole('status')).toContainText('does not confirm delivery or reading');
   expect(checks[0].id).toBe(sends[0].id);
   await page.getByRole('button',{name:'New message',exact:true}).last().click();await expect(page.getByLabel('Request ID',{exact:false})).toHaveValue('');
-  await page.setViewportSize({width:390,height:844});await page.getByText('Saved request IDs',{exact:true}).click();
+  await page.setViewportSize({width:390,height:844});await page.getByText('Forwarding request history',{exact:true}).click();
   await expect(page.locator('details code')).toHaveText(sends[0].id);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
