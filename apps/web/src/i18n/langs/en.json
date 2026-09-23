@@ -679,5 +679,8 @@
   "push.fileReadFailed": "The selected file could not be read. Choose it again.",
   "push.fileOnly": "File sending is available in Push rooms only.",
   "push.historyBudget": "This Push history page exceeds the display limit. No messages were replaced.",
-  "push.fileReplyCaption": "File replies cannot include a caption. Clear the caption or cancel the reply."
+  "push.fileReplyCaption": "File replies cannot include a caption. Clear the caption or cancel the reply.",
+  "push.previewImage": "Preview image",
+  "push.hidePreview": "Hide preview",
+  "push.previewFailed": "This image cannot be previewed. Download the original instead."
 }

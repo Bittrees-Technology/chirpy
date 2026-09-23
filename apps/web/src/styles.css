@@ -352,3 +352,5 @@ input, textarea, select { font-family: inherit; }
 .push-file-compose span { min-width: 0; overflow-wrap: anywhere; }
 .push-file-compose small { color: var(--muted); }
 .push-file-compose p { flex-basis: 100%; margin: 0; }
+
+.push-image-preview { display: block; max-width: min(100%, 480px); max-height: 360px; width: auto; height: auto; object-fit: contain; border-radius: 8px; }

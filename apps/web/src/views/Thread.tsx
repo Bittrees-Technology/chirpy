@@ -1,3 +1,4 @@
+import { PushImagePreviewScope } from "./PushImagePreviewScope";
 import { PushFilePicker } from "./PushFilePicker";
 import type { PushAttachment } from "@app/transport";
 import { PushMembers } from "./PushMembers";
@@ -261,6 +262,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           if (nearBottomRef.current) { setHasNewMessages(false); markVisibleRead(); }
         }}>
         {messages.length === 0 && !historyLoading && !historyError && (!pushRoom || (pushStatus === "ready" && (pushRoom.publicRoom || pushRoom.membership === "member"))) && <Empty icon="✍️" title={t("thread.noMessagesTitle", "No messages yet")} hint={t("thread.noMessagesHint", "Say hello")} />}
+        <PushImagePreviewScope key={`${draftKey}:${pushStatus}:${pushRoom?.membership}`}>
         {(activeConversation.blocked ? [] : messages).map((m) => {
           const mine = m.sender.toLowerCase() === selfAddress;
           const senderRecord = profiles.get(m.sender.toLowerCase());
@@ -297,6 +299,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
             </div>
           );
         })}
+        </PushImagePreviewScope>
         <div ref={endRef} />
       </div>
 

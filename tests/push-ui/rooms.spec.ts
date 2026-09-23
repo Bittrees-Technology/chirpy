@@ -568,3 +568,100 @@ test('retains a rejected file reply for an explicit retry and clears it on lost 
   await page.getByRole('button', { name: 'Refresh messages', exact: true }).click();
   await expect(page.locator('.reply-banner')).toHaveCount(0); await expect(page.locator('.push-file-compose')).toHaveCount(0);
 });
+
+async function previewImages(page: Page) {
+  await page.evaluate(({ group, other }) => {
+    const canvas = document.createElement('canvas'); canvas.width = 240; canvas.height = 120;
+    const context = canvas.getContext('2d')!; context.fillStyle = '#f7931a'; context.fillRect(0,0,240,120); context.fillStyle = '#184b72'; context.fillRect(30,30,180,60);
+    const png = canvas.toDataURL('image/png'), jpeg = canvas.toDataURL('image/jpeg');
+    (window as any).__imageFixture = { png, jpeg, created: [], revoked: [] };
+    const create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = blob => { const url = create(blob); (window as any).__imageFixture.created.push(url); return url; };
+    URL.revokeObjectURL = url => { (window as any).__imageFixture.revoked.push(url); revoke(url); };
+    (window as any).__pushFixture.pages.latest = [png,jpeg].map((content,i) => ({ cid:`QmPreviewImage${i}`,link:i===0?'QmPreviewImage1':null,fromDID:other,toDID:group,timestamp:i,messageType:'File',messageObj:{content:JSON.stringify({name:i===0?'sample.png':'sample.jpg',content})} }));
+  }, { group, other });
+}
+test('opens one local image preview at a time, hides and releases it, and downloads original bytes', async ({ page }, testInfo) => {
+  const { readFile } = await import('node:fs/promises');
+  await openRoom(page); await previewImages(page); await enable(page);
+  await expect(page.getByRole('button', { name: 'Preview image', exact: true })).toHaveCount(2);
+  await expect(page.locator('.push-image-preview')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__imageFixture.created)).toEqual([]);
+  const png = page.locator('.push-attachment').filter({ hasText: 'sample.png' }), jpeg = page.locator('.push-attachment').filter({ hasText: 'sample.jpg' });
+  await png.getByRole('button', { name: 'Preview image', exact: true }).click();
+  await expect(png.locator('img')).toBeVisible(); await expect.poll(() => png.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(240);
+  await expect(png.locator('img')).toHaveAttribute('src', /^blob:/);
+  await jpeg.getByRole('button', { name: 'Preview image', exact: true }).click();
+  await expect(png.locator('img')).toHaveCount(0); await expect(page.locator('.push-image-preview')).toHaveCount(1);
+  await expect.poll(() => jpeg.locator('img').evaluate((img: HTMLImageElement) => img.naturalHeight)).toBe(120);
+  expect(await page.evaluate(() => { const s=(window as any).__imageFixture; return s.revoked.includes(s.created[0]); })).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 }); await jpeg.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path:testInfo.outputPath('push-image-preview-mobile.png') });
+  await jpeg.getByRole('button', { name: 'Hide preview', exact: true }).click(); await expect(page.locator('.push-image-preview')).toHaveCount(0);
+  expect(await page.evaluate(() => { const s=(window as any).__imageFixture; return s.created.every((url:string)=>s.revoked.includes(url)); })).toBe(true);
+  const pending=page.waitForEvent('download'); await png.getByRole('button',{name:'Download file',exact:true}).click();
+  const download=await pending,path=testInfo.outputPath('original.png'); await download.saveAs(path);
+  const original=await page.evaluate(()=>(window as any).__imageFixture.png.split(',')[1]); expect((await readFile(path)).equals(Buffer.from(original,'base64'))).toBe(true);
+});
+for (const change of ['source','wallet','membership']) {
+  test(`removes and releases an open image preview on ${change} change`, async ({ page }) => {
+    await openRoom(page); await previewImages(page); await enable(page);
+    await page.locator('.push-attachment').filter({ hasText:'sample.png' }).getByRole('button',{name:'Preview image',exact:true}).click();
+    await expect(page.locator('.push-image-preview')).toBeVisible();
+    if (change==='source') await page.getByLabel('Include existing rooms').selectOption('research');
+    if (change==='wallet') await page.evaluate(other=>{const s=(window as any).__pushFixture;s.address=other;s.emit('accountsChanged',[other]);},other);
+    if (change==='membership') { await page.evaluate(()=>{(window as any).__pushFixture.membership.participant=false;}); await page.getByRole('button',{name:'Refresh messages',exact:true}).click(); }
+    await expect(page.locator('.push-image-preview')).toHaveCount(0);
+    expect(await page.evaluate(()=>{const s=(window as any).__imageFixture;return s.created.every((url:string)=>s.revoked.includes(url));})).toBe(true);
+  });
+}
+test('rejects malformed raster contents without a blob, and never previews SVG or external URLs', async ({ page }) => {
+  await openRoom(page); await previewImages(page);
+  await page.evaluate(({group,other})=>{
+    const content=[JSON.stringify({name:'bad.png',content:'data:image/png;base64,'+btoa('<svg onload="window.badPreview=true"/>')}),JSON.stringify({name:'active.svg',content:'data:image/svg+xml;base64,'+btoa('<svg/>')}),'https://media.example.test/tracker.png'];
+    (window as any).__pushFixture.pages.latest=content.map((content,i)=>({cid:`QmUnsafeImage${i}`,link:i<2?`QmUnsafeImage${i+1}`:null,fromDID:other,toDID:group,timestamp:i,messageType:i===2?'MediaEmbed':'File',messageObj:{content}}));
+  },{group,other});
+  let externalImages=0;page.on('request',r=>{if(r.url().startsWith('https://media.example.test/'))externalImages++;});
+  await enable(page); await expect(page.getByRole('button',{name:'Preview image',exact:true})).toHaveCount(1);
+  await page.getByRole('button',{name:'Preview image',exact:true}).click(); await expect(page.getByRole('alert')).toContainText('cannot be previewed');
+  await expect(page.locator('.push-image-preview')).toHaveCount(0);
+  expect(await page.evaluate(()=>(window as any).__imageFixture.created)).toEqual([]);expect(await page.evaluate(()=>(window as any).badPreview)).toBeUndefined();expect(externalImages).toBe(0);
+});
+test('requires a new click when a refreshed attachment changes instead of reusing preview consent', async ({ page }) => {
+  await openRoom(page); await previewImages(page); await enable(page);
+  const png=page.locator('.push-attachment').filter({hasText:'sample.png'});
+  await png.getByRole('button',{name:'Preview image',exact:true}).click();await expect(page.locator('.push-image-preview')).toBeVisible();
+  await page.evaluate(()=>{const c=document.createElement('canvas');c.width=100;c.height=50;c.getContext('2d')!.fillRect(0,0,100,50);(window as any).__pushFixture.pages.latest[0].messageObj.content=JSON.stringify({name:'sample.png',content:c.toDataURL('image/png')});});
+  await page.getByRole('button',{name:'Refresh messages',exact:true}).click();
+  await expect(page.locator('.push-image-preview')).toHaveCount(0);await expect(png.getByRole('button',{name:'Preview image',exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>{const s=(window as any).__imageFixture;return s.created.length===1&&s.revoked.includes(s.created[0]);})).toBe(true);
+  await png.getByRole('button',{name:'Preview image',exact:true}).click();await expect.poll(()=>png.locator('img').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(100);
+});
+
+test('releases a preview rejected by the browser decoder and keeps the original download available', async ({ page }, testInfo) => {
+  const { readFile } = await import('node:fs/promises');
+  await openRoom(page); await previewImages(page);
+  const original = await page.evaluate(() => {
+    const s=(window as any).__pushFixture, file=JSON.parse(s.pages.latest[1].messageObj.content);
+    const bytes=Uint8Array.from(atob(file.content.split(',')[1]),c=>c.charCodeAt(0));
+    // Retain valid marker framing and dimensions, but use an invalid JPEG
+    // quantization-table selector. Chromium rejects this during pixel decode.
+    for(let offset=2;offset<bytes.length;) {
+      const marker=bytes[offset+1],length=bytes[offset+2]*256+bytes[offset+3];
+      if(marker===219) { bytes[offset+4]=255; break; }
+      if(marker===218) throw Error('JPEG fixture has no quantization table');
+      offset+=length+2;
+    }
+    const base64=btoa(String.fromCharCode(...bytes));
+    file.content='data:image/jpeg;base64,'+base64;s.pages.latest[1].messageObj.content=JSON.stringify(file);
+    return base64;
+  });
+  await enable(page);const jpeg=page.locator('.push-attachment').filter({hasText:'sample.jpg'});
+  await jpeg.getByRole('button',{name:'Preview image',exact:true}).click();await expect(jpeg.getByRole('alert')).toContainText('cannot be previewed');
+  await expect(page.locator('.push-image-preview')).toHaveCount(0);await expect(jpeg.getByRole('button',{name:'Download file',exact:true})).toBeEnabled();
+  expect(await page.evaluate(()=>{const s=(window as any).__imageFixture;return s.created.length===1&&s.revoked.includes(s.created[0]);})).toBe(true);
+  const pending=page.waitForEvent('download');await jpeg.getByRole('button',{name:'Download file',exact:true}).click();
+  const download=await pending,path=testInfo.outputPath('original-rejected.jpg');await download.saveAs(path);
+  expect((await readFile(path)).equals(Buffer.from(original,'base64'))).toBe(true);
+});

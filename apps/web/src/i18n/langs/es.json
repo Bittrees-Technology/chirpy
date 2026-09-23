@@ -679,5 +679,8 @@
   "push.fileReadFailed": "No se pudo leer el archivo seleccionado. Vuelve a elegirlo.",
   "push.fileOnly": "El envío de archivos solo está disponible en las salas de Push.",
   "push.historyBudget": "Esta página del historial de Push supera el límite de visualización. No se ha sustituido ningún mensaje.",
-  "push.fileReplyCaption": "Las respuestas con archivos no pueden incluir una descripción. Borra la descripción o cancela la respuesta."
+  "push.fileReplyCaption": "Las respuestas con archivos no pueden incluir una descripción. Borra la descripción o cancela la respuesta.",
+  "push.previewImage": "Ver imagen",
+  "push.hidePreview": "Ocultar vista previa",
+  "push.previewFailed": "No se puede mostrar esta imagen. Descarga el archivo original."
 }
