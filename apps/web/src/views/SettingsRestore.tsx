@@ -9,8 +9,9 @@ import { abandonRecovery, backupArchive, clearUnpreparedRecovery, continueRecove
 import { loadSettings, parseSettingsRaw, walletSettingsKey } from '../settingsStorage';
 import { verifyRecoveryWallet } from '../recoveryWallet';
 import { download } from './dialogs';
+import { parseWalletLabelRaw, readWalletLabelRaw } from '../walletProfile';
 
-type Review = { incoming: RecoveryData; local: LocalData; prefsRaw: string | null };
+type Review = { incoming: RecoveryData; local: LocalData; prefsRaw: string | null; labelRaw?: string | null };
 export function SettingsRestore({ wallet }: { wallet: string }) {
   const { t } = useI18n();
   const { pauseSyncForRecovery, refreshAfterRecovery } = useSettingsPrefs();
@@ -22,6 +23,7 @@ export function SettingsRestore({ wallet }: { wallet: string }) {
   const [replace, setReplace] = useState<string[]>([]);
   const [restoreReceipts, setRestoreReceipts] = useState(false);
   const [addLegacyBlocks, setAddLegacyBlocks] = useState(false);
+  const [restoreLabel, setRestoreLabel] = useState(false);
   const [journal, setJournal] = useState<RecoveryJournal | null>(null);
   const [pending, setPending] = useState(false);
   const [busy, setBusy] = useState(true);
@@ -46,10 +48,13 @@ export function SettingsRestore({ wallet }: { wallet: string }) {
       const prefs = parseSettingsRaw(review.prefsRaw).prefs;
       const current = { blocked: prefs.blocked, readReceiptsDefault: prefs.readReceiptsDefault, readReceiptOverrides: prefs.readReceiptOverrides ?? {} };
       const preferences = planRecoveryPreferences(wallet, current, review.incoming, { restoreReceipts, addLegacyBlocks });
+      const labelChange = restoreLabel && review.incoming.version === 2
+        ? { before: review.labelRaw!, after: review.incoming.localDisplayName === null ? null : JSON.stringify(review.incoming.localDisplayName) } : undefined;
       validateRecoveryData({ ...review.incoming, contacts: local.data.contacts, notes: local.data.notes, preferences });
-      return { local, preferences, current, changed: local.addedContacts + local.addedNotes + local.replaced > 0 || JSON.stringify(current) !== JSON.stringify(preferences) };
+      return { local, preferences, current, labelChange, changed: local.addedContacts + local.addedNotes + local.replaced > 0 || JSON.stringify(current) !== JSON.stringify(preferences)
+        || Boolean(labelChange && parseWalletLabelRaw(labelChange.before) !== parseWalletLabelRaw(labelChange.after)) };
     } catch { return null; }
-  }, [review, replace, restoreReceipts, addLegacyBlocks, wallet]);
+  }, [review, replace, restoreReceipts, addLegacyBlocks, restoreLabel, wallet]);
   const run = async (operation: (proof: Awaited<ReturnType<typeof verifyRecoveryWallet>>, value: number) => Promise<void>, purpose: 'export' | 'restore' = 'restore') => {
     if (running.current) return;
     running.current = true; setBusy(true); setStatus('idle'); const value = generation.current;
@@ -75,8 +80,9 @@ export function SettingsRestore({ wallet }: { wallet: string }) {
       const prefs = loadSettings(walletSettingsKey(wallet));
       await proof.assertCurrent(); ensure(value);
       if (prefs.failed || recoveryPending(wallet) || await readRecoveryJournal(wallet)) throw new Error('Resolve existing recovery first');
-      proof.assertSession(); setReplace([]); setRestoreReceipts(false); setAddLegacyBlocks(false);
-      setReview({ incoming, local, prefsRaw: prefs.raw });
+      const labelRaw = incoming.version === 2 ? readWalletLabelRaw(wallet) : undefined;
+      proof.assertSession(); setReplace([]); setRestoreReceipts(false); setAddLegacyBlocks(false); setRestoreLabel(false);
+      setReview({ incoming, local, prefsRaw: prefs.raw, labelRaw });
     });
   };
   const apply = () => {
@@ -84,7 +90,7 @@ export function SettingsRestore({ wallet }: { wallet: string }) {
     void run(async (proof) => {
       pauseSyncForRecovery();
       try {
-        const prepared = await prepareRecovery(wallet, review.local, review.prefsRaw, plan.local.data, plan.preferences, review.incoming.source, proof.assertSession);
+        const prepared = await prepareRecovery(wallet, review.local, review.prefsRaw, plan.local.data, plan.preferences, review.incoming.source, proof.assertSession, plan.labelChange);
         await proof.assertCurrent();
         await continueRecovery(wallet, prepared.id, false, proof.assertSession);
         refreshAfterRecovery(); setReview(null); setStatus('applied');
@@ -162,6 +168,12 @@ export function SettingsRestore({ wallet }: { wallet: string }) {
             <label className="check"><input type="checkbox" disabled={busy} checked={replace.includes(key)} onChange={event => setReplace(current => event.target.checked ? [...current, key] : current.filter(value => value !== key))} />{t('restore.replace')}</label>
           </details>;
         })}
+        {review.incoming.version === 2 && <div className="recovery-label-review">
+          <p>{t('restore.existing')}: <span className="restore-text">{review.labelRaw === null ? t('restore.nameDefault') : parseWalletLabelRaw(review.labelRaw!) || t('restore.nameBlank')}</span></p>
+          <p>{t('restore.incoming')}: <span className="restore-text">{review.incoming.localDisplayName === null ? t('restore.nameDefault') : review.incoming.localDisplayName || t('restore.nameBlank')}</span></p>
+          <label className="check"><input type="checkbox" checked={restoreLabel} disabled={busy} onChange={event => setRestoreLabel(event.target.checked)} />{t('restore.localName')}</label>
+          <p className="field-hint">{t('restore.localNameHelp')}</p>
+        </div>}
         <label className="check"><input type="checkbox" checked={restoreReceipts} disabled={busy} onChange={event => setRestoreReceipts(event.target.checked)} />{t('restore.receipts')}</label>
         <details><summary>{t('restore.receiptDetails')}</summary>
           <p>{t('restore.defaultReceipts')}: {t(plan?.current.readReceiptsDefault ? 'restore.on' : 'restore.off')} → {t(review.incoming.preferences.readReceiptsDefault ? 'restore.on' : 'restore.off')}</p>

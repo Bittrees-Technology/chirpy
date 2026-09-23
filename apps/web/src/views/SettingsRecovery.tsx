@@ -6,6 +6,7 @@ import { encryptRecoveryArchive, validateRecoveryData, type RecoveryData } from 
 import { verifyRecoveryWallet } from '../recoveryWallet';
 import { readLocalData } from '../localData';
 import { download } from './dialogs';
+import { parseWalletLabelRaw, readWalletLabelRaw } from '../walletProfile';
 
 /** Key by connected wallet. Exports explicit application data, never protocol databases or keys. */
 export function SettingsRecovery({ wallet, preferences }: { wallet: string; preferences: RecoveryData['preferences'] }) {
@@ -31,9 +32,10 @@ export function SettingsRecovery({ wallet, preferences }: { wallet: string; pref
     try {
       // Read explicit wallet-owned fields and validate a copy. No localStorage enumeration.
       assertNoRecoveryPending(walletSettingsKey(wallet));
+      const labelRaw = readWalletLabelRaw(wallet);
       const local = await readLocalData(wallet);
       ensureCurrent();
-      const data = validateRecoveryData({ version: 1, source: 'chirpy', wallet, createdAt: Date.now(),
+      const data = validateRecoveryData({ version: 2, source: 'chirpy', wallet, createdAt: Date.now(), localDisplayName: parseWalletLabelRaw(labelRaw) ?? null,
         contacts: local.contacts, notes: local.notes, preferences });
       proof = await verifyRecoveryWallet(wallet, ensureCurrent);
       const archive = await encryptRecoveryArchive(data, password);
@@ -41,6 +43,7 @@ export function SettingsRecovery({ wallet, preferences }: { wallet: string; pref
       await proof.assertCurrent();
       ensureCurrent();
       assertNoRecoveryPending(walletSettingsKey(wallet));
+      if (readWalletLabelRaw(wallet) !== labelRaw) throw new Error('Display name changed during export');
       download('chat-local-data-recovery.json', archive);
       setStatus('prepared');
     } catch { if (active.current) setStatus('failed'); }

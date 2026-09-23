@@ -1,11 +1,13 @@
 import { emptyLocalData, localRecords, notifyLocalData, validateLocalData, type LocalData } from './localData';
 import { validateRecoveryData, type RecoveryData } from './recoveryArchive';
 import { assertNoRecoveryPending, parseSettingsRaw, recoveryMarkerKey, serializeSettings, walletSettingsKey, withSettingsLock } from './settingsStorage';
+import { notifyWalletLabel, parseWalletLabelRaw, readWalletLabelRaw, walletProfileKey } from './walletProfile';
 
 export interface RecoveryJournal {
   wallet: string; // Reserved IndexedDB key; never a wallet authority claim.
   owner: string;
-  version: 1;
+  version: 1 | 2;
+  labelChange?: { before: string | null; after: string | null };
   id: string;
   createdAt: number;
   source: RecoveryData['source'];
@@ -20,10 +22,13 @@ const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b
 const journalKey = (wallet: string) => `restore:${wallet.toLowerCase()}`;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function conflict(): never { throw new Error('Recovery state changed; existing data and backup were preserved'); }
+function checkLabel(journal: RecoveryJournal) {
+  if (journal.labelChange && ![journal.labelChange.before, journal.labelChange.after].includes(readWalletLabelRaw(journal.owner))) conflict();
+}
 
 export function backupArchive(journal: RecoveryJournal): RecoveryData {
   const prefs = parseSettingsRaw(journal.beforePrefs).prefs;
-  return validateRecoveryData({ version: 1, source: 'chirpy', wallet: journal.owner, createdAt: journal.createdAt,
+  return validateRecoveryData({ ...(journal.labelChange ? { version: 2, localDisplayName: parseWalletLabelRaw(journal.labelChange.before) ?? null } : { version: 1 }), source: 'chirpy', wallet: journal.owner, createdAt: journal.createdAt,
     contacts: journal.before.contacts, notes: journal.before.notes,
     preferences: { blocked: prefs.blocked, readReceiptsDefault: prefs.readReceiptsDefault, readReceiptOverrides: prefs.readReceiptOverrides ?? {} } });
 }
@@ -31,12 +36,18 @@ export function validateJournal(value: unknown, wallet: string): RecoveryJournal
   const owner = wallet.toLowerCase(); walletSettingsKey(owner);
   if (!value || typeof value !== 'object' || Array.isArray(value)) conflict();
   const data = value as RecoveryJournal;
-  const keys = ['wallet', 'owner', 'version', 'id', 'createdAt', 'source', 'phase', 'before', 'after', 'beforePrefs', 'afterPrefs', 'undoPrefs'];
+  const keys = ['wallet', 'owner', 'version', 'id', 'createdAt', 'source', 'phase', 'before', 'after', 'beforePrefs', 'afterPrefs', 'undoPrefs', ...(data.version === 2 ? ['labelChange'] : [])];
   if (Object.keys(data).length !== keys.length || keys.some(key => !Object.hasOwn(data, key))
-    || data.wallet !== journalKey(owner) || data.owner !== owner || data.version !== 1 || !uuid.test(data.id)
+    || data.wallet !== journalKey(owner) || data.owner !== owner || ![1, 2].includes(data.version) || !uuid.test(data.id)
     || !Number.isSafeInteger(data.createdAt) || data.createdAt < 0 || data.createdAt > 8_640_000_000_000_000
     || !['chirpy', 'governance', 'research'].includes(data.source)
     || !['prepared', 'applied', 'undoing', 'undone', 'abandoned'].includes(data.phase)) conflict();
+  if (data.version === 2) {
+    const change = data.labelChange;
+    if (!change || typeof change !== 'object' || Array.isArray(change) || Object.keys(change).length !== 2
+      || !Object.hasOwn(change, 'before') || !Object.hasOwn(change, 'after') || data.source !== 'chirpy') conflict();
+    parseWalletLabelRaw(change.before); parseWalletLabelRaw(change.after);
+  }
   const before = validateLocalData(data.before, owner); const after = validateLocalData(data.after, owner);
   if (after.revision !== before.revision + 1) conflict();
   if (typeof data.afterPrefs !== 'string' || typeof data.undoPrefs !== 'string') conflict();
@@ -67,10 +78,11 @@ function markPending(journal: RecoveryJournal) {
 
 /** First persist a complete before/after journal. No user records change in this preparation. */
 export async function prepareRecovery(wallet: string, before: LocalData, beforePrefs: string | null,
-  after: LocalData, preferences: RecoveryData['preferences'], source: RecoveryData['source'], ensureCurrent: () => void) {
+  after: LocalData, preferences: RecoveryData['preferences'], source: RecoveryData['source'], ensureCurrent: () => void,
+  labelChange?: { before: string | null; after: string | null }) {
   const key = walletSettingsKey(wallet); const owner = wallet.toLowerCase();
   const createdAt = Date.now(); const priorTime = parseSettingsRaw(beforePrefs).updatedAt;
-  const journal = validateJournal({ wallet: journalKey(owner), owner, version: 1, id: crypto.randomUUID(), createdAt, source,
+  const journal = validateJournal({ wallet: journalKey(owner), owner, ...(labelChange ? { version: 2, labelChange: { ...labelChange } } : { version: 1 }), id: crypto.randomUUID(), createdAt, source,
     phase: 'prepared', before, after: { ...after, revision: before.revision + 1 }, beforePrefs,
     afterPrefs: serializeSettings({ ...preferences, syncAcrossDevices: false }, Math.max(createdAt, priorTime + 1)),
     undoPrefs: serializeSettings({ ...parseSettingsRaw(beforePrefs).prefs, syncAcrossDevices: false }, Math.max(createdAt + 1, priorTime + 2)),
@@ -80,11 +92,13 @@ export async function prepareRecovery(wallet: string, before: LocalData, beforeP
     if (await readRecoveryJournal(owner)) conflict();
     ensureCurrent();
     if (localStorage.getItem(key) !== beforePrefs) conflict();
+    if (journal.labelChange && readWalletLabelRaw(owner) !== journal.labelChange.before) conflict();
     markPending(journal);
     try {
       return await localRecords([owner, journal.wallet], true, ([raw, previous]) => {
         const current = raw === undefined ? emptyLocalData(owner) : validateLocalData(raw, owner);
         if (previous !== undefined || !equal(current, journal.before) || localStorage.getItem(key) !== beforePrefs) conflict();
+        if (journal.labelChange && readWalletLabelRaw(owner) !== journal.labelChange.before) conflict();
         return { result: journal, put: [journal] };
       }, ensureCurrent);
     } catch (error) {
@@ -112,6 +126,7 @@ export async function continueRecovery(wallet: string, id: string, undo: boolean
       const current = raw === undefined ? emptyLocalData(owner) : validateLocalData(raw, owner);
       if (!equal(validateJournal(stored, owner), journal) || !allowedLocal.some(value => equal(current, value))
         || !allowedPrefs.includes(localStorage.getItem(key))) conflict();
+      checkLabel(journal!);
       return { result: undefined };
     }, ensureCurrent);
     ensureCurrent(); markPending(journal);
@@ -120,23 +135,35 @@ export async function continueRecovery(wallet: string, id: string, undo: boolean
       const saved = validateJournal(stored, owner);
       if (saved.id !== id || !equal(saved, journal) || !allowedLocal.some(value => equal(current, value))
         || !allowedPrefs.includes(localStorage.getItem(key))) conflict();
+      checkLabel(saved);
       const pending = { ...saved, phase: undo ? 'undoing' as const : 'prepared' as const };
       return { result: pending, put: [targetLocal, pending] };
     }, ensureCurrent);
     ensureCurrent();
     if (!allowedPrefs.includes(localStorage.getItem(key))) conflict();
+    checkLabel(journal);
     if (localStorage.getItem(key) !== targetPrefs) localStorage.setItem(key, targetPrefs);
+    ensureCurrent();
+    if (journal.labelChange) {
+      checkLabel(journal);
+      const target = undo ? journal.labelChange.before : journal.labelChange.after;
+      if (readWalletLabelRaw(owner) !== target) {
+        if (target === null) localStorage.removeItem(walletProfileKey(owner));
+        else localStorage.setItem(walletProfileKey(owner), target);
+      }
+    }
     ensureCurrent();
     const completed = await localRecords([owner, journal.wallet], true, ([raw, stored]) => {
       const saved = validateJournal(stored, owner);
       if (saved.id !== id || !equal(saved, journal) || !equal(validateLocalData(raw, owner), targetLocal)
         || localStorage.getItem(key) !== targetPrefs) conflict();
+      if (saved.labelChange && readWalletLabelRaw(owner) !== (undo ? saved.labelChange.before : saved.labelChange.after)) conflict();
       const done = { ...saved, phase: undo ? 'undone' as const : 'applied' as const };
       return { result: done, put: [done] };
     }, ensureCurrent);
     if (localStorage.getItem(recoveryMarkerKey(key)) !== `v1:${id}`) conflict();
     localStorage.removeItem(recoveryMarkerKey(key));
-    notifyLocalData(); return completed;
+    notifyLocalData(); notifyWalletLabel(); return completed;
   });
 }
 export async function discardRecoveryBackup(wallet: string, id: string, ensureCurrent: () => void) {
@@ -175,10 +202,11 @@ export async function abandonRecovery(wallet: string, id: string, ensureCurrent:
       if (journal.id !== id) conflict();
       if (raw !== undefined) validateLocalData(raw, owner);
       parseSettingsRaw(localStorage.getItem(key));
+      if (journal.labelChange) readWalletLabelRaw(owner);
       return { result: undefined, put: [{ ...journal, phase: 'abandoned' }] };
     }, ensureCurrent);
     ensureCurrent();
     if (localStorage.getItem(recoveryMarkerKey(key)) !== marker) conflict();
-    localStorage.removeItem(recoveryMarkerKey(key)); notifyLocalData();
+    localStorage.removeItem(recoveryMarkerKey(key)); notifyLocalData(); notifyWalletLabel();
   });
 }

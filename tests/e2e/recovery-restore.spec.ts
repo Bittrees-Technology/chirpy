@@ -238,3 +238,122 @@ test('can explicitly stop a conflicted pending restore while retaining current d
   expect(after.data).toEqual(before.data); expect(after.prefs).toBe(before.prefs);
   expect(after.journal.before).toEqual(before.journal.before); expect(after.journal.phase).toBe('abandoned'); expect(after.marker).toBeNull();
 });
+
+const profileKey = (wallet: string) => `chat:walletProfile:v1:${wallet.toLowerCase()}`;
+const nameChoice = (page: Page) => page.getByRole('checkbox', { name: 'Restore my private display-name choice on this device', exact: true });
+async function setName(page: Page, wallet: string, value: string) {
+  await page.getByLabel('Display name', { exact: true }).fill(value);
+  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), profileKey(wallet))).toBe(JSON.stringify(value));
+}
+function nameArchive(wallet: string, localDisplayName: string | null): RecoveryData {
+  return { ...archive(wallet), version: 2, localDisplayName, contacts: [], notes: [] };
+}
+for (const incoming of [null, '', 'Imported private name']) test(`reviews and restores private name ${JSON.stringify(incoming)} with exact backup and undo`, async ({ page, walletAddress }, testInfo) => {
+  await connect(page); await setName(page, walletAddress, 'Original private name');
+  let profileWrites = 0; page.on('request', req => { if (req.url().includes('/api/profile') && req.method() !== 'GET') profileWrites++; });
+  await review(page, nameArchive(walletAddress, incoming));
+  await expect(nameChoice(page)).not.toBeChecked();
+  await expect(page.getByRole('button', { name: 'Apply reviewed changes' })).toBeDisabled();
+  await nameChoice(page).check();
+  if (incoming === 'Imported private name') {
+    const decline = page.getByRole('button', { name: 'Decline', exact: true }); if (await decline.isVisible()) await decline.click();
+    await page.setViewportSize({width:390,height:844});await page.locator('.recovery-label-review').scrollIntoViewIfNeeded();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath('private-name-review-mobile.png')});
+  }
+  await apply(page);
+  expect(await page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe(incoming === null ? null : JSON.stringify(incoming));
+  const saved=await records(page,walletAddress);expect(saved.journal).toMatchObject({version:2,labelChange:{before:'"Original private name"',after:incoming===null?null:JSON.stringify(incoming)}});
+  if (incoming !== null) await expect(page.getByLabel('Display name',{exact:true})).toHaveValue(incoming);
+  if (incoming === 'Imported private name') {
+    await page.getByText('Save an encrypted copy of the pre-restore backup',{exact:true}).click();
+    await page.getByLabel('Backup passphrase',{exact:true}).fill(password);await page.getByLabel('Confirm backup passphrase',{exact:true}).fill(password);
+    const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download encrypted pre-restore backup'}).click();
+    const stream=await(await pending).createReadStream();const chunks:Buffer[]=[];for await(const chunk of stream)chunks.push(Buffer.from(chunk));
+    expect(await decryptRecoveryArchive(Buffer.concat(chunks).toString('utf8'),password,walletAddress)).toMatchObject({version:2,localDisplayName:'Original private name'});
+  }
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Undo restore',exact:true}).click();
+  await expect(page.getByRole('status').filter({hasText:'Restore undone.'})).toBeVisible();
+  await expect(page.getByLabel('Display name',{exact:true})).toHaveValue('Original private name');
+  expect(await page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe('"Original private name"');expect(profileWrites).toBe(0);
+});
+
+test('keeps the private name when importing legacy data or declining a v2 name choice', async ({page,walletAddress})=>{
+  await connect(page);await setName(page,walletAddress,'Keep this name');
+  await review(page,archive(walletAddress));await expect(nameChoice(page)).toHaveCount(0);
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  await review(page,{...archive(walletAddress),version:2,localDisplayName:'Do not restore'});
+  await expect(nameChoice(page)).not.toBeChecked();await apply(page);
+  await expect(page.getByLabel('Display name',{exact:true})).toHaveValue('Keep this name');
+  const state=await records(page,walletAddress);expect(state.journal.version).toBe(1);expect(state.journal).not.toHaveProperty('labelChange');
+});
+
+test('preserves a name changed in another tab after review and refuses stale undo', async ({browser})=>{
+  const context=await browser.newContext();const walletAddress=await injectSyntheticWallet(context);const page=await context.newPage();
+  try {
+  await connect(page);await setName(page,walletAddress,'Original');await review(page,nameArchive(walletAddress,'Imported'));await nameChoice(page).check();
+  const other=await context.newPage();await connect(other);await setName(other,walletAddress,'Later');
+  await expect(page.getByLabel('Display name',{exact:true})).toHaveValue('Later');
+  await page.getByRole('button',{name:'Apply reviewed changes'}).click();
+  await expect(page.getByRole('alert').filter({hasText:'Recovery could not be completed'})).toBeVisible();
+  expect((await records(page,walletAddress)).journal).toBeUndefined();
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();await review(page,nameArchive(walletAddress,'Imported'));await nameChoice(page).check();await apply(page);
+  await setName(other,walletAddress,'Later after restore');
+  const before=await records(page,walletAddress);
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Undo restore'}).click();
+  await expect(page.getByRole('alert').filter({hasText:'Recovery could not be completed'})).toBeVisible();
+  expect(await records(page,walletAddress)).toEqual(before);await expect(page.getByLabel('Display name',{exact:true})).toHaveValue('Later after restore');
+  } finally { await context.close(); }
+});
+
+test('resumes failed name storage and prevents edits while restoration is pending',async({page,walletAddress})=>{
+  await connect(page);await setName(page,walletAddress,'Original');await review(page,nameArchive(walletAddress,'Imported'));await nameChoice(page).check();
+  await page.evaluate(key=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k===key)throw new DOMException('Full','QuotaExceededError');return set.call(this,k,v);};},profileKey(walletAddress));
+  await page.getByRole('button',{name:'Apply reviewed changes'}).click();
+  await expect(page.getByRole('alert').filter({hasText:'An unfinished restore'})).toBeVisible();
+  const partial=await records(page,walletAddress);expect(partial.journal.phase).toBe('prepared');
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();
+  await page.getByLabel('Display name',{exact:true}).fill('Cannot replace pending name');
+  await expect(page.getByText('Your display name could not be saved.',{exact:false})).toBeVisible();
+  expect(await page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe('"Original"');
+  await page.getByRole('button',{name:'Resume unfinished restore'}).click();
+  await expect(page.getByRole('status').filter({hasText:'Reviewed changes saved.'})).toBeVisible();
+  await expect(page.getByLabel('Display name',{exact:true})).toHaveValue('Imported');
+  const completed=await records(page,walletAddress);expect(completed.data.revision).toBe(partial.data.revision);expect(completed.marker).toBeNull();
+});
+
+test('a name edit queued behind a lock is cancelled when the wallet disconnects',async({page,walletAddress})=>{
+  await connect(page);await setName(page,walletAddress,'Keep');
+  await page.evaluate(wallet=>new Promise<void>(ready=>{void navigator.locks.request(`chat:settingsPrefs:v1:wallet:${wallet.toLowerCase()}:write`,()=>new Promise<void>(release=>{(window as any).__releaseNameLock=release;ready();}));}),walletAddress);
+  await page.getByLabel('Display name',{exact:true}).fill('Do not save after disconnect');
+  await page.getByRole('button',{name:'Disconnect',exact:true}).click();await page.evaluate(()=>(window as any).__releaseNameLock());
+  await expect.poll(async()=>await page.evaluate(()=>navigator.locks.query().then(result=>result.pending.length+result.held.length))).toBe(0);
+  expect(await page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe('"Keep"');
+});
+
+for (const original of [null, '']) test(`resumes name undo to original ${JSON.stringify(original)} without changing its meaning`,async({page,walletAddress})=>{
+  await connect(page);
+  if(original===''){await expect(page.getByLabel('Display name',{exact:true})).toHaveValue('test.eth');await setName(page,walletAddress,'');}
+  await review(page,nameArchive(walletAddress,'Imported'));await nameChoice(page).check();await apply(page);
+  await page.evaluate(({key,remove})=>{
+    if(remove){const fn=Storage.prototype.removeItem;Storage.prototype.removeItem=function(k){if(k===key)throw new DOMException('Blocked','SecurityError');return fn.call(this,k);};}
+    else{const fn=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k===key)throw new DOMException('Full','QuotaExceededError');return fn.call(this,k,v);};}
+  },{key:profileKey(walletAddress),remove:original===null});
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Undo restore'}).click();
+  await expect(page.getByRole('alert').filter({hasText:'An unfinished restore'})).toBeVisible();
+  const pending=await records(page,walletAddress);expect(pending.journal.phase).toBe('undoing');
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Resume unfinished restore'}).click();
+  await expect(page.getByRole('status').filter({hasText:'Restore undone.'})).toBeVisible();
+  expect(await page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe(original===null?null:'""');
+  await expect(page.getByLabel('Display name',{exact:true})).toHaveValue(original===null?'test.eth':'');
+  const completed=await records(page,walletAddress);expect(completed.data.revision).toBe(pending.data.revision);expect(completed.marker).toBeNull();
+});
+
+test('keeps every character when typing a private name through coordinated saves',async({page,walletAddress})=>{
+  await connect(page);const input=page.getByLabel('Display name',{exact:true});await expect(input).toHaveValue('test.eth');
+  await input.fill('');await expect.poll(()=>page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe('""');
+  await input.pressSequentially('Private name 123');
+  await expect(input).toHaveValue('Private name 123');
+  await expect.poll(()=>page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe('"Private name 123"');
+});

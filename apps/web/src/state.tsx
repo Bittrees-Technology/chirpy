@@ -12,7 +12,7 @@ import { createRefreshQueue } from "./refreshQueue";
 import { MAX_SAVED_ORGANIZATIONS, ORGANIZATIONS_KEY, loadOrganizationStore } from "./orgStorage";
 import { APP_NAME, DEFAULT_TRANSPORT } from "./app.config";
 import { resolveEns, type EnsRecord } from "./ens";
-import { walletLabel, saveWalletLabel } from "./walletProfile";
+import { walletLabel, saveWalletLabel, walletProfileKey, WALLET_PROFILE_CHANGED } from "./walletProfile";
 import {
   clearActiveProvider,
   connectWalletConnect as connectWalletConnectProvider,
@@ -65,8 +65,8 @@ interface IdentityCtx {
   isConnecting: boolean;
   ensProfile: EnsRecord | null;
   walletError: string | null;
-  setHandle: (h: string) => void;
-  resetHandle: () => void;
+  setHandle: (h: string) => Promise<void>;
+  resetHandle: () => Promise<void>;
   reset: () => void;
   connectWallet: () => Promise<void>;
   connectWalletConnect: () => Promise<void>;
@@ -94,10 +94,12 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   const [walletError, setWalletError] = useState<string | null>(null);
   const walletProviderCleanupRef = useRef<(() => void) | null>(null);
   const accountGenerationRef = useRef(0);
+  const walletAddressRef = useRef<string | null>(null);
 
   const applyWalletAccount = useCallback(async (address: string) => {
     const generation = ++accountGenerationRef.current;
     const normalized = normalizeAddress(address);
+    walletAddressRef.current = normalized.toLowerCase();
     setEnsProfile(null);
     setWalletIdentity(identityFromWallet(normalized));
     setMode("wallet");
@@ -117,6 +119,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
 
   const resetWalletState = useCallback(() => {
     accountGenerationRef.current++;
+    walletAddressRef.current = null;
     LS.remove(WALLET_CONNECTED_KEY);
     LS.remove(WALLET_PROVIDER_KIND_KEY);
     walletProviderCleanupRef.current?.();
@@ -224,6 +227,18 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   }, [applyWalletAccount, attachProviderEvents]);
 
   const identity = walletIdentity ?? stubIdentity;
+  useEffect(() => () => { accountGenerationRef.current++; walletAddressRef.current = null; }, []);
+  useEffect(() => {
+    if (mode !== 'wallet') return;
+    const refresh = (event: Event) => {
+      if (walletAddressRef.current !== identity.address.toLowerCase()) return;
+      if (event instanceof StorageEvent && event.key !== null && event.key !== walletProfileKey(identity.address)) return;
+      setWalletIdentity(identityFromWallet(identity.address, ensProfile));
+    };
+    window.addEventListener('storage', refresh);
+    window.addEventListener(WALLET_PROFILE_CHANGED, refresh);
+    return () => { window.removeEventListener('storage', refresh); window.removeEventListener(WALLET_PROFILE_CHANGED, refresh); };
+  }, [mode, identity.address, ensProfile]);
   const value = useMemo<IdentityCtx>(() => ({
     identity,
     mode,
@@ -232,22 +247,26 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     isConnecting,
     ensProfile,
     walletError,
-    setHandle: (h) => {
+    setHandle: async (h) => {
       if (mode === "wallet") {
+        const generation = accountGenerationRef.current;
+        const isCurrent = () => accountGenerationRef.current === generation && walletAddressRef.current === identity.address.toLowerCase();
         try {
-          saveWalletLabel(identity.address, h);
-          setWalletIdentity((p) => (p ? { ...p, handle: h } : p));
+          await saveWalletLabel(identity.address, h, () => { if (!isCurrent()) throw new Error('Wallet changed'); });
+          if (!isCurrent()) return;
           setWalletError(null);
-        } catch (error) { setWalletError((error as Error).message); }
+        } catch (error) { if (isCurrent()) setWalletError((error as Error).message); }
       } else setStubIdentity((p) => ({ ...p, handle: h }));
     },
-    resetHandle: () => {
+    resetHandle: async () => {
       if (mode !== "wallet") return;
+      const generation = accountGenerationRef.current;
+      const isCurrent = () => accountGenerationRef.current === generation && walletAddressRef.current === identity.address.toLowerCase();
       try {
-        saveWalletLabel(identity.address, undefined);
-        setWalletIdentity(identityFromWallet(identity.address, ensProfile));
+        await saveWalletLabel(identity.address, undefined, () => { if (!isCurrent()) throw new Error('Wallet changed'); });
+        if (!isCurrent()) return;
         setWalletError(null);
-      } catch (error) { setWalletError((error as Error).message); }
+      } catch (error) { if (isCurrent()) setWalletError((error as Error).message); }
     },
     reset: () => setStubIdentity({ address: randAddr(), handle: "you" }),
     connectWallet: async () => {

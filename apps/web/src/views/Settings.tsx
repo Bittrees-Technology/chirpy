@@ -4,6 +4,7 @@ import { useChat, useIdentity, useOrgs, useSettingsPrefs } from "../state";
 import { Avatar, Button, Field, Modal, Toggle, shortAddr } from "../ui";
 import { download } from "./dialogs";
 import { PublicProfile } from "./PublicProfile";
+import { DisplayNameInput } from "./DisplayNameInput";
 import { UpdateCard } from "./UpdateCard";
 import { HistoryRecovery } from "./HistoryRecovery";
 import { SettingsRestore } from "./SettingsRestore";
@@ -192,7 +193,7 @@ export function Settings(
           {t("settings.mode")} <span className="pill">{transportId}</span> {transportText}
         </p>
         <div className="grid2">
-          <Field label={t("settings.displayName")}><input className="input" maxLength={80} value={identity.handle ?? ""} onChange={(e) => setHandle(e.target.value)} /></Field>
+          <Field label={t("settings.displayName")}><DisplayNameInput key={`${mode}:${identity.address}`} value={identity.handle ?? ""} save={setHandle} /></Field>
           <Field label={t("settings.address")}><input className="input" value={identity.address} readOnly /></Field>
           <Field label={t("settings.language")}>
             <select className="input" value={lang} onChange={(e) => setLang(e.target.value as LangCode)}>
