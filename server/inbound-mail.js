@@ -1,3 +1,4 @@
+import {inboundHistoryOwner,inboundHistoryKey} from './inbound-history.js';
 import { createCipheriv,createDecipheriv,randomBytes } from 'node:crypto';
 import { normalizeMailAddress } from '../packages/core/src/mailAuth.js';
 import { hash,mailKv } from './mail-service.js';
@@ -20,10 +21,13 @@ local t=redis.call('TIME');local now=tonumber(t[1])*1000+math.floor(tonumber(t[2
 local old=redis.call('GET',KEYS[1]);if old then local j=cjson.decode(old);if j.digest~=ARGV[1] then return 'conflict' end;return j.status end
 local deadline=math.min(tonumber(ARGV[4]),tonumber(ARGV[5]));if deadline<=now then return 'expired' end
 if redis.call('ZCARD',KEYS[3])>=1000 or tonumber(redis.call('GET',KEYS[4]) or '0')>=200 or tonumber(redis.call('GET',KEYS[5]) or '0')>=1000 then return 'limited' end
-local j=cjson.decode(ARGV[2]);j.status='queued';j.createdAt=now;j.deadline=deadline;j.attempts=0
+local historyType=redis.call('TYPE',KEYS[6]).ok;if historyType~='none' and historyType~='zset' then return redis.error_reply('Invalid history index') end
+local j=cjson.decode(ARGV[2]);j.status='queued';j.createdAt=now;j.updatedAt=now;j.deadline=deadline;j.attempts=0
 redis.call('SET',KEYS[1],cjson.encode(j),'PX',2592000000)
 redis.call('SET',KEYS[2],ARGV[3],'PX',deadline-now)
 redis.call('ZADD',KEYS[3],now,KEYS[1])
+redis.call('ZREMRANGEBYSCORE',KEYS[6],'-inf',now-2592000000)
+redis.call('ZADD',KEYS[6],now,KEYS[1]);redis.call('ZREMRANGEBYRANK',KEYS[6],0,-32001);redis.call('PEXPIRE',KEYS[6],2592000000)
 for i=4,5 do if redis.call('INCR',KEYS[i])==1 then redis.call('PEXPIRE',KEYS[i],86400000) end end
 return 'queued'
 `;
@@ -43,9 +47,10 @@ export async function enqueueInboundMail(config,{event,scope},storage=mailKv(con
   const prior=await storage(['GET',key]);
   if(prior){const j=JSON.parse(prior);if(j.digest!==scope.contentHash)return {status:'conflict',id:event.id};if(!statuses.includes(j.status))throw Error('Invalid stored status');return {status:j.status,id:event.id};}
   const recipient=await resolveInboundMail(config,scope,request);if(!recipient)return {status:'denied',id:event.id};
-  const record={id:event.id,digest:scope.contentHash,identityService:config.identity.url};
+  const historyOwner=inboundHistoryOwner(config,recipient.wallet);
+  const record={id:event.id,digest:scope.contentHash,identityService:config.identity.url,historyOwner};
   const encrypted=encode(config,{event,scope,recipient},key);
-  const status=await storage(['EVAL',ENQUEUE_INBOUND_MAIL,'5',key,`${key}:payload`,`${config.prefix}queue`,`${config.prefix}quota:${hash(event.mailbox.toLowerCase())}`,`${config.prefix}quota:all`,scope.contentHash,JSON.stringify(record),encrypted,String(event.receivedAt+23*3600000),String(recipient.expiresAt)]);
+  const status=await storage(['EVAL',ENQUEUE_INBOUND_MAIL,'6',key,`${key}:payload`,`${config.prefix}queue`,`${config.prefix}quota:${hash(event.mailbox.toLowerCase())}`,`${config.prefix}quota:all`,inboundHistoryKey(config,historyOwner),scope.contentHash,JSON.stringify(record),encrypted,String(event.receivedAt+23*3600000),String(recipient.expiresAt)]);
   if(![...statuses,'conflict','expired','limited'].includes(status))throw Error('Invalid storage result');
   return {status,id:event.id};
 }

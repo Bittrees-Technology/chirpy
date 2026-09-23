@@ -73,3 +73,17 @@ test('signed discovery reviews and restores paginated lookup-only IDs on a fresh
  expect(await readState()).toEqual({version:1,active:a,receipts:[a,b].map(id=>({id,digest:null,createdAt:null}))});expect(lookups).toBe(2);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await review.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('forwarding-discovery-mobile.png')});
 });
+
+test('incoming forwarding history uses separate wallet authority and never retries uncertain publication',async({page,walletAddress},testInfo)=>{
+ const {INBOUND_HISTORY_SERVICE,inboundHistorySignMessage}=await import('../../packages/core/src/inboundHistory.js');
+ await page.setViewportSize({width:390,height:844});const wallet=walletAddress.toLowerCase(),cursor='b'.repeat(64);let requests=0;
+ await page.route('**/api/mail/inbound-history',async route=>{
+  if(route.request().method()==='GET')return route.fulfill({json:{enabled:true,version:1,service:INBOUND_HISTORY_SERVICE}});
+  const {command,signature}=route.request().postDataJSON();expect(command).toMatchObject({action:'history',wallet,service:INBOUND_HISTORY_SERVICE});expect((await recoverMessageAddress({message:inboundHistorySignMessage(command),signature})).toLowerCase()).toBe(wallet);requests++;
+  return route.fulfill({json:{status:'history',...command,records:[{id:(command.cursor?'d':'a').repeat(64),status:command.cursor?'published':'uncertain',createdAt:1700000000000,updatedAt:1700000001000,deadline:1700000060000,attempts:1}],nextCursor:command.cursor?null:cursor}});
+ });
+ await page.goto('/');await dismissAnalyticsConsent(page);await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Channels/}).click();
+ await page.getByText('Incoming forwarding history',{exact:true}).click();const history=page.locator('.inbound-email-history');await history.getByRole('button',{name:'Check incoming forwarding'}).click();await expect(history).toContainText('Publication is uncertain');await expect(history).toContainText('Do not resend automatically');await expect(history.getByRole('button')).toHaveCount(2);
+ await history.getByRole('button',{name:'Older requests'}).click();await expect(history).toContainText('The bridge recorded a wallet publication');await expect(history).toContainText('does not confirm recipient delivery or reading');expect(requests).toBe(2);await expect(history.getByRole('region',{name:'Incoming forwarding results'})).toBeFocused();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await history.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('incoming-forwarding-history-mobile.png')});
+});

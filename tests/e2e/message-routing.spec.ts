@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures/wallet";
 test("email handoff stays separate from wallet messaging and the bridge is honest", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.locator(".nav-item", { hasText: "Channels" }).click();
-  await expect(page.getByRole("heading", { name: "Email → wallet: not connected yet" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Email → wallet" })).toBeVisible();
   await expect(page.getByText("Enable wallet messaging to create your invitation link.")).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: testInfo.outputPath("channels-mobile.png"), fullPage: true });

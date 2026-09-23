@@ -1,3 +1,4 @@
+import {InboundHistory} from './InboundHistory';
 import { WalletEmail } from "./WalletEmail";
 import React from "react";
 import { useIdentity, useChat } from "../state";
@@ -31,6 +32,7 @@ export function MessageRoutes({ onCompose }: { onCompose: () => void }) {
       <h2>{t("routing.bridgeTitle")}</h2>
       <p>{t("routing.bridgeNotice")}</p>
       <p>{t("routing.bridgePrivacy")}</p>
+      <InboundHistory />
     </div>
   </section>;
 }
