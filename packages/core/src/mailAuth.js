@@ -24,3 +24,14 @@ export function parseMailReceiptDetails(value, status) {
       ['sending','accepted'].includes(status) && value.attempts === 0 || status === 'queued' && value.attempts >= 5) throw Error('Invalid forwarding receipt.');
   return {version:1,createdAt:value.createdAt,updatedAt:value.updatedAt,attempts:value.attempts,retryUntil:value.retryUntil};
 }
+
+export const MAIL_DELIVERY_EVENTS=Object.freeze(['sent','delivered','delivery_delayed','failed','bounced','complained','suppressed']);
+export function parseMailDeliveryDetails(value) {
+ if(!value||Object.keys(value).sort().join(',')!=='events,version'||value.version!==1||!Array.isArray(value.events)||value.events.length>7)throw Error('Invalid provider delivery evidence.');
+ const seen=new Set();
+ const events=value.events.map(event=>{
+  if(!event||Object.keys(event).sort().join(',')!=='occurredAt,type'||!MAIL_DELIVERY_EVENTS.includes(event.type)||seen.has(event.type)||!Number.isSafeInteger(event.occurredAt)||event.occurredAt<=0||event.occurredAt>8640000000000000)throw Error('Invalid provider delivery evidence.');
+  seen.add(event.type);return {type:event.type,occurredAt:event.occurredAt};
+ });
+ events.sort((a,b)=>a.occurredAt-b.occurredAt||a.type.localeCompare(b.type));return {version:1,events};
+}

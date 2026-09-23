@@ -1,6 +1,7 @@
+import {mailDeliveryKey,APPLY_MAIL_DELIVERY_EVENT} from './mail-delivery.js';
 import { Webhook } from 'svix';
 import { mailConfig, mailKv, hash, suppressionKey } from './mail-service.js';
-import { normalizeMailAddress } from '../packages/core/src/mailAuth.js';
+import { normalizeMailAddress, MAIL_DELIVERY_EVENTS } from '../packages/core/src/mailAuth.js';
 
 export const APPLY_MAIL_EVENT = `
 local old=redis.call('GET',KEYS[1])
@@ -47,20 +48,26 @@ export async function handleMailEvent(request,env=process.env,storage) {
   try {config.webhook.verify(raw,headers);} catch {return reply(401,{error:'Invalid event authorization.'});}
   let event;
   try {event=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));} catch {return reply(400,{error:'Invalid event body.'});}
-  if(!['email.bounced','email.complained'].includes(event?.type))return reply(200,{status:'ignored'});
+  if(typeof event?.type!=='string'||!event.type.startsWith('email.')||!MAIL_DELIVERY_EVENTS.includes(event.type.slice(6)))return reply(200,{status:'ignored'});
   const data=event.data;
-  // Chirpy sends one plain-address recipient per email. Ignore other applications.
+  // Chat sends one plain-address recipient per email. Ignore other applications.
   const from=normalizeMailAddress(data?.from);
   if(!from)return reply(400,{error:'Invalid event scope.'});
   if(from!==config.from)return reply(200,{status:'ignored'});
   const email=Array.isArray(data?.to) && data.to.length===1 ? normalizeMailAddress(data.to[0]):null;
   if(!email || normalizeMailAddress(data?.from)!==config.from || typeof data.email_id!=='string' || !data.email_id || data.email_id.length>200)return reply(400,{error:'Invalid event scope.'});
-  const reason=event.type==='email.bounced'?'bounce':'complaint';
+  const reason=event.type==='email.bounced'?'bounce':event.type==='email.complained'?'complaint':null;
+  const at=typeof event.created_at==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(event.created_at)?Date.parse(event.created_at):NaN;
+  const timed=Number.isSafeInteger(at)&&at>0&&at<=Date.now()+300000;
+  // Preserve existing bounce/complaint suppression even when a legacy event has no usable timestamp.
+  if(!timed&&!reason)return reply(400,{error:'Invalid event time.'});
   const digest=hash(JSON.stringify([event.type,data.email_id,config.from,email.toLowerCase()]));
   const record=JSON.stringify({version:1,reason,evidenceHash:hash(headers['svix-id'])});
   try {
     const kv=storage||mailKv(config);
-    const result=await kv(['EVAL',APPLY_MAIL_EVENT,'2',`${config.prefix}event:${hash(headers['svix-id'])}`,suppressionKey(config,email),digest,record]);
+    const legacyKey=`${config.prefix}event:${hash(headers['svix-id'])}`,recipientKey=suppressionKey(config,email);
+    const result=await kv(['EVAL',APPLY_MAIL_DELIVERY_EVENT,'4',`${config.prefix}delivery-event:${hash(headers['svix-id'])}`,mailDeliveryKey(config,data.email_id,recipientKey),legacyKey,recipientKey,hash(JSON.stringify([digest,timed?at:null])),digest,reason?record:'',event.type.slice(6),String(timed?at:0)]);
+    if(result==='invalid')return reply(503,{error:'Mail event evidence unavailable.'});
     if(result==='conflict')return reply(409,{error:'Event identity conflict.'});
     if(!['applied','duplicate'].includes(result))throw Error('storage result');
     return reply(200,{status:result});

@@ -828,5 +828,15 @@
   "mailDiscovery.empty": "No se encontraron ID conservados en esta página. Esto no demuestra que nunca se enviaran mensajes anteriores.",
   "mailDiscovery.capacity": "Esta página supera el límite de 100 ID guardados. Crea una copia y elimina ID anteriores antes de buscar esta página de nuevo. No se sobrescribió nada.",
   "mailDiscovery.saved": "ID guardados. No se envió ningún correo. Comprueba su estado antes de volver a enviar.",
-  "mailDiscovery.failed": "No se pudo completar la recuperación. La cartera, los ID guardados o el historial pueden haber cambiado. Inicia otra consulta; se conservaron los ID existentes."
+  "mailDiscovery.failed": "No se pudo completar la recuperación. La cartera, los ID guardados o el historial pueden haber cambiado. Inicia otra consulta; se conservaron los ID existentes.",
+  "mail.delivery.title": "Informes de entrega del proveedor",
+  "mail.delivery.scope": "Informes verificados del proveedor, con la última fecha de cada tipo de evento. La entrega significa que el servidor del destinatario aceptó el correo; no confirma su llegada a la bandeja de entrada ni su lectura. Los informes pueden llegar tarde o estar incompletos.",
+  "mail.delivery.empty": "No hay informes del proveedor asociados. Esto no demuestra la entrega ni un fallo.",
+  "mail.delivery.sent": "El proveedor inició un intento de entrega",
+  "mail.delivery.delivered": "El servidor del destinatario aceptó el correo",
+  "mail.delivery.delivery_delayed": "El proveedor notificó un retraso de entrega",
+  "mail.delivery.failed": "El proveedor notificó un fallo de envío",
+  "mail.delivery.bounced": "El servidor del destinatario rechazó el correo",
+  "mail.delivery.complained": "El destinatario marcó el correo como spam",
+  "mail.delivery.suppressed": "El proveedor suprimió este correo"
 }

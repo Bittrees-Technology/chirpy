@@ -41,14 +41,14 @@ test('forwarding history shows independently signed receipt details without send
   if(route.request().method()==='GET')return route.fulfill({json:{enabled:true,service}});
   const {command,signature}=route.request().postDataJSON();expect(command).toMatchObject({action:'status',wallet,service});expect(ids).toContain(command.id);
   expect((await recoverMessageAddress({message:mailSignMessage(command),signature})).toLowerCase()).toBe(wallet);posts++;
-  return route.fulfill({json:{id:command.id,status:command.id===ids[0]?'accepted':'stopped',receipt:{version:1,createdAt:1700000000000,updatedAt:command.id===ids[0]?1700000001000:null,attempts:command.id===ids[0]?2:0,retryUntil:1700082800000}}});
+  return route.fulfill({json:{id:command.id,status:command.id===ids[0]?'accepted':'stopped',receipt:{version:1,createdAt:1700000000000,updatedAt:command.id===ids[0]?1700000001000:null,attempts:command.id===ids[0]?2:0,retryUntil:1700082800000},...(command.id===ids[0]?{delivery:{version:1,events:[{type:'delivered',occurredAt:1700000002000},{type:'bounced',occurredAt:1700000003000}]}}:{})}});
  });
  await page.goto('/');await dismissAnalyticsConsent(page);await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();
  await page.evaluate(({wallet,ids})=>localStorage.setItem(`chat:wallet-email-receipts:v1:${encodeURIComponent(new URL('/api/mail',location.href).href)}:${wallet}`,JSON.stringify({version:1,active:ids[0],receipts:ids.map(id=>({id,digest:null,createdAt:null}))})),{wallet,ids});
  const saved=await page.evaluate(wallet=>localStorage.getItem(`chat:wallet-email-receipts:v1:${encodeURIComponent(new URL('/api/mail',location.href).href)}:${wallet}`),wallet);
  await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Channels/}).click();await page.getByText('Forwarding request history',{exact:true}).click();
  const rows=page.locator('.wallet-email-history li');await expect(rows).toHaveCount(2);
- await rows.nth(0).getByRole('button',{name:'Check request status'}).click();await expect(rows.nth(0)).toContainText('does not confirm delivery or reading');
+ await rows.nth(0).getByRole('button',{name:'Check request status'}).click();await expect(rows.nth(0)).toContainText('does not confirm delivery or reading');await expect(rows.nth(0)).toContainText('Recipient mail server accepted');await expect(rows.nth(0)).toContainText('Recipient mail server rejected');await expect(rows.nth(0)).toContainText('does not prove inbox placement or reading');
  await rows.nth(1).getByRole('button',{name:'Check request status'}).click();await expect(rows.nth(1)).toContainText('Not recorded for this older request');await expect(rows.nth(0)).toContainText('Processing attempts');
  expect(posts).toBe(2);expect(await page.evaluate(wallet=>localStorage.getItem(`chat:wallet-email-receipts:v1:${encodeURIComponent(new URL('/api/mail',location.href).href)}:${wallet}`),wallet)).toBe(saved);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await rows.nth(0).scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('forwarding-history-mobile.png')});

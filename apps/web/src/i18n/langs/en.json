@@ -828,5 +828,15 @@
   "mailDiscovery.empty": "No retained IDs were found on this page. This is not proof that earlier messages were never sent.",
   "mailDiscovery.capacity": "This page will not fit in the 100 saved-ID limit. Back up and remove older saved IDs before finding this page again. Nothing was overwritten.",
   "mailDiscovery.saved": "Request IDs saved. No email was sent. Check their current status before sending again.",
-  "mailDiscovery.failed": "Recovery could not finish. Your wallet, saved IDs or service history may have changed. Start a fresh lookup; existing recovery IDs were preserved."
+  "mailDiscovery.failed": "Recovery could not finish. Your wallet, saved IDs or service history may have changed. Start a fresh lookup; existing recovery IDs were preserved.",
+  "mail.delivery.title": "Provider delivery reports",
+  "mail.delivery.scope": "Verified provider reports, with the latest timestamp for each event type. Delivery means the recipient’s mail server accepted the email; it does not prove inbox placement or reading. Reports may arrive late or be incomplete.",
+  "mail.delivery.empty": "No correlated provider reports are available. This is not proof of delivery or failure.",
+  "mail.delivery.sent": "Provider began a delivery attempt",
+  "mail.delivery.delivered": "Recipient mail server accepted the email",
+  "mail.delivery.delivery_delayed": "Provider reported a delivery delay",
+  "mail.delivery.failed": "Provider reported a sending failure",
+  "mail.delivery.bounced": "Recipient mail server rejected the email",
+  "mail.delivery.complained": "Recipient reported the email as spam",
+  "mail.delivery.suppressed": "Provider suppressed this email"
 }

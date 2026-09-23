@@ -85,3 +85,16 @@ it('rejects history responses after provider replacement and invalid cursors bef
  await expect(discoverWalletEmail({...historyCommand(),cursor:'bad'})).rejects.toThrow();expect(request).not.toHaveBeenCalled();
  fetcher.mockImplementation(async()=>{replacement();return Response.json(historyResult());});await expect(discoverWalletEmail(historyCommand())).rejects.toThrow();
 });
+
+it('returns only validated provider event evidence for signed accepted-status queries',async()=>{
+ const delivery={version:1,events:[{type:'bounced',occurredAt:1700000001000},{type:'delivered',occurredAt:1700000000000}]};
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'accepted',delivery,private:'ignored'}));expect((await submitWalletEmail(command())).delivery?.events.map(e=>e.type)).toEqual(['delivered','bounced']);
+});
+it.each([{version:2,events:[]},{version:1,events:[{type:'read',occurredAt:1}]},{version:1,events:[{type:'delivered',occurredAt:0}]},{version:1,events:[],recipient:'private'}])('rejects invalid provider evidence before showing it',async delivery=>{
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'accepted',delivery}));await expect(submitWalletEmail(command())).rejects.toThrow();
+});
+it('refuses delivery evidence on send, queued or unknown responses',async()=>{
+ const delivery={version:1,events:[]};
+ for(const status of ['queued','unknown']){fetcher.mockResolvedValue(Response.json({id:command().id,status,delivery}));await expect(submitWalletEmail(command())).rejects.toThrow();}
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'accepted',delivery}));await expect(submitWalletEmail({...command(),action:'send'})).rejects.toThrow();
+});

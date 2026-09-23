@@ -1,7 +1,8 @@
+import {mailDeliveryKey} from './mail-delivery.js';
 import { mailIdentityConfig, mailIdentityScope, resolveMailIdentity } from './mail-identity.js';
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { recoverMessageAddress } from 'viem';
-import { normalizeMailAddress, mailSignMessage, parseMailReceiptDetails } from '../packages/core/src/mailAuth.js';
+import { normalizeMailAddress, mailSignMessage, parseMailReceiptDetails, parseMailDeliveryDetails } from '../packages/core/src/mailAuth.js';
 import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_HEARTBEAT, APPLY_MAIL_OPTOUT, LIST_MAIL_HISTORY } from './mail-store.js';
 export const hash = value => createHash('sha256').update(value).digest('hex');
 const address = value => typeof value === 'string' && /^0x[a-f0-9]{40}$/.test(value);
@@ -104,7 +105,14 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
         const job=JSON.parse(raw);
         if(job.wallet!==c.wallet||job.id!==c.id)throw Error('Invalid forwarding receipt owner.');
         const receipt=parseMailReceiptDetails({version:1,createdAt:job.createdAt,updatedAt:job.updatedAt??null,attempts:job.attempts,retryUntil:job.deadline},job.status);
-        return {status:job.status,id:c.id,receipt};
+        let delivery;
+        const recipientPrefix=`${config.prefix}suppressed:`;
+        if(job.status==='accepted'&&typeof job.providerId==='string'&&job.providerId.length>0&&job.providerId.length<=200&&typeof job.suppressionKey==='string'&&job.suppressionKey.startsWith(recipientPrefix)&&/^[a-f0-9]{64}$/.test(job.suppressionKey.slice(recipientPrefix.length))){
+          const evidence=await kv(['GET',mailDeliveryKey(config,job.providerId,job.suppressionKey)]);
+          if(evidence!==null&&(typeof evidence!=='string'||Buffer.byteLength(evidence)>2048))throw Error('Invalid provider delivery evidence.');
+          delivery=parseMailDeliveryDetails(evidence===null?{version:1,events:[]}:JSON.parse(evidence));
+        }
+        return {status:job.status,id:c.id,receipt,...(delivery?{delivery}:{})};
       }
       const digest=hash(JSON.stringify([c.service,c.wallet,c.id,c.to,c.subject,c.text]));
       // A retry must report the existing outcome even if permission was revoked
