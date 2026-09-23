@@ -10,7 +10,7 @@ const exec = promisify(execFile);
 const service = "https://chirpy.test/api/usersync";
 // A dedicated ephemeral Redis container is supplied locally or by the CI service.
 describe.skipIf(!container)("real Redis sync transactions", () => {
-  let server; let handler; let writeDelay = 0;
+  let server; let handler; let writeDelay = 0; let beforeWrite: (() => Promise<void>) | undefined;
   const ownedKeys = new Set<string>();
   async function redis(args: string[]) {
     const { stdout } = await exec("docker", ["exec", container!, "redis-cli", "--json", ...args], { maxBuffer: 2_000_000 });
@@ -22,7 +22,8 @@ describe.skipIf(!container)("real Redis sync transactions", () => {
         let body = ""; for await (const chunk of req) body += chunk;
         const command = JSON.parse(body) as string[];
         if (command[0] === "EVAL") for (const key of command.slice(3, 3 + Number(command[2]))) ownedKeys.add(key);
-        if (writeDelay && command[0] === "EVAL" && Number(command[2]) === 3) await new Promise((resolve) => setTimeout(resolve, writeDelay));
+        if (writeDelay && command[0] === "EVAL" && Number(command[2]) === 4) await new Promise((resolve) => setTimeout(resolve, writeDelay));
+        if (beforeWrite && command[0] === 'EVAL' && Number(command[2]) === 4) await beforeWrite();
         const result = await redis(command);
         res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ result }));
       } catch { res.statusCode = 503; res.end('{}'); }
@@ -82,4 +83,96 @@ describe.skipIf(!container)("real Redis sync transactions", () => {
     const revocation = Array.from(ownedKeys).find((key) => key.startsWith(`chirpy:usersync:revoked:${sessionA.wallet.address.toLowerCase()}:`));
     expect(await redis(["PTTL", revocation!])).toBeGreaterThan(0);
   });
+  const upgraded = (address: string, payloadVersion = 2) => JSON.stringify({ version: 1, algorithm: 'AES-GCM', kdf: 'HKDF-SHA-256', address, iv: Buffer.alloc(12).toString('base64'), ciphertext: Buffer.alloc(16).toString('base64'), updatedAt: 1, payloadVersion });
+  it("serializes racing old/new-format clients and permanently rejects downgrade after an accepted upgrade", async () => {
+    const current = await session(), upgradedBlob = upgraded(current.wallet.address);
+    const races = await Promise.all([call(await current.write('legacy')), call(await current.write(upgradedBlob))]);
+    expect(races.map(result => result.code).sort()).toEqual([200,409]);
+    let latest = await call({address:current.wallet.address},'GET');
+    if (latest.body.minPayloadVersion === 1) {
+      expect(latest.body.blob).toBe('legacy');
+      expect((await call(await current.write(upgradedBlob,latest.body.revision))).code).toBe(200);
+      latest = await call({address:current.wallet.address},'GET');
+    }
+    expect(latest.body.minPayloadVersion).toBe(2);
+    const revision=latest.body.revision,key='chirpy:usersync:payload-v2:'+current.wallet.address.toLowerCase(),raw=await redis(['GET',key]);
+    for (const blob of ['legacy offline copy', JSON.stringify({version:1,ciphertext:'old'}), upgraded(current.wallet.address,3)]) {
+      expect([400,426]).toContain((await call(await current.write(blob,revision))).code);
+      expect(await redis(['GET',key])).toBe(raw);
+    }
+    expect((await call(await current.write(upgradedBlob,revision))).code).toBe(200);
+    expect((await call({address:current.wallet.address},'GET')).body).toMatchObject({revision:revision+1,minPayloadVersion:2,blob:upgradedBlob});
+    expect(await redis(['TTL',key])).toBe(-1);
+  });
+  it("a grant expiring during an upgrade cannot advance the format floor", async () => {
+    const current=await session();expect((await call(await current.write('legacy'))).code).toBe(200);
+    current.grant.expiresAt=Date.now()+500;current.authorization.expiresAt=current.grant.expiresAt;
+    current.authorization.signature=await current.wallet.signMessage({message:syncGrantMessage(current.grant)});
+    writeDelay=750;
+    try {expect((await call(await current.write(upgraded(current.wallet.address),1))).code).toBe(401);} finally {writeDelay=0;}
+    expect((await call({address:current.wallet.address},'GET')).body).toMatchObject({revision:1,minPayloadVersion:1,blob:'legacy'});
+  });
+  it("keeps safe-integer revisions exact and refuses corrupt floors without changing bytes", async () => {
+    const current=await session(),key='chirpy:usersync:'+current.wallet.address.toLowerCase();ownedKeys.add(key);
+    await redis(['SET',key,JSON.stringify({blob:'legacy',revision:Number.MAX_SAFE_INTEGER-2,updatedAt:1})]);
+    expect((await call(await current.write(upgraded(current.wallet.address),Number.MAX_SAFE_INTEGER-2))).code).toBe(200);
+    const upgradedKey='chirpy:usersync:payload-v2:'+current.wallet.address.toLowerCase();
+    const stored=await redis(['GET',upgradedKey]);expect(stored).toContain('"revision":9007199254740990');
+    expect((await call(await current.write(upgraded(current.wallet.address),Number.MAX_SAFE_INTEGER-1))).code).toBe(409);
+    expect(await redis(['GET',upgradedKey])).toBe(stored);
+    await redis(['DEL',upgradedKey]);
+    for (const raw of ['bad bytes',JSON.stringify({blob:'legacy',updatedAt:1,revision:0,minPayloadVersion:2}),JSON.stringify({blob:'legacy',updatedAt:1,revision:0,minPayloadVersion:99})]) {
+      await redis(['SET',key,raw]);expect((await call({address:current.wallet.address},'GET')).code).toBe(503);
+      expect((await call(await current.write(upgraded(current.wallet.address)))).code).toBe(503);expect(await redis(['GET',key])).toBe(raw);
+    }
+  });
+
+  it("an old deployed API can modify only the retained legacy slot after upgrade", async () => {
+    const current=await session(),legacy='chirpy:usersync:'+current.wallet.address.toLowerCase();
+    expect((await call(await current.write('legacy initial'))).code).toBe(200);
+    const blob=upgraded(current.wallet.address);expect((await call(await current.write(blob,1))).code).toBe(200);
+    const protectedKey='chirpy:usersync:payload-v2:'+current.wallet.address.toLowerCase(),snapshot=await redis(['GET',protectedKey]);
+    // Original deployed CAS behavior: it knows only the legacy data key.
+    const oldCas=`local raw=redis.call('GET',KEYS[1]); local current=raw and cjson.decode(raw) or {}; local revision=tonumber(current.revision) or 0; if revision~=tonumber(ARGV[1]) then return {0,revision} end; local next=cjson.decode(ARGV[2]); next.revision=revision+1; redis.call('SET',KEYS[1],cjson.encode(next)); return {1,next.revision}`;
+    expect(await redis(['EVAL',oldCas,'1',legacy,'1',JSON.stringify({blob:'older handler update',updatedAt:2})])).toEqual([1,2]);
+    expect(await redis(['GET',protectedKey])).toBe(snapshot);
+    expect((await call({address:current.wallet.address},'GET')).body).toMatchObject({blob,revision:2,minPayloadVersion:2});
+    expect((await call(await current.write('legacy current API attempt',2))).code).toBe(426);
+    // Even broken legacy storage cannot hide the upgraded copy.
+    await redis(['SET',legacy,'damaged legacy bytes']);
+    expect((await call({address:current.wallet.address},'GET')).body.blob).toBe(blob);
+    expect((await call(await current.write(blob,2))).code).toBe(200);
+    await redis(['SET',legacy,JSON.stringify({blob:'readable legacy',revision:99,updatedAt:1})]);
+    await redis(['SET',protectedKey,'damaged upgraded bytes']);
+    expect((await call({address:current.wallet.address},'GET')).code).toBe(503);
+    expect((await call(await current.write(blob,3))).code).toBe(503);
+    expect(await redis(['GET',protectedKey])).toBe('damaged upgraded bytes');
+  });
+  it("a legacy write between snapshot and upgrade forces a reread without creating the protected slot", async () => {
+    const current=await session(),legacy='chirpy:usersync:'+current.wallet.address.toLowerCase();
+    expect((await call(await current.write('initial'))).code).toBe(200);
+    let entered=false,release!:()=>void;beforeWrite=()=>new Promise(resolve=>{entered=true;release=resolve;});
+    const request=await current.write(upgraded(current.wallet.address),1),pending=call(request);
+    try {
+      await vi.waitFor(()=>expect(entered).toBe(true));
+      const concurrent=JSON.stringify({blob:'concurrent legacy write',updatedAt:2,revision:1});
+      await redis(['SET',legacy,concurrent]);release();expect((await pending).code).toBe(409);
+      expect(await redis(['GET','chirpy:usersync:payload-v2:'+current.wallet.address.toLowerCase()])).toBe(null);
+      expect(await redis(['GET',legacy])).toBe(concurrent);
+    } finally {beforeWrite=undefined;release?.();await pending;}
+  });
+
+  it("revocation while an upgrade waits at storage prevents the protected record from being established", async () => {
+    const current=await session();expect((await call(await current.write('legacy'))).code).toBe(200);
+    let entered=false,release!:()=>void;beforeWrite=()=>new Promise(resolve=>{entered=true;release=resolve;});
+    const pending=call(await current.write(upgraded(current.wallet.address),1));
+    try {
+      await vi.waitFor(()=>expect(entered).toBe(true));
+      expect((await call({action:'revoke-device',address:current.wallet.address,authorization:current.authorization,signature:await current.device.signMessage({message:syncRevokeDeviceMessage(current.grant)})})).code).toBe(200);
+      release();expect((await pending).code).toBe(403);
+      expect(await redis(['GET','chirpy:usersync:payload-v2:'+current.wallet.address.toLowerCase()])).toBe(null);
+      expect((await call({address:current.wallet.address},'GET')).body).toMatchObject({blob:'legacy',revision:1,minPayloadVersion:1});
+    } finally {beforeWrite=undefined;release?.();await pending;}
+  });
+
 });

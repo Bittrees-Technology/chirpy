@@ -1,3 +1,4 @@
+import { parseSyncStorage, syncPayloadVersion, SYNC_PAYLOAD_VERSIONS } from "../server/sync-format.js";
 import { recoverMessageAddress, keccak256, stringToHex } from "viem";
 import { SYNC_AUTH_MAX_AGE, syncGrantMessage, syncWriteMessage, syncRevokeDeviceMessage, syncRevokeAllMessage } from "../packages/core/src/syncAuth.js";
 import { syncCors } from "../server/sync-cors.js";
@@ -10,6 +11,7 @@ const MAX_BLOB = 400_000;
 const SERVICE = process.env.CHIRPY_SYNC_SERVICE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}/api/usersync` : "");
 const isAddr = (s) => typeof s === "string" && /^0x[a-fA-F0-9]{40}$/.test(s);
 const validSignature = (s) => typeof s === "string" && /^0x[a-fA-F0-9]{130}$/.test(s);
+const upgradedKey = (address) => `${PREFIX}payload-v2:${address}`;
 const epochKey = (address) => `${PREFIX}epoch:${address}`;
 const revokedKey = (grant) => `${PREFIX}revoked:${grant.address.toLowerCase()}:${keccak256(stringToHex(syncGrantMessage(grant)))}`;
 const same = (left, right) => left.toLowerCase() === right.toLowerCase();
@@ -22,21 +24,26 @@ async function kv(cmd) {
   return result.result;
 }
 
-// Authorization and data revision are checked in the same Redis transaction.
+// Authorization, exact prior bytes, revision and the monotonic format floor
+// are checked in one Redis transaction. The API validated the prior bytes and
+// signed envelope; an intervening change invalidates that entire snapshot.
 export const SYNC_CAS = `
 local epoch = tonumber(redis.call('GET', KEYS[2]) or '0')
 local clock = redis.call('TIME')
 local now = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
 if now >= tonumber(ARGV[4]) then return {-2, epoch} end
 if epoch ~= tonumber(ARGV[3]) or redis.call('EXISTS', KEYS[3]) == 1 then return {-1, epoch} end
-local raw = redis.call('GET', KEYS[1])
-local current = raw and cjson.decode(raw) or {}
-local revision = tonumber(current.revision) or 0
-if revision ~= tonumber(ARGV[1]) then return {0, revision} end
-local next = cjson.decode(ARGV[2])
-next.revision = revision + 1
-redis.call('SET', KEYS[1], cjson.encode(next))
-return {1, next.revision}
+local upgraded = redis.call('GET', KEYS[4])
+if (upgraded or '') ~= ARGV[9] then return {0} end
+-- Once upgraded, legacy deployment writes cannot interfere with current data.
+if not upgraded and (redis.call('GET', KEYS[1]) or '') ~= ARGV[5] then return {0} end
+if tonumber(ARGV[6]) ~= tonumber(ARGV[1]) then return {0, tonumber(ARGV[6])} end
+if tonumber(ARGV[8]) < tonumber(ARGV[7]) then return {-3, tonumber(ARGV[7])} end
+-- Keep signed ciphertext and safe-integer revisions exactly as serialized by
+-- the API. Lua's JSON encoder can round large revisions on re-encoding.
+local target = tonumber(ARGV[8]) == 2 and KEYS[4] or KEYS[1]
+redis.call('SET', target, ARGV[2])
+return {1, tonumber(ARGV[1]) + 1}
 `;
 export const SYNC_REVOKE_ALL = `
 local epoch = tonumber(redis.call('GET', KEYS[1]) or '0')
@@ -80,9 +87,9 @@ export default async function handler(req, res) {
     if (method === "GET") {
       const address = String(req.query?.address || "");
       if (!isAddr(address)) return respond(400, { error: "bad address" });
-      const [raw, rawEpoch] = await kv(["MGET", PREFIX + address.toLowerCase(), epochKey(address.toLowerCase())]);
-      const record = raw ? JSON.parse(raw) : { blob: null, updatedAt: 0, revision: 0 };
-      return respond(200, { ...record, revision: Number(record.revision) || 0, epoch: Number(rawEpoch) || 0, authVersion: 2, service: SERVICE });
+      const [raw, rawEpoch, upgradedRaw] = await kv(["MGET", PREFIX + address.toLowerCase(), epochKey(address.toLowerCase()), upgradedKey(address.toLowerCase())]);
+      const record = parseSyncStorage(raw, upgradedRaw, address);
+      return respond(200, { ...record, epoch: Number(rawEpoch) || 0, authVersion: 2, payloadVersions: SYNC_PAYLOAD_VERSIONS, service: SERVICE });
     }
     if (String(req.headers?.["content-type"] || "").split(";")[0].trim().toLowerCase() !== "application/json") return respond(415, { error: "Use application/json." });
     const { action, address, authorization, signature, blob, expectedRevision, epoch, expiresAt } = req.body || {};
@@ -104,13 +111,21 @@ export default async function handler(req, res) {
     }
     if (typeof blob !== "string") return respond(400, { error: "bad encrypted blob" });
     if (Buffer.byteLength(blob, "utf8") > MAX_BLOB) return respond(413, { error: "blob too large" });
-    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || expectedRevision >= Number.MAX_SAFE_INTEGER) return respond(409, { stale: true, error: "Refresh sync state before saving." });
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || expectedRevision >= Number.MAX_SAFE_INTEGER - 1) return respond(409, { stale: true, error: "Refresh sync state before saving." });
     if (!await signedBy(syncWriteMessage(authorization, expectedRevision, keccak256(stringToHex(blob))), signature, authorization.device)) return respond(401, { error: "Invalid device write signature." });
-    const [accepted, revision] = await kv(["EVAL", SYNC_CAS, "3", PREFIX + address.toLowerCase(), epochKey(address.toLowerCase()), revokedKey(authorization), String(expectedRevision), JSON.stringify({ blob, updatedAt: now }), String(authorization.epoch), String(authorization.expiresAt)]);
+    let payloadVersion;
+    try { payloadVersion = syncPayloadVersion(blob, address); }
+    catch { return respond(400, { error: "Unsupported or invalid encrypted sync format." }); }
+    const [raw, upgradedRaw] = await kv(["MGET", PREFIX + address.toLowerCase(), upgradedKey(address.toLowerCase())]);
+    const current = parseSyncStorage(raw, upgradedRaw, address);
+    const next = JSON.stringify({ blob, updatedAt: now, revision: expectedRevision + 1, minPayloadVersion: Math.max(current.minPayloadVersion, payloadVersion) });
+    const [accepted, revision] = await kv(["EVAL", SYNC_CAS, "4", PREFIX + address.toLowerCase(), epochKey(address.toLowerCase()), revokedKey(authorization), upgradedKey(address.toLowerCase()),
+      String(expectedRevision), next, String(authorization.epoch), String(authorization.expiresAt), raw ?? "", String(current.revision), String(current.minPayloadVersion), String(payloadVersion), upgradedRaw ?? ""]);
+    if (accepted === -3) return respond(426, { minPayloadVersion: revision, error: "Update Chat before saving this newer encrypted sync format. Existing data was preserved." });
     if (accepted === -2) return respond(401, { error: "Device authorization expired. Re-enable sync." });
     if (accepted === -1) return respond(403, { error: "Device authorization was revoked. Re-enable sync." });
     if (accepted === 0) return respond(409, { stale: true, revision });
     if (accepted !== 1) throw new Error("Invalid storage result");
-    return respond(200, { ok: true, revision });
+    return respond(200, { ok: true, revision, minPayloadVersion: Math.max(current.minPayloadVersion, payloadVersion) });
   } catch { return respond(503, { error: "Sync storage is temporarily unavailable. Your local data is unchanged." }); }
 }

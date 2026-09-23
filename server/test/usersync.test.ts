@@ -15,13 +15,14 @@ beforeEach(async () => {
     if (cmd[0] === "MGET") result = cmd.slice(1).map((key) => records.get(key) ?? null);
     else if (cmd[0] === "EVAL") {
       const count = Number(cmd[2]); const keys = cmd.slice(3, 3 + count); const args = cmd.slice(3 + count);
-      if (count === 3) {
+      if (count === 4) {
         expect(cmd[1]).toContain("redis.call('EXISTS', KEYS[3])");
         const epoch = Number(records.get(keys[1]) ?? 0);
-        const current = JSON.parse(records.get(keys[0]) ?? '{}'); const revision = current.revision ?? 0;
+        const current = JSON.parse(records.get(keys[3]) ?? records.get(keys[0]) ?? '{}'); const revision = current.revision ?? 0;
         if (epoch !== Number(args[2]) || records.has(keys[2])) result = [-1, epoch];
-        else if (revision !== Number(args[0])) result = [0, revision];
-        else { records.set(keys[0], JSON.stringify({ ...JSON.parse(args[1]), revision: revision + 1 })); result = [1, revision + 1]; }
+        else if ((records.get(keys[3]) ?? '') !== args[8] || !records.has(keys[3]) && (records.get(keys[0]) ?? '') !== args[4] || revision !== Number(args[0])) result = [0, revision];
+        else if (Number(args[7]) < Number(args[6])) result = [-3, Number(args[6])];
+        else { records.set(Number(args[7]) === 2 ? keys[3] : keys[0], args[1]); result = [1, revision + 1]; }
       } else {
         const epoch = Number(records.get(keys[0]) ?? 0);
         if (epoch !== Number(args[0])) result = [0, epoch];
@@ -120,4 +121,31 @@ it("rejects malformed migration configuration before accessing storage", async (
   vi.stubEnv("CHIRPY_SYNC_MIGRATION_ORIGINS", "*");
   expect((await call({}, "GET")).code).toBe(503);
   expect(fetch).not.toHaveBeenCalled();
+});
+
+const upgradedBlob = () => JSON.stringify({version:1,algorithm:'AES-GCM',kdf:'HKDF-SHA-256',address:account.address,iv:Buffer.alloc(12).toString('base64'),ciphertext:Buffer.alloc(16).toString('base64'),updatedAt:1,payloadVersion:2});
+it('advertises supported formats while preserving legacy writes, then rejects a downgrade even with a fresh valid signature',async()=>{
+  expect((await call({},'GET')).body).toMatchObject({minPayloadVersion:1,payloadVersions:[1,2],authVersion:2});
+  expect((await call(await write('legacy'))).code).toBe(200);
+  const upgraded = await call(await write(upgradedBlob(),1)); expect(upgraded.code).toBe(200); expect(upgraded.body.minPayloadVersion).toBe(2);
+  expect((await call({},'GET')).body).toMatchObject({minPayloadVersion:2,revision:2,blob:upgradedBlob()});
+  const old=await call(await write('legacy would resurrect deletion',2));expect(old.code).toBe(426);expect(old.body.minPayloadVersion).toBe(2);
+  expect((await call({},'GET')).body).toMatchObject({minPayloadVersion:2,revision:2,blob:upgradedBlob()});
+});
+it('the marker is signed and an unsigned request hint cannot upgrade the store',async()=>{
+  const request=await write(upgradedBlob());request.blob=request.blob.replace('"payloadVersion":2','"payloadVersion":1');expect((await call(request)).code).toBe(401);
+  expect((await call({...await write('legacy'),payloadVersion:2,minPayloadVersion:2})).code).toBe(200);
+  expect((await call({},'GET')).body.minPayloadVersion).toBe(1);
+});
+it('does not advance the floor for stale, malformed, unsupported or revoked upgrade requests',async()=>{
+  expect((await call(await write('legacy'))).code).toBe(200);
+  expect((await call(await write(upgradedBlob(),0))).code).toBe(409);
+  expect((await call(await write(upgradedBlob().replace('"payloadVersion":2','"payloadVersion":3'),1))).code).toBe(400);
+  const authorization=await grant();expect((await call({action:'revoke-device',address:account.address,authorization,signature:await device.signMessage({message:syncRevokeDeviceMessage(authorization)})})).code).toBe(200);
+  expect((await call(await write(upgradedBlob(),1,authorization))).code).toBe(403);
+  expect((await call({},'GET')).body).toMatchObject({minPayloadVersion:1,revision:1,blob:'legacy'});
+});
+it('preserves unknown/corrupt stored records on reads and authenticated writes',async()=>{
+  const key='chirpy:usersync:'+account.address.toLowerCase(),raw='{"blob":"legacy","updatedAt":0,"revision":0,"minPayloadVersion":99}';records.set(key,raw);
+  expect((await call({},'GET')).code).toBe(503);expect((await call(await write())).code).toBe(503);expect(records.get(key)).toBe(raw);
 });
