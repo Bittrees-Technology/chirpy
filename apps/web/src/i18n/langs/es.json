@@ -711,5 +711,6 @@
   "roomMembers.changed": "La cartera o la sala ha cambiado. Revisa los miembros antes de volver a intentarlo.",
   "roomMembers.gated": "Las salas restringidas requieren admisión mediante el servicio de acceso.",
   "roomMembers.duplicate": "Esa cartera ya es miembro de la sala.",
-  "roomMembers.unavailable": "No está disponible la opción de añadir miembros."
+  "roomMembers.unavailable": "No está disponible la opción de añadir miembros.",
+  "status.historyWalletChanged": "La cartera ha cambiado. Vuelve a cargar la conversación."
 }

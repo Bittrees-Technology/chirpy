@@ -11,8 +11,11 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
     const contextA = await browser.newContext();
     const contextB = await browser.newContext();
     const keyA = generatePrivateKey();
+    const keyB = generatePrivateKey();
     const walletA = await injectSyntheticWallet(contextA, keyA);
-    const walletB = await injectSyntheticWallet(contextB);
+    const walletB = await injectSyntheticWallet(contextB, keyB);
+    const labels = new Map([[walletA.toLowerCase(), "Group creator"], [walletB.toLowerCase(), "Group member"]]);
+    for (const context of [contextA, contextB]) await groupProfiles(context, labels);
     // Count only action names at the real browser SDK worker boundary; never
     // retain message bodies, wallet signatures or worker request parameters.
     for (const context of [contextA, contextB]) await context.addInitScript(() => {
@@ -75,13 +78,29 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
       await expect(pageB.getByRole('button', { name: 'Add member', exact: true })).toHaveCount(0);
       await sendMessage(pageB, 'group reply from B');
       await expect(pageA.locator('.msg-body', { hasText: 'group reply from B' })).toBeVisible({ timeout: 120_000 });
+      await expect(pageA.locator('.msg-row', { has: pageA.locator('.msg-body', { hasText: 'group reply from B' }) }).locator('.profile-wallet')).toHaveAttribute('title', walletB.toLowerCase());
+      await expect(pageA.locator('.msg-row', { has: pageA.locator('.msg-body', { hasText: 'group reply from B' }) }).locator('.profile-wallet')).toContainText('Group member');
+      await expect(pageB.locator('.msg-row', { has: pageB.locator('.msg-body', { hasText: 'group message after adding B' }) }).locator('.profile-wallet')).toHaveAttribute('title', walletA.toLowerCase());
+      const replyRow = pageA.locator('.msg-row', { has: pageA.locator('.msg-body', { hasText: 'group reply from B' }) });
+      await replyRow.getByRole('button', { name: 'React with 👍', exact: true }).click();
+      await expect(replyRow.locator('.reaction-chip')).toContainText('👍 1', { timeout: 120_000 });
+      await expect(pageB.locator('.msg-row', { has: pageB.locator('.msg-body', { hasText: 'group reply from B' }) }).locator('.reaction-chip')).toContainText('👍 1', { timeout: 120_000 });
+      labels.delete(walletB.toLowerCase());
+      await pageA.evaluate(() => window.dispatchEvent(new Event('chat:public-profile-changed')));
+      await expect(replyRow.locator('.profile-wallet')).not.toContainText('Group member');
+      await expect(replyRow.locator('.profile-wallet')).toHaveAttribute('title', walletB.toLowerCase());
+      labels.set(walletB.toLowerCase(), 'Group member');
+
+
       // A separate browser context has no XMTP database or application storage.
       // Keep the old installation online; the same wallet alone is not recovery proof.
+      for (const [key, wallet, other, label] of [[keyA, walletA, walletB, "Group member"], [keyB, walletB, walletA, "Group creator"]] as const) {
       const freshContext = await browser.newContext();
       try {
-        await injectSyntheticWallet(freshContext, keyA);
+        await injectSyntheticWallet(freshContext, key);
+        await groupProfiles(freshContext, labels);
         const freshPage = await freshContext.newPage();
-        await enableMessaging(freshPage, walletA);
+        await enableMessaging(freshPage, wallet);
         await freshPage.locator('.nav-item', { hasText: 'Settings' }).click();
         await freshPage.getByRole('button', { name: 'Request message history', exact: true }).click();
         await expect(freshPage.getByRole('status').filter({ hasText: 'History requested.' })).toBeVisible();
@@ -96,10 +115,14 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
         await expect(freshPage.locator('.msg-body', { hasText: 'group message after adding B' })).toBeVisible({ timeout: 120_000 });
         await expect(freshPage.locator('.msg-body', { hasText: 'group reply from B' })).toBeVisible({ timeout: 120_000 });
         await freshPage.locator('.room-members summary').click();
-        await expect(freshPage.getByRole('list', { name: 'Room members' }).getByText(walletB.toLowerCase(), { exact: true })).toBeVisible();
-        await expect(freshPage.getByRole('button', { name: 'Add member', exact: true })).toBeDisabled();
+        await expect(freshPage.getByRole('list', { name: 'Room members' }).getByText(other.toLowerCase(), { exact: true })).toBeVisible();
+        if (wallet === walletA) await expect(freshPage.getByRole('button', { name: 'Add member', exact: true })).toBeDisabled();
+        else await expect(freshPage.getByRole('button', { name: 'Add member', exact: true })).toHaveCount(0);
+        const author = freshPage.locator('.profile-wallet').filter({ hasText: label });
+        await expect(author.first()).toHaveAttribute('title', other.toLowerCase());
 
       } finally { await freshContext.close(); }
+      }
       // Actual production gated-room acceptance still requires the configured gate and reviewed policy.
 
     } finally {
@@ -138,4 +161,13 @@ async function openConversationWithMessage(page: Page, body: string) {
   const row = page.locator(".list-item", { hasText: body }).first();
   await expect(row).toBeVisible({ timeout: 120_000 });
   await row.click();
+}
+
+// Real XMTP identity/history; synthetic opt-in public labels avoid publishing profiles.
+async function groupProfiles(context: import('@playwright/test').BrowserContext, labels: Map<string, string>) {
+  await context.route('**/api/profile?wallet=*', route => {
+    const url = new URL(route.request().url());
+    return route.fulfill({ json: { service: new URL('/api/profile', url).href,
+      profiles: (url.searchParams.get('wallet') ?? '').split(',').map(wallet => ({ version: 1, wallet, revision: 1, label: labels.get(wallet) ?? null, updatedAt: Date.now() })) } });
+  });
 }

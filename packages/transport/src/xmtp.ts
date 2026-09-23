@@ -1,3 +1,4 @@
+import { InboxIdentities, messageInboxIds } from "./inboxIdentities.js";
 import { INVALID_ROOM_METADATA, MAX_ROOM_DESCRIPTION_LENGTH, ROOM_META_VERSION, parseRoomMeta, type RoomMeta } from "./roomMetadata.js";
 import { readMessagePage } from "./messagePage.js";
 import { mapConversations } from "./mapConversations.js";
@@ -47,6 +48,7 @@ export interface ConversationClassificationMeta {
 
 let SDK: Sdk | null = null;
 let sharedXmtp: { address: string; client: XmtpClient } | null = null;
+const roomIdentityResolvers = new WeakMap<XmtpClient, InboxIdentities>();
 
 const READY_PREFIX = "chirpy.xmtp.ready.";
 const PEER_KEY = "chirpy.xmtp.peers";
@@ -461,9 +463,10 @@ export class XmtpTransport implements Transport {
     }
   }
 
-  private addressForInbox(conversationId: string, inboxId: string) {
+  private addressForInbox(conversationId: string, inboxId: string, roomAddresses?: ReadonlyMap<string, string>) {
     const client = this.client;
     if (client && inboxId === client.inboxId) return this.myAddress;
+    if (roomAddresses) return roomAddresses.get(inboxId) ?? inboxId;
     if (this.peerInboxByConversation.get(conversationId) === inboxId) {
       return this.peerByConversation.get(conversationId) ?? inboxId;
     }
@@ -474,31 +477,24 @@ export class XmtpTransport implements Transport {
     return classifyConversation(conversation, sdk.ConversationType.Group) === "room";
   }
 
-  private async addressesForMembers(conversation: XmtpConversation) {
-    const client = this.requireClient();
-    const myInboxId = this.requireInboxId();
-    const members = await conversation.members().catch(() => []);
-    const inboxIds = [...new Set(members
-      .map((member) => {
-        const value = member as { inboxId?: string; inbox_id?: string };
-        return value.inboxId ?? value.inbox_id;
-      })
-      .filter((inboxId): inboxId is string => Boolean(inboxId)))];
-
-    if (!inboxIds.length) return [];
-
-    let states: PeerState[] = await client.preferences.getInboxStates(inboxIds) as PeerState[];
-    if (states.some((state) => !state?.accountIdentifiers?.length)) {
-      states = await client.preferences.fetchInboxStates(inboxIds) as PeerState[];
+  private async roomAddresses(inboxIds: string[]) {
+    const client = this.requireClient(); const sdk = await this.loadSdk();
+    let resolver = roomIdentityResolvers.get(client);
+    if (!resolver) {
+      resolver = new InboxIdentities(ids => client.preferences.fetchInboxStates(ids), sdk.IdentifierKind.Ethereum);
+      roomIdentityResolvers.set(client, resolver);
     }
+    const addresses = await resolver.resolve(inboxIds.filter(id => id !== client.inboxId));
+    if (this.client !== client || this.status !== 'ready') throw new Error("Wallet changed. Reload the conversation.");
+    if (client.inboxId) addresses.set(client.inboxId, this.myAddress);
+    return addresses;
+  }
 
-    const peers = inboxIds.map((inboxId, index) => {
-      if (inboxId === myInboxId) return this.myAddress;
-      const identifiers = states[index]?.accountIdentifiers ?? [];
-      const eth = identifiers.find((entry) => entry.identifier && ETH_ADDRESS.test(entry.identifier)) ?? identifiers[0];
-      return eth?.identifier?.toLowerCase() ?? inboxId;
-    });
-    return [...new Set(peers)];
+  private async addressesForMembers(conversation: XmtpConversation) {
+    const members = await conversation.members();
+    const inboxIds = [...new Set(members.map(member => member.inboxId).filter(Boolean))];
+    const addresses = await this.roomAddresses(inboxIds);
+    return [...new Set(inboxIds.map(id => addresses.get(id) ?? id))];
   }
 
   private async isCurrentUserAdmin(conversation: XmtpConversation) {
@@ -533,16 +529,18 @@ export class XmtpTransport implements Transport {
     const meta = parseRoomMeta(group.description, this.org.policy);
     this.roomMeta.set(conversation.id, meta);
 
+    const peers = await this.addressesForMembers(conversation).catch(() => []);
     let lastMessage: ChatMessage | undefined;
     try {
       const sdk = await this.loadSdk();
       const [last] = await conversation.messages({ contentTypes: [sdk.ContentType.Text, sdk.ContentType.Reply], direction: sdk.SortDirection.Descending, limit: 1n });
       if (last) {
+        const addresses = await this.roomAddresses(messageInboxIds([last]));
         lastMessage = toChatMessage(
           sdk,
           last,
           conversation.id,
-          (inboxId) => this.addressForInbox(conversation.id, inboxId),
+          (inboxId) => this.addressForInbox(conversation.id, inboxId, addresses),
           (messageId, senderInboxId) => this.senderInboxByMessage.set(messageId, senderInboxId),
         ) ?? undefined;
       }
@@ -556,7 +554,7 @@ export class XmtpTransport implements Transport {
       kind: "room",
       title: group.name || "Room",
       description: meta.description,
-      peers: await this.addressesForMembers(conversation).catch(() => []),
+      peers,
       namespace: meta.namespace,
       gate: meta.gate,
       policy: meta.policy,
@@ -759,6 +757,7 @@ export class XmtpTransport implements Transport {
         contentTypes: [sdk.ContentType.Text, sdk.ContentType.Reply],
       }), before);
       const raw = page.messages;
+      const addresses = this.isRoomConversation(sdk, conversation) ? await this.roomAddresses(messageInboxIds(raw)) : undefined;
       for (const message of raw) { this.messageCursors.delete(message.id); this.senderInboxByMessage.delete(message.id); }
       for (const message of raw) {
         if (sdk.isText(message) || sdk.isReply(message)) this.messageCursors.set(message.id, { conversationId, at: message.sentAtNs });
@@ -768,7 +767,7 @@ export class XmtpTransport implements Transport {
           sdk,
           message,
           conversationId,
-          (inboxId) => this.addressForInbox(conversationId, inboxId),
+          (inboxId) => this.addressForInbox(conversationId, inboxId, addresses),
           (messageId, senderInboxId) => this.senderInboxByMessage.set(messageId, senderInboxId),
         ))
         .filter((message): message is ChatMessage => Boolean(message))
