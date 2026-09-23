@@ -181,3 +181,46 @@ it("converges mixed-age offline snapshots across exchange groupings", () => {
     expect(mergePayload(merged, c)).toEqual(mergePayload(a, mergePayload(b, c)));
   }
 });
+
+it('does not let an observed unreadable snapshot advance unrelated writes',async()=>{
+ const address='snapshot-bound-device',service=new URL('/api/usersync',window.location.href).href;
+ const auth={grant:{version:2,address,service,device:'0x'+'1'.repeat(40),issuedAt:Date.now(),epoch:0,expiresAt:Date.now()+10000},sign:async()=> 'signature'} as any;
+ const response=(blob:any,revision:number)=>({ok:true,json:async()=>({blob,revision,authVersion:2,epoch:0,service})});
+ const remote={version:2,ciphertext:'future'},writes:any[]=[];
+ let revision=4,stored:any=null;
+ const fetcher=vi.fn(async(_url,init:any)=>{
+  if(!init?.body)return response(stored,revision);
+  const body=JSON.parse(init.body);writes.push(body);
+  if(body.expectedRevision!==revision)return {ok:false,status:409};
+  stored=body.blob;return {ok:true,json:async()=>({revision:++revision})};
+ });vi.stubGlobal('fetch',fetcher);
+ await pullRemoteBlob(address);
+ expect((await pushBlob(address,auth,{} as any)).ok).toBe(true); // acknowledged revision 5
+ stored=JSON.stringify(remote);revision=6;
+ const observed=await pullRemoteBlob(address);
+ expect(await pushBlob(address,auth,{} as any)).toEqual({ok:false,stale:true});
+ expect(writes.at(-1).expectedRevision).toBe(5);expect(stored).toBe(JSON.stringify(remote));
+ // Only an explicit source snapshot can supply its revision for a validated merge.
+ expect((await pushBlob(address,auth,{updatedAt:1} as any,observed!)).ok).toBe(true);
+ expect(writes.at(-1).expectedRevision).toBe(6);
+ const count=writes.length;
+ expect((await pushBlob(address,auth,{} as any,{...observed!})).ok).toBe(false);
+ expect((await pushBlob('another-wallet',{...auth,grant:{...auth.grant,address:'another-wallet'}},{} as any,observed!)).ok).toBe(false);
+ expect((await pushBlob(address,{...auth,grant:{...auth.grant,epoch:1}},{} as any,observed!)).ok).toBe(false);
+ expect(writes).toHaveLength(count);
+});
+
+it('does not dispatch a signed write after its session has been paused',async()=>{
+ const address='paused-signature-device',service=new URL('/api/usersync',window.location.href).href;
+ const fetcher=vi.fn().mockResolvedValue({ok:true,json:async()=>({blob:null,revision:1,authVersion:2,epoch:0,service})});vi.stubGlobal('fetch',fetcher);
+ await pullRemoteBlob(address);let release!:(v:string)=>void,active=true;
+ const auth={grant:{version:2,address,service,device:'0x'+'1'.repeat(40),issuedAt:Date.now(),epoch:0,expiresAt:Date.now()+10000},sign:()=>new Promise<string>(resolve=>{release=resolve;})} as any;
+ const pending=pushBlob(address,auth,{} as any,undefined,()=>active);
+ active=false;release('signature');expect(await pending).toEqual({ok:false});expect(fetcher).toHaveBeenCalledOnce();
+});
+
+it.each([undefined,'',false,0,'null','[]','{bad'])('never treats malformed remote blob %j as an empty store',async blob=>{
+ const service=new URL('/api/usersync',window.location.href).href;
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({blob,revision:9,epoch:0,authVersion:2,service})}));
+ await expect(pullRemoteBlob('malformed-'+String(blob))).rejects.toThrow();
+});

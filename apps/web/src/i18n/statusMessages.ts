@@ -83,6 +83,7 @@ const keys: Record<string, string> = {
   "Connect a wallet before enabling encrypted sync.": "status.syncConnect",
   "Another device changed sync again. Try enabling sync again.": "status.syncConflict",
   "Encrypted sync was not saved. Try again; local data has been kept.": "status.syncUnsaved",
+  "Encrypted sync is paused because remote data could not be safely read. Local and remote data were kept. Update Chat or restore access, then re-enable sync.": "status.syncReadPaused",
   "Encrypted sync could not be decrypted. Remote data has been preserved.": "status.syncUndecryptable",
   "Sync stopped locally; revocation was not confirmed.": "status.revokeUnconfirmed",
   "Connect a wallet to revoke sync devices.": "status.revokeConnect",
