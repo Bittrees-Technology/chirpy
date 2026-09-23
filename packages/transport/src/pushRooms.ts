@@ -216,7 +216,7 @@ export class PushRooms {
     const fileContent = opts?.file === undefined ? undefined : writePushFile(opts.file);
     if ((!body.trim() && fileContent === undefined) || body.length > 16_000 || new TextEncoder().encode(body).byteLength > 64 * 1024) throw new Error('Write a message of at most 16,000 characters.');
     const replyTo = opts?.replyTo;
-    if (replyTo !== undefined && fileContent !== undefined) throw new Error('Remove the file to reply to a message.');
+    if (replyTo !== undefined && fileContent !== undefined && body.trim()) throw new Error('File replies cannot include a caption. Clear the caption or cancel the reply.');
     if (replyTo !== undefined && (typeof replyTo !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(replyTo))) throw new Error('Choose an original message in this room to reply to.');
     let access = await this.refreshRoom(id);
     if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
@@ -234,11 +234,12 @@ export class PushRooms {
       if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
       this.#ensureAccess(id, access, epoch);
     }
-    const payload: PushSdkMessage = fileContent !== undefined
-      ? body.trim() ? { type: 'Composite', content: [{ type: 'Text', content: body }, { type: 'File', content: fileContent }] }
-        : { type: 'File', content: fileContent }
-      : replyTo === undefined ? { type: 'Text', content: body }
-        : { type: 'Reply', content: { type: 'Text', content: body }, reference: replyTo };
+    const payload: PushSdkMessage = replyTo !== undefined
+      ? { type: 'Reply', content: fileContent === undefined ? { type: 'Text', content: body } : { type: 'File', content: fileContent }, reference: replyTo }
+      : fileContent !== undefined
+        ? body.trim() ? { type: 'Composite', content: [{ type: 'Text', content: body }, { type: 'File', content: fileContent }] }
+          : { type: 'File', content: fileContent }
+        : { type: 'Text', content: body };
     await client.send(room.chatId, payload);
     this.#ensure(epoch, id);
     // A resolved SDK send is not evidence of delivery/read. The caller refreshes history.

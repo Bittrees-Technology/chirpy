@@ -672,11 +672,12 @@
   "push.attachFile": "Adjuntar archivo",
   "push.preparingFile": "Preparando archivo…",
   "push.removeFile": "Quitar archivo",
-  "push.fileReplyHint": "Quita el archivo para responder a un mensaje.",
+  "push.fileReplyHint": "Responde con este archivo. Las descripciones están disponibles al enviar sin responder.",
   "push.fileSendLimit": "Un archivo de hasta 1 MB. Puedes añadir una descripción debajo.",
   "push.fileTooLarge": "Elige un archivo de como máximo 1 MB.",
   "push.fileInvalid": "El archivo seleccionado no es válido. Vuelve a elegirlo.",
   "push.fileReadFailed": "No se pudo leer el archivo seleccionado. Vuelve a elegirlo.",
   "push.fileOnly": "El envío de archivos solo está disponible en las salas de Push.",
-  "push.historyBudget": "Esta página del historial de Push supera el límite de visualización. No se ha sustituido ningún mensaje."
+  "push.historyBudget": "Esta página del historial de Push supera el límite de visualización. No se ha sustituido ningún mensaje.",
+  "push.fileReplyCaption": "Las respuestas con archivos no pueden incluir una descripción. Borra la descripción o cancela la respuesta."
 }

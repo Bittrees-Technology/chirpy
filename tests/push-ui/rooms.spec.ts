@@ -412,7 +412,7 @@ for (const caption of ['', 'A caption for the selected file']) {
     await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
     await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'chosen.bin', mimeType: 'application/octet-stream', buffer: bytes });
     await expect(page.locator('.push-file-compose')).toContainText('chosen.bin');
-    await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeEnabled();
     if (caption) await page.getByRole('textbox', { name: 'Write a message' }).fill(caption);
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -487,14 +487,6 @@ for (const change of ['source', 'wallet', 'permission']) {
     expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send'))).toEqual([]);
   });
 }
-test('requires canceling a text reply before attaching a file', async ({ page }) => {
-  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Reply', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Attach file', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Cancel reply', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Attach file', exact: true })).toBeEnabled();
-});
-
 test('keeps file-heavy history readable with smaller linked pages and stable revisits', async ({ page }) => {
   await openRoom(page);
   await page.evaluate(({ group, other }) => {
@@ -511,4 +503,68 @@ test('keeps file-heavy history readable with smaller linked pages and stable rev
   await page.getByRole('button', { name: 'Newer messages', exact: true }).click();
   await expect(page.locator('.push-attachment strong')).toHaveText(['file-3.bin', 'file-2.bin', 'file-1.bin', 'file-0.bin']);
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+
+for (const first of ['reply', 'file']) {
+  test(`sends a file reply when selecting the ${first} first`, async ({ page }, testInfo) => {
+    const { readFile } = await import('node:fs/promises');
+    const bytes = Buffer.from(Array.from({ length: 256 }, (_, i) => i));
+    await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+    if (first === 'reply') await page.getByRole('button', { name: 'Reply', exact: true }).click();
+    await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'reply.bin', mimeType: 'application/octet-stream', buffer: bytes });
+    await expect(page.locator('.push-file-compose strong')).toHaveText('reply.bin');
+    if (first === 'file') await page.getByRole('button', { name: 'Reply', exact: true }).click();
+    await expect(page.locator('.reply-banner')).toContainText('Preserved Push history');
+    await page.evaluate(message => { (window as any).__pushFixture.pages.QmLatestMessage = [message]; }, row());
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('push-file-reply-mobile.png') });
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(page.locator('.push-file-compose strong')).toHaveCount(0); await expect(page.locator('.reply-banner')).toHaveCount(0);
+    const sent = await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send'));
+    expect(sent).toHaveLength(1); expect(sent[0]).toMatchObject({ owner, room: group, extra: { type: 'Reply', reference: 'QmLatestMessage', content: { type: 'File' } } });
+    const payload = sent[0].extra, data = JSON.parse(payload.content.content);
+    expect(data.name).toBe('reply.bin'); expect(Buffer.from(data.content.split(',')[1], 'base64').equals(bytes)).toBe(true);
+    await page.evaluate(({ payload, message }) => {
+      (window as any).__pushFixture.pages.latest = [{ ...message, messageType: 'Reply', messageObj: { reference: payload.reference, content: { messageType: payload.content.type, messageObj: { content: payload.content.content } } } }];
+    }, { payload, message: row('QmFileReply') });
+    await page.getByRole('button', { name: 'Refresh messages', exact: true }).click();
+    await expect(page.locator('.msg-reply-ref')).toHaveText('↩ Original message is not on this page');
+    const pending = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download file', exact: true }).click();
+    const download = await pending, destination = testInfo.outputPath('reply.bin'); await download.saveAs(destination);
+    expect((await readFile(destination)).equals(bytes)).toBe(true);
+  });
+}
+test('explains caption limits without dropping the selected file, reply, or text', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Reply', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Write a message' }).fill('Do not lose this caption');
+  await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'captioned.txt', mimeType: 'text/plain', buffer: Buffer.from('file') });
+  await expect(page.getByRole('status').filter({ hasText: 'File replies cannot include a caption' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+  await page.getByRole('textbox', { name: 'Write a message' }).press('Enter');
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send'))).toEqual([]);
+  await expect(page.getByRole('textbox', { name: 'Write a message' })).toHaveValue('Do not lose this caption');
+  await expect(page.locator('.reply-banner')).toContainText('Preserved Push history');
+  await expect(page.locator('.push-file-compose strong')).toHaveText('captioned.txt');
+  await page.getByRole('button', { name: 'Cancel reply', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.locator('.push-file-compose strong')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send').map((c: any) => c.extra.type))).toEqual(['Composite']);
+});
+test('retains a rejected file reply for an explicit retry and clears it on lost access', async ({ page }) => {
+  await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Reply', exact: true }).click();
+  await page.getByLabel('Attach file', { exact: true }).setInputFiles({ name: 'private-reply.txt', mimeType: 'text/plain', buffer: Buffer.from('private') });
+  await expect(page.locator('.push-file-compose strong')).toHaveText('private-reply.txt');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Choose an original message');
+  await expect(page.locator('.reply-banner')).toContainText('Preserved Push history');
+  await expect(page.locator('.push-file-compose strong')).toHaveText('private-reply.txt');
+  expect(await page.evaluate(() => (window as any).__pushFixture.calls.filter((c: any) => c.kind === 'send'))).toEqual([]);
+  await page.evaluate(() => { (window as any).__pushFixture.permissions.chat = false; });
+  await page.getByRole('button', { name: 'Refresh messages', exact: true }).click();
+  await expect(page.locator('.reply-banner')).toHaveCount(0); await expect(page.locator('.push-file-compose')).toHaveCount(0);
 });
