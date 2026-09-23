@@ -110,6 +110,6 @@ Chat now explicitly requests Mail transfer version 2, deployed in Mail v54 and i
 
 ### Formatted preview browser acceptance
 
-Isolated wallet/browser fixtures exercise the real formatting sanitizer and sandboxed `srcdoc` renderer in both ordinary web mode and with the native CSP applied. They verify readable basic formatting, an opaque frame that cannot read its parent, no active elements/attributes or external resource requests, plain-text return, shortened/missing-body notices, source identity/version/size rejection, and late responses after cancellation or wallet changes. The native-policy CI job includes these scenarios. No sanitizer bypass or CSP relaxation is used.
+Isolated wallet/browser fixtures exercise the real formatting sanitizer and sandboxed `srcdoc` renderer in both ordinary web mode and with the native CSP applied. They verify readable basic formatting, an opaque frame that cannot read its parent, no active elements/attributes or external resource requests, plain-text return, shortened/missing-body notices, source identity/version/size rejection, and late responses after cancellation or wallet changes. The native-policy CI job includes these scenarios. Plain-text-only guidance is hidden while formatted content is displayed and returns with the plain view. No sanitizer bypass or CSP relaxation is used.
 
 This is browser-policy evidence with synthetic content. It does not establish packaged native mailbox availability, contract-wallet handoff, physical-device behavior or live rich-mail acceptance; those remain separate launch checks.

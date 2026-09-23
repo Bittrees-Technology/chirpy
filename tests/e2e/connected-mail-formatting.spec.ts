@@ -35,7 +35,8 @@ test('formatted email renders basic content in an opaque sandbox without active 
  const source=await fixture(page,walletAddress);await openMessage(page);expect(source.reads).toBe(0);
  await page.getByRole('button',{name:'View formatting',exact:true}).click();
  const preview=page.getByTitle('Formatted email preview',{exact:true}),body=preview.contentFrame().locator('body');
- await expect(body.locator('strong')).toHaveText('member');await expect(body.locator('td')).toHaveText('Preserved cell');
+ await expect(page.getByText('This is a plain-text preview.',{exact:false})).toHaveCount(0);
+ await expect(body.locator('strong')).toHaveText('member');await expect(body.locator('strong')).toBeVisible();await expect(body.locator('td')).toHaveText('Preserved cell');
  await expect(preview).toHaveAttribute('sandbox','');await expect(preview).toHaveAttribute('referrerpolicy','no-referrer');
  await expect(body.locator('script,style,img,iframe,form,input,button,a,link,meta,base,svg')).toHaveCount(0);
  expect(await body.evaluate(el=>[...el.querySelectorAll('*')].flatMap(node=>[...node.attributes].map(a=>a.name)))).toEqual([]);
@@ -43,8 +44,8 @@ test('formatted email renders basic content in an opaque sandbox without active 
  expect(await page.evaluate(()=>(window as any).__mailExecuted)).toBeUndefined();expect(source.external).toBe(0);
  expect(await preview.contentFrame().locator('meta[http-equiv]').getAttribute('content')).toContain("default-src 'none'");
  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await preview.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('formatted-email-mobile.png')});
- await page.getByRole('button',{name:'Plain text',exact:true}).click();await expect(preview).toHaveCount(0);await expect(page.locator('.mailbox-body')).toHaveText('Plain first fixture');
+ await preview.scrollIntoViewIfNeeded();await expect(body.locator('strong')).toBeVisible();await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));await page.screenshot({path:testInfo.outputPath('formatted-email-mobile.png')});
+ await page.getByRole('button',{name:'Plain text',exact:true}).click();await expect(preview).toHaveCount(0);await expect(page.locator('.mailbox-body')).toHaveText('Plain first fixture');await expect(page.getByText('This is a plain-text preview.',{exact:false})).toBeVisible();
  expect(source.reads).toBe(1);expect(source.external).toBe(0);
 });
 
