@@ -2,10 +2,12 @@ import { expect, test } from './fixtures/wallet';
 
 test('Spanish settings retain language, explain privacy controls and localize sync results', async ({ page, walletAddress }, testInfo) => {
   expect(walletAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
-  let revision = 0;
+  let revision = 0, blob: string | null = null;
   await page.route('**/api/usersync**', (route) => {
-    if (route.request().method() === 'GET') return route.fulfill({ json: { blob: null, revision, epoch: 0, authVersion: 2, service: new URL('/api/usersync', route.request().url()).href } });
-    return route.fulfill({ json: { ok: true, revision: ++revision } });
+    if (route.request().method() === 'GET') return route.fulfill({ json: { blob, revision, payloadVersions:[1,2],minPayloadVersion:blob?2:1, epoch: 0, authVersion: 2, service: new URL('/api/usersync', route.request().url()).href } });
+    const body=route.request().postDataJSON();
+    if(body.action==='write'){blob=body.blob;return route.fulfill({json:{ok:true,revision:++revision,minPayloadVersion:2}});}
+    return route.fulfill({json:{ok:true}});
   });
   await page.goto('/');
   await page.locator('.nav-item', { hasText: 'Settings' }).click();

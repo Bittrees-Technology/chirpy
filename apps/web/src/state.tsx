@@ -1,6 +1,10 @@
+import { prepareSyncMigration, SyncMigrationChoiceError, type SyncMigrationChoice } from './syncMigration';
+import { readVersionedSync, decryptVersionedSync, authorizeVersionedSync, writeVersionedSync, VersionedSyncError } from './versionedSyncTransport';
+import { encryptSyncPayloadV2 } from './versionedSyncCipher';
+import { editSyncPayloadV2, mergeSyncPayloadV2, syncPayloadV2View, upgradeSyncPayloadV1, type SyncPayloadV2, type SyncMessage } from './versionedSync';
 import { readDisplayWallets, DISPLAY_WALLET_CHANGED } from './displayWallets';
 import {decryptSettingsPayload,SyncReadError,SYNC_READ_PAUSED} from "./syncPayload";
-import { loadSettings, saveSettings, withSettingsLock, assertNoRecoveryPending, recoveryMarkerKey, SettingsStorageError, SETTINGS_STORAGE_ERROR, type SettingsPrefs } from "./settingsStorage";
+import { parseSettingsRaw, loadSettings, saveSettings, saveSyncedSettings, withSettingsLock, assertNoRecoveryPending, recoveryMarkerKey, SettingsStorageError, SETTINGS_STORAGE_ERROR, type SettingsPrefs } from "./settingsStorage";
 import { receiptOverride, receiptPreferenceKey } from "./receiptPreferences";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
@@ -27,15 +31,9 @@ import {
   type WalletEventProvider,
 } from "./walletProviders";
 import {
-  createSyncAuthorization,
   revokeSyncAuthorization,
   revokeAllSyncAuthorizations,
   type SyncAuthorization,
-  mergePayload,
-  pullRemoteBlob,
-  pushBlob,
-  type EncryptedSyncBlobSnapshot,
-  type SettingsSyncPayload,
 } from "./userSync";
 
 // ---------- storage helpers ----------
@@ -420,21 +418,13 @@ export const useOrgs = () => {
 // ====================================================================
 // Settings preferences
 // ====================================================================
-interface EncryptedSyncBlob extends EncryptedSyncBlobSnapshot {
-  version: 1;
-  algorithm: "AES-GCM";
-  kdf: "HKDF-SHA-256";
-  address: string;
-  iv: string;
-  ciphertext: string;
-  updatedAt: number;
-}
 interface SettingsSyncState {
   error?: string;
   walletAddress: string | null;
   encryptedAt: number | null;
   hasSessionKey: boolean;
   isEncrypting: boolean;
+  migrationChoiceRequired?: boolean;
 }
 interface SettingsSyncResult {
   ok: boolean;
@@ -450,7 +440,10 @@ interface SettingsPrefsCtx {
   syncState: SettingsSyncState;
   setReadReceiptsDefault: (on: boolean) => Promise<void>;
   setChatReadReceipts: (conversationId: string, on: boolean | undefined) => Promise<void>;
-  enableSyncAcrossDevices: () => Promise<SettingsSyncResult>;
+  enableSyncAcrossDevices: (choice?: SyncMigrationChoice) => Promise<SettingsSyncResult>;
+  legacySavedItems: SyncMessage[];
+  removeLegacySavedItem: (id: string) => Promise<void>;
+  removeLegacyBlockedAddress: (address: string) => Promise<void>;
   disableSyncAcrossDevices: () => Promise<SettingsSyncResult>;
   revokeAllSyncDevices: () => Promise<SettingsSyncResult>;
 }
@@ -468,11 +461,6 @@ const hexToBytes = (hex: string) => {
   const bytes = new Uint8Array(clean.length / 2);
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
   return bytes;
-};
-const bytesToBase64 = (bytes: Uint8Array) => {
-  let binary = "";
-  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary);
 };
 async function deriveSyncKey(signature: string, address: string): Promise<CryptoKey> {
   if (!crypto.subtle) throw new Error("Secure browser crypto is unavailable.");
@@ -509,6 +497,7 @@ async function requestWalletSyncKey(preferredAddress?: string): Promise<{ addres
     params: [bytesToHex(textEncoder.encode(message)), address],
   });
   if (typeof signature !== "string") throw new Error("Wallet did not return a signature.");
+  if (getActiveProvider() !== ethereum || accountFromResponse(await ethereum.request({ method: 'eth_accounts' }))?.toLowerCase() !== address.toLowerCase()) throw new Error('Wallet account changed. Reconnect before enabling sync.');
   return { address, key: await deriveSyncKey(signature, address) };
 }
 
@@ -519,42 +508,8 @@ async function signSyncMessage(address: string, message: string): Promise<string
   if (account?.toLowerCase() !== address.toLowerCase()) throw new Error("Wallet account changed. Reconnect before authorizing sync.");
   const signature = await ethereum.request({ method: "personal_sign", params: [bytesToHex(textEncoder.encode(message)), address] });
   if (typeof signature !== "string") throw new Error("Wallet did not return a signature.");
+  if (getActiveProvider() !== ethereum || accountFromResponse(await ethereum.request({ method: 'eth_accounts' }))?.toLowerCase() !== address.toLowerCase()) throw new Error('Wallet account changed. Reconnect before authorizing sync.');
   return signature;
-}
-
-async function encryptSyncPayload(payload: SettingsSyncPayload, key: CryptoKey, address: string): Promise<EncryptedSyncBlob> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    textEncoder.encode(JSON.stringify(payload)),
-  );
-  return {
-    version: 1,
-    algorithm: "AES-GCM",
-    kdf: "HKDF-SHA-256",
-    address,
-    iv: bytesToBase64(iv),
-    ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
-    updatedAt: payload.updatedAt,
-  };
-}
-
-const payloadFromPrefs = (prefs: SettingsPrefs, savedMessages: SettingsSyncPayload["savedMessages"] = [], updatedAt = Date.now()): SettingsSyncPayload => ({
-  version: 1,
-  settingsPrefs: prefs,
-  savedMessages,
-  updatedAt,
-});
-
-async function encryptSettingsPayload(
-  prefs: SettingsPrefs,
-  key: CryptoKey,
-  address: string,
-  savedMessages: SettingsSyncPayload["savedMessages"] = [],
-  updatedAt = Date.now(),
-): Promise<EncryptedSyncBlob> {
-  return encryptSyncPayload(payloadFromPrefs(prefs, savedMessages, updatedAt), key, address);
 }
 
 export function SettingsPrefsProvider({ children }: { children: React.ReactNode }) {
@@ -565,374 +520,272 @@ export function SettingsPrefsProvider({ children }: { children: React.ReactNode 
 
 function WalletSettingsPrefsProvider({ children, scope }: { children: React.ReactNode; scope: string }) {
   const { identity, mode } = useIdentity();
-  const prefsKey = `${SETTINGS_PREFS_KEY}:${scope}`;
-  const blobKey = `${SETTINGS_SYNC_BLOB_KEY}:${scope}`;
-  const updatedAtKey = `chat:settingsPrefsUpdatedAt:v1:${scope}`;
-  const sessionActiveRef = useRef(true);
-  const ensureActive = () => { if (!sessionActiveRef.current) throw new Error("Wallet changed. Re-enable sync for the current wallet."); };
-  const initialSettings = useMemo(() => loadSettings(prefsKey), []);
+  const prefsKey = `${SETTINGS_PREFS_KEY}:${scope}`, blobKey = `${SETTINGS_SYNC_BLOB_KEY}:${scope}`;
+  const initial = useMemo(() => loadSettings(prefsKey), []);
   const pendingAtLoad = useMemo(() => { try { return localStorage.getItem(recoveryMarkerKey(prefsKey)) !== null; } catch { return true; } }, []);
+  const active = useRef(true), generation = useRef(0), revision = useRef(0), busy = useRef(false), reschedule = useRef(false);
+  const rawRef = useRef(initial.raw), prefsRef = useRef(initial.prefs), timeRef = useRef(initial.updatedAt);
+  const payloadRef = useRef<SyncPayloadV2 | undefined>(initial.syncPayload), minimumRef = useRef<1 | 2>(initial.syncMinimum ?? 1);
+  const failedRef = useRef(initial.failed || pendingAtLoad), recoveryRef = useRef(pendingAtLoad);
+  const keyRef = useRef<CryptoKey | null>(null), authRef = useRef<SyncAuthorization | null>(null);
+  const providerRef = useRef<ReturnType<typeof getActiveProvider>>(null);
+  const revokeRef = useRef<(() => Promise<void>) | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null), lastSynced = useRef('');
+  const [prefs, setPrefsState] = useState(initial.prefs), [storageError, setStorageError] = useState<string | null>(initial.failed ? SETTINGS_STORAGE_ERROR : null);
+  const [storageBusy, setStorageBusy] = useState(false), writes = useRef(0);
   const [recoveryPaused, setRecoveryPaused] = useState(pendingAtLoad);
-  const recoveryPausedRef = useRef(pendingAtLoad);
-  const suspendedPrefs = (value: SettingsPrefs): SettingsPrefs => ({ ...value, readReceiptsDefault: false,
+  const [syncState, setSyncState] = useState<SettingsSyncState>({ walletAddress: null, encryptedAt: null, hasSessionKey: false, isEncrypting: false });
+  const backgroundRef = useRef<() => Promise<void>>(async () => {});
+  const fingerprint = (payload: SyncPayloadV2 | undefined) => payload ? JSON.stringify(payload) : '';
+  const suspended = (value: SettingsPrefs): SettingsPrefs => ({ ...value, readReceiptsDefault: false,
     readReceiptOverrides: Object.fromEntries(Object.keys(value.readReceiptOverrides ?? {}).map(key => [key, false])), syncAcrossDevices: false });
-  const [prefs, setPrefsState] = useState<SettingsPrefs>(pendingAtLoad ? suspendedPrefs(initialSettings.prefs) : initialSettings.prefs);
-  const prefsRef = useRef(initialSettings.prefs);
-  const prefsRawRef = useRef(initialSettings.raw);
-  const [storageError, setStorageError] = useState<string | null>(initialSettings.failed ? SETTINGS_STORAGE_ERROR : null);
-  const storageFailedRef = useRef(initialSettings.failed || pendingAtLoad);
-  const pendingWrites = useRef(0);
-  const [storageBusy, setStorageBusy] = useState(false);
-  const existingSyncBlob = useMemo(() => LS.get<EncryptedSyncBlob | null>(blobKey, null), []);
-  const legacyUpdatedAt = LS.get<number>(updatedAtKey, existingSyncBlob?.updatedAt ?? 0);
-  const prefsUpdatedAtRef = useRef(initialSettings.updatedAt ||
-    (Number.isSafeInteger(legacyUpdatedAt) && legacyUpdatedAt >= 0 && legacyUpdatedAt < Number.MAX_SAFE_INTEGER ? legacyUpdatedAt : 0));
-  const syncKeyRef = useRef<CryptoKey | null>(null);
-  const syncAddressRef = useRef<string | null>(existingSyncBlob?.address ?? null);
-  const authSigRef = useRef<SyncAuthorization | null>(null);
-  const authSigAddressRef = useRef<string | null>(null);
-  const savedMessagesRef = useRef<SettingsSyncPayload["savedMessages"]>([]);
-  // An async sync operation must never commit over a newer local choice.
-  const prefsRevisionRef = useRef(0);
-  const guardPrefsRevision = () => {
-    const revision = prefsRevisionRef.current;
-    return () => {
-      ensureActive();
-      try {
-        assertNoRecoveryPending(prefsKey);
-        if (storageFailedRef.current || localStorage.getItem(prefsKey) !== prefsRawRef.current) throw new SettingsStorageError();
-      } catch {
-        storageFailedRef.current = true;
-        if (!recoveryPausedRef.current) setStorageError(SETTINGS_STORAGE_ERROR);
-        throw new SettingsStorageError();
-      }
-      if (revision !== prefsRevisionRef.current) throw new Error("Settings changed while syncing. Your local choices are saved; enable sync again to retry.");
-    };
-  };
-  const recordLocalEdit = () => {
-    prefsRevisionRef.current++;
-    prefsUpdatedAtRef.current = Math.max(Date.now(), prefsUpdatedAtRef.current + 1);
-  };
-  const setPrefs = async (next: SettingsPrefs | ((current: SettingsPrefs) => SettingsPrefs), commitGuard = ensureActive) => {
+  const ensureActive = () => { if (!active.current) throw new Error('Wallet changed. Re-enable sync for the current wallet.'); };
+  const storageFailed = () => { failedRef.current = true; if (!recoveryRef.current) setStorageError(SETTINGS_STORAGE_ERROR); };
+  const guardStorage = () => {
     ensureActive();
-    pendingWrites.current++; setStorageBusy(true);
-    try {
-      await withSettingsLock(prefsKey, () => {
-        ensureActive(); commitGuard();
-        assertNoRecoveryPending(prefsKey);
-        if (storageFailedRef.current) throw new SettingsStorageError();
-        const value = typeof next === 'function' ? next(prefsRef.current) : next;
-        const updatedAt = Math.max(Date.now(), Number.isSafeInteger(prefsUpdatedAtRef.current) ? prefsUpdatedAtRef.current : 0);
-        const raw = saveSettings(prefsKey, prefsRawRef.current, value, updatedAt);
-        prefsRawRef.current = raw; prefsUpdatedAtRef.current = updatedAt;
-        const { updatedAt: _savedAt, ...committed } = JSON.parse(raw) as SettingsPrefs & { updatedAt: number };
-        prefsRef.current = committed; setPrefsState(committed); setStorageError(null);
-      });
-    } catch (error) {
-      storageFailedRef.current = true;
-      if (!recoveryPausedRef.current) setStorageError(SETTINGS_STORAGE_ERROR);
-      throw error;
-    } finally { pendingWrites.current--; setStorageBusy(pendingWrites.current > 0); }
+    try { assertNoRecoveryPending(prefsKey); if (failedRef.current || localStorage.getItem(prefsKey) !== rawRef.current) throw new SettingsStorageError(); }
+    catch { storageFailed(); throw new SettingsStorageError(); }
   };
-  const stopSyncLocally = async () => {
-    syncKeyRef.current = null; syncAddressRef.current = null; authSigRef.current = null; authSigAddressRef.current = null;
-    try { await setPrefs(current => ({ ...current, syncAcrossDevices: false })); return true; }
-    catch { const next = { ...prefsRef.current, syncAcrossDevices: false }; prefsRef.current = next; setPrefsState(recoveryPausedRef.current ? suspendedPrefs(next) : next); return false; }
-  };
-  const pullOnSessionKeyRef = useRef(false);
-  const pushTimerRef = useRef<number | null>(null);
-  const [syncState, setSyncState] = useState<SettingsSyncState>({
-    walletAddress: existingSyncBlob?.address ?? null,
-    encryptedAt: existingSyncBlob?.updatedAt ?? null,
-    hasSessionKey: false,
-    isEncrypting: false,
-  });
-
-  const getAuthSig = useCallback((address: string) => authSigAddressRef.current === address.toLowerCase() ? authSigRef.current : null, []);
-  const storeAuthSig = useCallback((address: string, authorization: SyncAuthorization) => {
-    authSigAddressRef.current = address.toLowerCase();
-    authSigRef.current = authorization;
-  }, []);
-
-  const pushCurrentBlob = useCallback((key:CryptoKey,address:string,auth:SyncAuthorization,blob:EncryptedSyncBlob,basedOn?:EncryptedSyncBlobSnapshot) => {
-    const revision=prefsRevisionRef.current;
-    return pushBlob(address,auth,blob,basedOn,()=>sessionActiveRef.current&&!storageFailedRef.current&&syncKeyRef.current===key&&authSigRef.current===auth&&prefsRevisionRef.current===revision);
-  }, []);
-
-  const pullMergePushOnce = useCallback(async (
-    key: CryptoKey,
-    address: string,
-    localPrefs: SettingsPrefs,
-    authSig?: SyncAuthorization | null,
-    repush = true,
-  ): Promise<{ prefs: SettingsPrefs; blob: EncryptedSyncBlob; merged: boolean; basedOn: EncryptedSyncBlobSnapshot; ensureCurrent: () => void } | null> => {
-    const guard = guardPrefsRevision();
-    const ensureCurrent = () => {
-      guard();
-      if (syncKeyRef.current !== key) throw new Error("Sync authorization expired. Re-enable sync with your wallet.");
-    };
-    ensureCurrent();
-    let remoteBlob:EncryptedSyncBlobSnapshot|null,remotePayload:SettingsSyncPayload|undefined;
-    try {
-      remoteBlob = await pullRemoteBlob(address);
-      if (remoteBlob) remotePayload = await decryptSettingsPayload(remoteBlob, key, address);
-    } catch {
-      // Clear authority synchronously, before another timer or local edit can write.
-      // A late failure from an old wallet/session must not pause its replacement.
-      if(sessionActiveRef.current&&syncKeyRef.current===key){
-        syncKeyRef.current=null;syncAddressRef.current=null;authSigRef.current=null;authSigAddressRef.current=null;
-        pullOnSessionKeyRef.current=false;
-        if(pushTimerRef.current){window.clearTimeout(pushTimerRef.current);pushTimerRef.current=null;}
-        setSyncState(state=>({...state,hasSessionKey:false,isEncrypting:false,error:SYNC_READ_PAUSED}));
-      }
-      throw new SyncReadError();
-    }
-    ensureCurrent();
-    if(!remoteBlob||!remotePayload)return null;
-    try {
-      const localPayload = payloadFromPrefs(localPrefs, savedMessagesRef.current, prefsUpdatedAtRef.current);
-      const mergedPayload = mergePayload(localPayload, remotePayload);
-      const mergedBlob = await encryptSyncPayload(mergedPayload, key, address);
-      ensureCurrent();
-      savedMessagesRef.current = mergedPayload.savedMessages;
-      prefsUpdatedAtRef.current = mergedPayload.updatedAt;
-      LS.set(blobKey, mergedBlob);
-      if (repush && authSig) void pushCurrentBlob(key, address, authSig, mergedBlob, remoteBlob);
-      return { prefs: mergedPayload.settingsPrefs, blob: mergedBlob, merged: true, basedOn: remoteBlob, ensureCurrent };
-    } catch {
-      ensureCurrent();
-      throw new Error("Encrypted sync could not be decrypted. Remote data has been preserved.");
-    }
-  }, []);
-
-  useEffect(() => {
-    if (storageFailedRef.current || !prefs.syncAcrossDevices || !syncKeyRef.current || !syncAddressRef.current) return;
-    const key = syncKeyRef.current;
-    const address = syncAddressRef.current;
-    let cancelled = false;
-    encryptSettingsPayload(prefs, key, address, savedMessagesRef.current, prefsUpdatedAtRef.current)
-      .then((blob) => {
-        if (cancelled || storageFailedRef.current || syncKeyRef.current !== key) return;
-        LS.set(blobKey, blob);
-        setSyncState((s) => ({ ...s, walletAddress: blob.address, encryptedAt: blob.updatedAt, hasSessionKey: true }));
-        const authSig = getAuthSig(address);
-        if (!authSig) return;
-        if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current);
-        pushTimerRef.current = window.setTimeout(() => {
-          pushTimerRef.current = null;
-          if (cancelled || storageFailedRef.current || syncKeyRef.current !== key) return;
-          pushCurrentBlob(key, address, authSig, blob).then(async (result) => {
-            if (cancelled || storageFailedRef.current || syncKeyRef.current !== key) return;
-            if (result.ok) { setSyncState((s) => ({ ...s, error: undefined })); return; }
-            if (!result.stale) throw new Error("Sync write failed");
-            const merged = await pullMergePushOnce(key, address, prefs, authSig, false);
-            if (!merged || cancelled) return;
-            const retry = await pushCurrentBlob(key, address, authSig, merged.blob, merged.basedOn);
-            if (!retry.ok) throw new Error("Sync conflict; retry required");
-            if (!cancelled) {
-              await setPrefs(merged.prefs, merged.ensureCurrent);
-              merged.ensureCurrent();
-              setSyncState((s) => ({ ...s, walletAddress: merged.blob.address, encryptedAt: merged.blob.updatedAt, hasSessionKey: true }));
-            }
-          }).catch(() => { if(syncKeyRef.current===key)setSyncState((s) => ({ ...s, error: "Sync failed. Local changes are saved on this device; retry sync when available." })); });
-        }, 1500);
-      })
-      .catch(() => {
-        if (!cancelled) setSyncState((s) => ({ ...s, hasSessionKey: Boolean(syncKeyRef.current) }));
-      });
+  const guard = () => {
+    const expectedRevision = revision.current, expectedGeneration = generation.current;
     return () => {
-      cancelled = true;
-      if (pushTimerRef.current) {
-        window.clearTimeout(pushTimerRef.current);
-        pushTimerRef.current = null;
-      }
+      guardStorage();
+      if (generation.current !== expectedGeneration) throw new Error('Sync session changed. Re-enable sync to retry.');
+      if (revision.current !== expectedRevision) throw new Error('Settings changed while syncing. Your local choices are saved; enable sync again to retry.');
     };
-  }, [getAuthSig, prefs, pullMergePushOnce]);
-
+  };
+  const applyStored = (raw: string) => {
+    const saved = parseSettingsRaw(raw);
+    rawRef.current = raw; prefsRef.current = saved.prefs; timeRef.current = saved.updatedAt;
+    payloadRef.current = saved.syncPayload; minimumRef.current = saved.syncMinimum ?? 1;
+    setPrefsState(saved.prefs); setStorageError(null);
+  };
+  const coordinated = async (operation: () => void, ensureCurrent: () => void = ensureActive) => {
+    writes.current++; setStorageBusy(true);
+    try { await withSettingsLock(prefsKey, () => { ensureCurrent(); guardStorage(); operation(); }); }
+    catch (error) { if (error instanceof SettingsStorageError) storageFailed(); throw error; }
+    finally { writes.current--; if (active.current) setStorageBusy(writes.current > 0); }
+  };
+  const setPrefs = (next: SettingsPrefs | ((current: SettingsPrefs) => SettingsPrefs), ensureCurrent = ensureActive) => coordinated(() => {
+    const value = typeof next === 'function' ? next(prefsRef.current) : next;
+    applyStored(saveSettings(prefsKey, rawRef.current, value, Math.max(Date.now(), timeRef.current + 1)));
+  }, ensureCurrent);
+  const commit = (payload: SyncPayloadV2, minimum: 1 | 2, ensureCurrent: () => void) => coordinated(() => {
+    applyStored(saveSyncedSettings(prefsKey, rawRef.current, payload, minimum));
+  }, ensureCurrent);
+  const clearAuthority = () => {
+    generation.current++; keyRef.current = null; authRef.current = null; providerRef.current = null; revokeRef.current = null;
+    reschedule.current = false; if (timer.current) clearTimeout(timer.current); timer.current = null;
+  };
+  const stopLocally = async () => {
+    try { await setPrefs(current => ({ ...current, syncAcrossDevices: false })); return true; }
+    catch { if (active.current) { prefsRef.current = { ...prefsRef.current, syncAcrossDevices: false }; setPrefsState(prefsRef.current); } return false; }
+  };
+  const assertWallet = async (provider: ReturnType<typeof getActiveProvider>, address: string, ensureCurrent: () => void) => {
+    ensureCurrent();
+    if (!provider || getActiveProvider() !== provider) throw new Error('Wallet provider changed. Reconnect before syncing.');
+    const account = accountFromResponse(await provider.request({ method: 'eth_accounts' }));
+    ensureCurrent();
+    if (getActiveProvider() !== provider || account?.toLowerCase() !== address.toLowerCase()) throw new Error('Wallet account changed. Reconnect before syncing.');
+  };
+  const roundTrip = async (key: CryptoKey, address: string, authorization: SyncAuthorization, ensureCurrent: () => void) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      ensureCurrent();
+      let snapshot, remote;
+      try { snapshot = await readVersionedSync(address, minimumRef.current, ensureCurrent); remote = await decryptVersionedSync(snapshot, key); }
+      catch { ensureCurrent(); throw new SyncReadError(); }
+      ensureCurrent();
+      if (snapshot.epoch !== authorization.grant.epoch || authorization.grant.expiresAt <= Date.now()) throw new VersionedSyncError('authorization');
+      const local = payloadRef.current;
+      if (!local) throw new SyncReadError();
+      const merged = remote ? mergeSyncPayloadV2(local, remote) : local;
+      await assertWallet(providerRef.current, address, ensureCurrent);
+      await commit(merged, snapshot.minimum, ensureCurrent); ensureCurrent();
+      if (snapshot.minimum === 2 && remote && fingerprint(payloadRef.current) === fingerprint(remote)) return remote;
+      const encrypted = await encryptSyncPayloadV2(payloadRef.current, key, address); ensureCurrent();
+      try {
+        const latest = await writeVersionedSync(snapshot, authorization, encrypted, ensureCurrent);
+        const authoritative = await decryptVersionedSync(latest, key); ensureCurrent();
+        if (!authoritative) throw new SyncReadError();
+        await assertWallet(providerRef.current, address, ensureCurrent);
+        await commit(mergeSyncPayloadV2(payloadRef.current, authoritative), 2, ensureCurrent); ensureCurrent();
+        if (fingerprint(payloadRef.current) === fingerprint(authoritative)) return authoritative;
+      } catch (error) {
+        ensureCurrent();
+        if (!(error instanceof VersionedSyncError) || error.reason !== 'stale') throw error;
+      }
+    }
+    throw new Error('Another device changed sync again. Local changes are preserved; retry sync.');
+  };
+  const schedule = (delay = 1500) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { timer.current = null; void backgroundRef.current(); }, delay);
+  };
+  backgroundRef.current = async () => {
+    if (!active.current || failedRef.current || recoveryRef.current || !prefsRef.current.syncAcrossDevices || !keyRef.current || !authRef.current) return;
+    if (busy.current) { reschedule.current = true; return; }
+    busy.current = true;
+    const key = keyRef.current, authorization = authRef.current, provider = providerRef.current;
+    const expectedGeneration = generation.current, expectedRevision = revision.current, ensureCurrent = guard();
+    try {
+      await assertWallet(provider, identity.address, ensureCurrent);
+      const result = await roundTrip(key, identity.address, authorization, ensureCurrent);
+      ensureCurrent(); lastSynced.current = fingerprint(result);
+      if (!result.syncAcrossDevices.value) clearAuthority();
+      setSyncState({ walletAddress: identity.address, encryptedAt: result.updatedAt, hasSessionKey: Boolean(keyRef.current), isEncrypting: false });
+    } catch (error) {
+      if (active.current && generation.current === expectedGeneration) {
+        if (revision.current !== expectedRevision && !failedRef.current) reschedule.current = true;
+        else { clearAuthority(); setSyncState(state => ({ ...state, hasSessionKey: false, isEncrypting: false, error: error instanceof Error ? error.message : SYNC_READ_PAUSED })); }
+      }
+    } finally {
+      busy.current = false;
+      if (reschedule.current && keyRef.current) { reschedule.current = false; schedule(); }
+    }
+  };
+  useEffect(() => {
+    if (syncState.hasSessionKey && prefs.syncAcrossDevices && fingerprint(payloadRef.current) !== lastSynced.current) schedule();
+  }, [prefs, syncState.hasSessionKey]);
+  useEffect(() => {
+    if (!syncState.hasSessionKey || !authRef.current) return;
+    const poll = () => { if (document.visibilityState === 'visible' && navigator.onLine !== false) void backgroundRef.current(); };
+    const interval = setInterval(poll, 30000);
+    window.addEventListener('focus', poll); window.addEventListener('online', poll);
+    const expiry = setTimeout(() => { clearAuthority(); setSyncState(state => ({ ...state, hasSessionKey: false, error: 'Sync authorization expired. Re-enable sync with your wallet.' })); }, Math.max(0, authRef.current.grant.expiresAt - Date.now()));
+    return () => { clearInterval(interval); clearTimeout(expiry); window.removeEventListener('focus', poll); window.removeEventListener('online', poll); };
+  }, [syncState.hasSessionKey]);
   useEffect(() => {
     if (!storageError) return;
-    syncKeyRef.current = null; authSigRef.current = null;
-    if (pushTimerRef.current) { window.clearTimeout(pushTimerRef.current); pushTimerRef.current = null; }
-    setSyncState(state => ({ ...state, hasSessionKey: false, isEncrypting: false }));
+    clearAuthority(); setSyncState(state => ({ ...state, hasSessionKey: false, isEncrypting: false }));
   }, [storageError]);
-
   useEffect(() => {
     const changed = (event: StorageEvent) => {
-      if (event.key !== recoveryMarkerKey(prefsKey) || event.newValue === null) return;
-      prefsRevisionRef.current++; storageFailedRef.current = true;
-      syncKeyRef.current = null; authSigRef.current = null;
-      if (pushTimerRef.current) { window.clearTimeout(pushTimerRef.current); pushTimerRef.current = null; }
-      recoveryPausedRef.current = true; setRecoveryPaused(true);
-      setPrefsState(suspendedPrefs(prefsRef.current));
+      if (event.key !== prefsKey && event.key !== recoveryMarkerKey(prefsKey)) return;
+      if (event.key === recoveryMarkerKey(prefsKey) && event.newValue === null) return;
+      revision.current++; clearAuthority(); setSyncState(state => ({ ...state, hasSessionKey: false, isEncrypting: false }));
+      if (event.key === recoveryMarkerKey(prefsKey)) { recoveryRef.current = true; failedRef.current = true; setRecoveryPaused(true); setPrefsState(suspended(prefsRef.current)); return; }
+      try {
+      const next = loadSettings(prefsKey);
+      if (next.failed || payloadRef.current && (!next.syncPayload || (next.syncMinimum ?? 1) < minimumRef.current || fingerprint(mergeSyncPayloadV2(payloadRef.current, next.syncPayload)) !== fingerprint(next.syncPayload))) { storageFailed(); return; }
+      rawRef.current = next.raw; prefsRef.current = next.prefs; timeRef.current = next.updatedAt; payloadRef.current = next.syncPayload; minimumRef.current = next.syncMinimum ?? 1; setPrefsState(next.prefs);
+      } catch { storageFailed(); }
     };
-    window.addEventListener('storage', changed); return () => window.removeEventListener('storage', changed);
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
   }, []);
-
   useEffect(() => {
-    sessionActiveRef.current = true;
-    return () => {
-      sessionActiveRef.current = false;
-      syncKeyRef.current = null;
-      authSigRef.current = null;
-      try { sessionStorage.removeItem(`${SETTINGS_SYNC_AUTH_SIG_PREFIX}${identity.address.toLowerCase()}`); } catch { /* Ignore disabled storage. */ }
-      if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current);
-    };
+    active.current = true;
+    return () => { active.current = false; clearAuthority(); try { sessionStorage.removeItem(`${SETTINGS_SYNC_AUTH_SIG_PREFIX}${identity.address.toLowerCase()}`); } catch {} };
   }, []);
-
-  useEffect(() => {
-    if (
-      storageFailedRef.current ||
-      pullOnSessionKeyRef.current ||
-      !prefs.syncAcrossDevices ||
-      !syncKeyRef.current ||
-      !syncAddressRef.current ||
-      !syncState.hasSessionKey
-    ) return;
-    pullOnSessionKeyRef.current = true;
-    const key = syncKeyRef.current;
-    const address = syncAddressRef.current;
-    const authSig = getAuthSig(address);
-    void pullMergePushOnce(key, address, prefs, authSig).then(async (merged) => {
-      if (!merged) return;
-      await setPrefs(merged.prefs, merged.ensureCurrent);
-      merged.ensureCurrent();
-      setSyncState((s) => ({ ...s, walletAddress: merged.blob.address, encryptedAt: merged.blob.updatedAt, hasSessionKey: true }));
-    }).catch(() => { if(syncKeyRef.current===key)setSyncState((s) => ({ ...s, error: "Remote sync could not be read. Local data is unchanged." })); });
-  }, [getAuthSig, prefs, pullMergePushOnce, syncState.hasSessionKey]);
-
-  useEffect(() => {
-    const authorization = authSigRef.current;
-    if (!syncState.hasSessionKey || !authorization) return;
-    const expire = () => {
-      syncKeyRef.current = null;
-      authSigRef.current = null;
-      setSyncState((state) => ({ ...state, hasSessionKey: false, error: "Sync authorization expired. Re-enable sync with your wallet." }));
-    };
-    const timeout = window.setTimeout(expire, Math.max(0, authorization.grant.expiresAt - Date.now()));
-    return () => window.clearTimeout(timeout);
-  }, [syncState.hasSessionKey]);
-
-  const value = useMemo<SettingsPrefsCtx>(() => ({
-    prefs: recoveryPaused ? suspendedPrefs(prefs) : prefs,
-    storageError, storageBusy, recoveryPaused,
+  const editPrefs = async (change: (current: SettingsPrefs) => SettingsPrefs) => {
+    revision.current++;
+    try { await setPrefs(change); } catch { /* A failed durable save has a visible storage error. */ }
+  };
+  const value: SettingsPrefsCtx = {
+    prefs: recoveryPaused ? suspended(prefs) : prefs, storageError, storageBusy, recoveryPaused, syncState,
+    legacySavedItems: payloadRef.current ? syncPayloadV2View(payloadRef.current).savedMessages : [],
+    removeLegacySavedItem: async id => {
+      revision.current++; const ensureCurrent = guard();
+      if (!payloadRef.current || !Object.hasOwn(payloadRef.current.savedMessages, id)) return;
+      await commit(editSyncPayloadV2(payloadRef.current, { kind: 'savedMessage', id, value: null }), minimumRef.current, ensureCurrent);
+    },
+    removeLegacyBlockedAddress: address => editPrefs(current => ({ ...current, blocked: current.blocked.filter(value => value.toLowerCase() !== address.toLowerCase()) })),
     pauseSyncForRecovery: () => {
-      ensureActive(); prefsRevisionRef.current++;
-      storageFailedRef.current = true; recoveryPausedRef.current = true; setRecoveryPaused(true);
-      syncKeyRef.current = null; syncAddressRef.current = null; authSigRef.current = null; authSigAddressRef.current = null;
-      if (pushTimerRef.current) { window.clearTimeout(pushTimerRef.current); pushTimerRef.current = null; }
-      setPrefsState(suspendedPrefs(prefsRef.current));
-      setSyncState(state => ({ ...state, hasSessionKey: false, isEncrypting: false }));
+      ensureActive(); revision.current++; clearAuthority(); failedRef.current = true; recoveryRef.current = true;
+      setRecoveryPaused(true); setPrefsState(suspended(prefsRef.current)); setSyncState(state => ({ ...state, hasSessionKey: false, isEncrypting: false }));
     },
     refreshAfterRecovery: () => {
       ensureActive(); assertNoRecoveryPending(prefsKey); const loaded = loadSettings(prefsKey);
       if (loaded.failed) throw new SettingsStorageError();
-      prefsRevisionRef.current++; prefsRawRef.current = loaded.raw; prefsRef.current = loaded.prefs;
-      prefsUpdatedAtRef.current = loaded.updatedAt; storageFailedRef.current = false;
-      recoveryPausedRef.current = false; setRecoveryPaused(false);
-      setPrefsState(loaded.prefs); setStorageError(null);
+      revision.current++; rawRef.current = loaded.raw; prefsRef.current = loaded.prefs; timeRef.current = loaded.updatedAt;
+      payloadRef.current = loaded.syncPayload; minimumRef.current = loaded.syncMinimum ?? 1;
+      failedRef.current = false; recoveryRef.current = false; setRecoveryPaused(false); setPrefsState(loaded.prefs); setStorageError(null);
     },
-    syncState,
-    setReadReceiptsDefault: async (readReceiptsDefault) => {
-      recordLocalEdit();
-      try { await setPrefs((p) => ({ ...p, readReceiptsDefault })); } catch { /* Visible storage error; committed settings remain selected. */ }
-    },
+    setReadReceiptsDefault: on => editPrefs(current => ({ ...current, readReceiptsDefault: on })),
     setChatReadReceipts: async (conversationId, on) => {
-      if (!/^[a-zA-Z0-9_-]{1,256}$/.test(conversationId) || (on !== undefined && typeof on !== "boolean")) return;
-      recordLocalEdit();
-      try { await setPrefs((current) => {
-        const overrides = { ...current.readReceiptOverrides };
-        const key = receiptPreferenceKey(conversationId);
-        if (on === undefined) delete overrides[key]; else overrides[key] = on;
-        return { ...current, readReceiptOverrides: overrides };
-      }); } catch { /* Visible storage error; do not claim this change was saved. */ }
+      if (!/^[a-zA-Z0-9_-]{1,256}$/.test(conversationId) || on !== undefined && typeof on !== 'boolean') return;
+      await editPrefs(current => { const overrides = { ...current.readReceiptOverrides }, key = receiptPreferenceKey(conversationId);
+        if (on === undefined) delete overrides[key]; else overrides[key] = on; return { ...current, readReceiptOverrides: overrides }; });
     },
-    enableSyncAcrossDevices: async () => {
-      if (mode !== "wallet") return { ok: false, message: "Connect a wallet before enabling encrypted sync." };
-      if (storageFailedRef.current) return { ok: false, message: SETTINGS_STORAGE_ERROR };
-      const ensureCurrent = guardPrefsRevision();
-      setSyncState((s) => ({ ...s, isEncrypting: true }));
+    enableSyncAcrossDevices: async choice => {
+      if (mode !== 'wallet') return { ok: false, message: 'Connect a wallet before enabling encrypted sync.' };
+      if (failedRef.current) return { ok: false, message: SETTINGS_STORAGE_ERROR };
+      if (busy.current) return { ok: false, message: 'Sync is already in progress.' };
+      busy.current = true; clearAuthority(); const expectedGeneration = generation.current, settingsGuard = guard();
+      let legacyInputs: { blob: string | null; timestamp: string | null } | null = null;
+      const ensureCurrent = () => {
+        settingsGuard();
+        if (legacyInputs && (localStorage.getItem(blobKey) !== legacyInputs.blob || localStorage.getItem(`chat:settingsPrefsUpdatedAt:v1:${scope}`) !== legacyInputs.timestamp)) throw new SyncReadError();
+      };
+      setSyncState(state => ({ ...state, isEncrypting: true, migrationChoiceRequired: false, error: undefined }));
       try {
-        const { address, key } = await requestWalletSyncKey(mode === "wallet" ? identity.address : undefined);
+        const provider = getActiveProvider(), { address, key } = await requestWalletSyncKey(identity.address);
+        await assertWallet(provider, address, ensureCurrent);
+        let snapshot;
+        try { snapshot = await readVersionedSync(address, minimumRef.current, ensureCurrent); } catch { ensureCurrent(); throw new SyncReadError(); }
+        let remote: SyncPayloadV2 | null;
+        try { remote = await decryptVersionedSync(snapshot, key); } catch { throw new SyncReadError(); }
         ensureCurrent();
-        const authSig = await createSyncAuthorization(address, (message) => { ensureCurrent(); return signSyncMessage(address, message); });
-        ensureCurrent();
-        const nextPrefs = { ...prefs, syncAcrossDevices: true };
-        pullOnSessionKeyRef.current=false;
-        syncKeyRef.current = key;
-        syncAddressRef.current = address;
-        storeAuthSig(address, authSig);
-        const remoteMerged = await pullMergePushOnce(key, address, nextPrefs, authSig, false);
-        const mergedPrefs = { ...(remoteMerged?.prefs ?? nextPrefs), syncAcrossDevices: true };
-        const blob = remoteMerged?.blob ?? await encryptSettingsPayload(mergedPrefs, key, address, savedMessagesRef.current);
-        ensureCurrent();
-        LS.set(blobKey, blob);
-        const pushed = await pushCurrentBlob(key, address, authSig, blob, remoteMerged?.basedOn);
-        ensureCurrent();
-        if (!pushed.ok && pushed.stale) {
-          const latest = await pullMergePushOnce(key, address, mergedPrefs, authSig, false);
-          if (latest) {
-            const retry = await pushCurrentBlob(key, address, authSig, latest.blob, latest.basedOn);
-            ensureCurrent();
-            if (!retry.ok) throw new Error("Another device changed sync again. Try enabling sync again.");
-            await setPrefs(latest.prefs, ensureCurrent);
-            ensureCurrent();
-            setSyncState({ walletAddress: address, encryptedAt: latest.blob.updatedAt, hasSessionKey: true, isEncrypting: false });
-            return { ok: true, message: "Encrypted sync is enabled for this browser session, for up to 24 hours." };
-          }
+        let cached: SyncPayloadV2 | undefined;
+        if (!payloadRef.current && snapshot.minimum === 1) {
+          const raw = localStorage.getItem(blobKey);
+          legacyInputs = { blob: raw, timestamp: localStorage.getItem(`chat:settingsPrefsUpdatedAt:v1:${scope}`) };
+          if (raw !== null) { try { cached = upgradeSyncPayloadV1(await decryptSettingsPayload(JSON.parse(raw), key, address)); } catch { throw new SyncReadError(); } ensureCurrent(); }
         }
-        if (!pushed.ok) throw new Error("Encrypted sync was not saved. Try again; local data has been kept.");
-        await setPrefs(mergedPrefs, ensureCurrent);
-        ensureCurrent();
-        setSyncState({ walletAddress: address, encryptedAt: blob.updatedAt, hasSessionKey: true, isEncrypting: false });
-        return { ok: true, message: "Encrypted sync is enabled for this browser session, for up to 24 hours." };
-      } catch (err) {
-        const message = err instanceof Error && err.message
-          ? err.message
-          : "Wallet signature was rejected or unavailable. Sync stayed off.";
-        syncKeyRef.current = null;
-        syncAddressRef.current = null;
-        authSigRef.current = null;
-        authSigAddressRef.current = null;
-        await stopSyncLocally();
-        setSyncState((s) => ({ ...s, hasSessionKey: false, isEncrypting: false }));
+        let legacyUpdatedAt = timeRef.current;
+        if (!payloadRef.current && !legacyUpdatedAt && snapshot.minimum === 1) {
+          const rawTimestamp = localStorage.getItem(`chat:settingsPrefsUpdatedAt:v1:${scope}`);
+          const value = rawTimestamp === null ? cached?.updatedAt ?? 0 : JSON.parse(rawTimestamp);
+          if (!Number.isSafeInteger(value) || value < 0 || value >= Number.MAX_SAFE_INTEGER) throw new SyncReadError();
+          legacyUpdatedAt = value;
+        }
+        const prepared = prepareSyncMigration({ prefs: prefsRef.current, updatedAt: legacyUpdatedAt, syncPayload: payloadRef.current }, remote, snapshot.minimum, choice, cached);
+        const enabled = editSyncPayloadV2(prepared, { kind: 'syncAcrossDevices', value: true });
+        const granted = await authorizeVersionedSync(snapshot, message => { ensureCurrent(); return signSyncMessage(address, message); }, ensureCurrent);
+        await commit(enabled, snapshot.minimum, ensureCurrent); ensureCurrent();
+        const sessionGuard = () => { guardStorage(); if (generation.current !== expectedGeneration || keyRef.current !== key) throw new Error('Sync session changed. Re-enable sync to retry.'); };
+        const authorization: SyncAuthorization = { ...granted, sign: async message => { await assertWallet(provider, address, sessionGuard); return granted.sign(message); } };
+        keyRef.current = key; authRef.current = authorization; providerRef.current = provider;
+        // Local shutdown invalidates every write immediately. Revocation alone
+        // retains a separate short-lived closure so it can still be signed.
+        revokeRef.current = () => revokeSyncAuthorization({ ...granted, sign: async message => {
+          await assertWallet(provider, address, ensureActive); return granted.sign(message);
+        } });
+        const result = await roundTrip(key, address, authorization, ensureCurrent); ensureCurrent();
+        lastSynced.current = fingerprint(result);
+        if (!result.syncAcrossDevices.value) throw new Error('Another device turned sync off. Local data is preserved; enable sync again if intended.');
+        setSyncState({ walletAddress: address, encryptedAt: result.updatedAt, hasSessionKey: true, isEncrypting: false });
+        return { ok: true, message: 'Encrypted sync is enabled for this browser session, for up to 24 hours.' };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : SYNC_READ_PAUSED;
+        if (active.current && generation.current === expectedGeneration) {
+          clearAuthority();
+          const choiceRequired = error instanceof SyncMigrationChoiceError;
+          if (!choiceRequired) await stopLocally();
+          setSyncState(state => ({ ...state, hasSessionKey: false, isEncrypting: false, migrationChoiceRequired: choiceRequired }));
+        }
         return { ok: false, message };
-      }
+      } finally { busy.current = false; }
     },
     disableSyncAcrossDevices: async () => {
-      recordLocalEdit();
-      const authorization = authSigRef.current;
-      syncKeyRef.current = null;
-      syncAddressRef.current = null;
-      authSigRef.current = null;
-      authSigAddressRef.current = null;
-      LS.remove(blobKey);
-      const saved = await stopSyncLocally();
+      revision.current++; const revoke = revokeRef.current; clearAuthority(); const saved = await stopLocally();
       setSyncState({ walletAddress: null, encryptedAt: null, hasSessionKey: false, isEncrypting: false });
       try {
-        if (authorization) await revokeSyncAuthorization(authorization);
-        if (!saved) return { ok: false, message: "Sync stopped for this session, but the local preference could not be saved. Restore browser storage before reloading." };
-        return { ok: true, message: authorization ? "Sync is off and this device authorization was revoked." : "Sync is off locally. Use Revoke all sync devices to revoke earlier sessions." };
-      } catch (error) { return { ok: false, message: error instanceof Error ? error.message : "Sync stopped locally; revocation was not confirmed." }; }
+        if (revoke) await revoke();
+        if (!saved) return { ok: false, message: 'Sync stopped for this session, but the local preference could not be saved. Restore browser storage before reloading.' };
+        return { ok: true, message: revoke ? 'Sync is off and this device authorization was revoked.' : 'Sync is off locally. Use Revoke all sync devices to revoke earlier sessions.' };
+      } catch (error) { return { ok: false, message: error instanceof Error ? error.message : 'Sync stopped locally; revocation was not confirmed.' }; }
     },
     revokeAllSyncDevices: async () => {
-      if (mode !== "wallet") return { ok: false, message: "Connect a wallet to revoke sync devices." };
-      recordLocalEdit();
-      setSyncState((state) => ({ ...state, isEncrypting: true }));
+      if (mode !== 'wallet') return { ok: false, message: 'Connect a wallet to revoke sync devices.' };
+      revision.current++; clearAuthority(); const ensureCurrent = guard(); setSyncState(state => ({ ...state, isEncrypting: true }));
       try {
-        await revokeAllSyncAuthorizations(identity.address, (message) => { ensureActive(); return signSyncMessage(identity.address, message); });
-        ensureActive();
-        syncKeyRef.current = null; syncAddressRef.current = null; authSigRef.current = null; authSigAddressRef.current = null;
-        const saved = await stopSyncLocally();
-        setSyncState({ walletAddress: null, encryptedAt: null, hasSessionKey: false, isEncrypting: false });
-        if (!saved) return { ok: false, message: "Sync authorizations were revoked, but the local preference could not be saved. Restore browser storage before reloading." };
-        return { ok: true, message: "All existing sync device authorizations were revoked. Your encrypted saved data is retained." };
-      } catch (error) {
-        setSyncState((state) => ({ ...state, isEncrypting: false }));
-        return { ok: false, message: error instanceof Error ? error.message : "Revocation was not confirmed. Retry when connected." };
-      }
+        await revokeAllSyncAuthorizations(identity.address, message => { ensureCurrent(); return signSyncMessage(identity.address, message); }); ensureCurrent();
+        const saved = await stopLocally(); setSyncState({ walletAddress: null, encryptedAt: null, hasSessionKey: false, isEncrypting: false });
+        return saved ? { ok: true, message: 'All existing sync device authorizations were revoked. Your encrypted saved data is retained.' } : { ok: false, message: 'Sync authorizations were revoked, but the local preference could not be saved. Restore browser storage before reloading.' };
+      } catch (error) { if (active.current) setSyncState(state => ({ ...state, isEncrypting: false, hasSessionKey: false })); return { ok: false, message: error instanceof Error ? error.message : 'Revocation was not confirmed. Retry when connected.' }; }
     },
-  }), [identity.address, mode, prefs, pullMergePushOnce, storeAuthSig, syncState, storageError, storageBusy, recoveryPaused]);
-
+  };
   return <SettingsPrefsContext.Provider value={value}>{children}</SettingsPrefsContext.Provider>;
 }
 export const useSettingsPrefs = () => {

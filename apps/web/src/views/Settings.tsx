@@ -23,7 +23,7 @@ export function Settings(
     setHandle, resetHandle, reset, connectWallet, connectWalletConnect, disconnectWallet,
   } = useIdentity();
   const { orgs, recoverySnapshots, organizationStorageError, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
-  const { prefs, storageError, storageBusy, recoveryPaused, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices } = useSettingsPrefs();
+  const { prefs, storageError, storageBusy, recoveryPaused, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices, legacySavedItems = [], removeLegacySavedItem, removeLegacyBlockedAddress } = useSettingsPrefs();
   const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging, requestHistorySync } = useChat();
   const { lang, setLang, t } = useI18n();
   const gateSummary = (rules: unknown[]) => rules.length === 0 ? t("settings.open") : rules.length === 1 ? t("settings.oneRule") : t("settings.rules", undefined, { count: rules.length });
@@ -319,7 +319,24 @@ export function Settings(
             {syncState.isEncrypting ? t("settings.signing") : prefs.syncAcrossDevices && syncState.hasSessionKey ? t("settings.turnOff") : prefs.syncAcrossDevices ? t("settings.reenable") : t("settings.turnOn")}
           </Button>
         </div>
+        <p className="field-hint">{t('settings.syncUpgradeHelp')}</p>
+        {syncState.migrationChoiceRequired && <div role="group" aria-label={t('settings.syncMigrationChoice')}>
+          <p>{t('settings.syncMigrationHelp')}</p>
+          {(['remote', 'local'] as const).map(choice => <Button key={choice} disabled={syncState.isEncrypting || storageBusy || !!storageError || recoveryPaused} onClick={async () => {
+            const result = await enableSyncAcrossDevices(choice); setSyncMessage(result.message); setSyncMessageKind(result.ok ? 'success' : 'error');
+          }}>{t(choice === 'remote' ? 'settings.syncUseRemote' : 'settings.syncUseLocal')}</Button>)}
+        </div>}
       </section>
+      {legacySavedItems.length > 0 && <section className="card" aria-label={t('settings.legacySaved')}>
+        <h2>{t('settings.legacySaved')}</h2><p className="muted">{t('settings.legacySavedHelp')}</p>
+        <ul className="local-items">{legacySavedItems.map(item => <li key={item.id} className="restore-text"><strong>{item.id}</strong><p>{typeof item.body === 'string' ? item.body : JSON.stringify(item)}</p>
+          <Button variant="danger" disabled={storageBusy || !!storageError || recoveryPaused || syncState.isEncrypting} onClick={async () => {
+            if (!window.confirm(t('settings.legacyDeleteConfirm'))) return;
+            try { await removeLegacySavedItem(item.id); setSyncMessage(t('settings.legacyDeleted')); setSyncMessageKind('success'); }
+            catch { setSyncMessage(t('settings.legacyDeleteFailed')); setSyncMessageKind('error'); }
+          }}>{t('settings.legacyDelete')}</Button>
+        </li>)}</ul>
+      </section>}
 
       <UpdateCard />
 
@@ -376,6 +393,9 @@ export function Settings(
       <section className="card">
         <h2>{t("list.blocked", "Blocked")}</h2>
         <p>{t("settings.blockedHelp", "Manage blocked conversations in Chats → Blocked. Blocking hides this direct conversation and stops your outgoing messages and receipts. It does not remove messages from shared rooms.")}</p>
+        {prefs.blocked.length > 0 && <details><summary>{t('settings.legacyBlocks')}</summary><p>{t('settings.legacyBlocksHelp')}</p>
+          <ul className="local-items">{prefs.blocked.map(address => <li key={address} className="restore-text">{address} <Button disabled={storageBusy || !!storageError || recoveryPaused || syncState.isEncrypting} onClick={() => { void removeLegacyBlockedAddress(address); }}>{t('settings.legacyBlockRemove')}</Button></li>)}</ul>
+        </details>}
       </section>
 
       <p className="muted settings-footer">

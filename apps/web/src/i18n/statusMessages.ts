@@ -130,7 +130,18 @@ const keys: Record<string, string> = {
   "Unable to read encrypted sync. Try again when storage is available.": "status.syncReadFailed",
   "Invalid sync revision.": "status.syncRevisionInvalid",
   "Sync service authorization is unavailable or has the wrong origin.": "status.syncWrongService",
-  "Sync stopped locally, but server revocation was not confirmed. Revoke all sync devices when connected.": "status.revokeServerUnconfirmed"
+  "Sync stopped locally, but server revocation was not confirmed. Revoke all sync devices when connected.": "status.revokeServerUnconfirmed",
+  "Sync session changed. Re-enable sync to retry.": "status.syncSessionChanged",
+  "Wallet provider changed. Reconnect before syncing.": "status.syncProviderChanged",
+  "Wallet account changed. Reconnect before syncing.": "status.syncAccountChanged",
+  "Another device changed sync again. Local changes are preserved; retry sync.": "status.syncConcurrentChange",
+  "Sync is already in progress.": "status.syncBusy",
+  "Another device turned sync off. Local data is preserved; enable sync again if intended.": "status.syncOtherDeviceOff",
+  "This wallet already uses upgraded sync. Choose which receipt and legacy blocked-address settings to keep. Your older encrypted local copy is retained.": "status.syncMigrationChoice",
+  "Sync was not confirmed. Keep local data and reread before retrying.": "status.syncUnconfirmed",
+  "Sync is paused. Existing data was preserved; refresh access before retrying.": "status.syncAccessPaused",
+  "Encrypted sync could not be safely read or prepared. Existing data must be preserved.": "status.syncCipherInvalid",
+  "Invalid or unsupported versioned sync data. Existing data must be preserved.": "status.syncFormatInvalid"
 };
 export function translateStatus(t: (key: string, fallback?: string) => string, message: string): string {
   if (message.startsWith("Invalid org config: ")) {

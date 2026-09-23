@@ -24,11 +24,16 @@ vi.mock("../src/userSync", async (original) => ({
   revokeSyncAuthorization: (...args) => mocks.revoke(...args),
   revokeAllSyncAuthorizations: (...args) => mocks.revokeAll(...args),
 }));
+vi.mock('../src/versionedSyncTransport', async original => {
+  const { versionedSyncMock } = await import('./fixtures/versioned-sync-mock');
+  return versionedSyncMock(await original(), mocks);
+});
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-async function encrypted(payload: unknown) {
+async function encrypted(payload: unknown, upgraded=false) {
  const raw=await webcrypto.subtle.importKey('raw',new Uint8Array(65).fill(17),'HKDF',false,['deriveKey']);
- const key=await webcrypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new TextEncoder().encode(`Chirpy encrypted sync v1:${mocks.address}`),info:new TextEncoder().encode('settings-prefs-and-saved-messages')},raw,{name:'AES-GCM',length:256},false,['encrypt']);
+ const key=await webcrypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new TextEncoder().encode(`Chirpy encrypted sync v1:${mocks.address}`),info:new TextEncoder().encode('settings-prefs-and-saved-messages')},raw,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+ if(upgraded){const {encryptSyncPayloadV2}=await import('../src/versionedSyncCipher');const {upgradeSyncPayloadV1}=await import('../src/versionedSync');return encryptSyncPayloadV2(upgradeSyncPayloadV1(payload),key,mocks.address);}
  const iv=webcrypto.getRandomValues(new Uint8Array(12));
  const ciphertext=await webcrypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(payload)));
  return {version:1,algorithm:'AES-GCM',kdf:'HKDF-SHA-256',address:mocks.address,iv:Buffer.from(iv).toString('base64'),ciphertext:Buffer.from(ciphertext).toString('base64'),updatedAt:10};
@@ -43,7 +48,7 @@ for(const stage of ['enable','active'] as const)for(const kind of ['future','cor
  const before=JSON.stringify(fixture);
  mocks.authorize.mockReset().mockResolvedValue({grant:{expiresAt:Date.now()+60000}});
  mocks.pull.mockReset().mockResolvedValue(stage==='enable'?fixture:null);
- mocks.push.mockReset().mockResolvedValue({ok:true});
+ mocks.push.mockReset().mockImplementation(async envelope=>{mocks.pull.mockResolvedValue(envelope);return {ok:true};});
  let current:any;function Probe(){current={...useIdentity(),...useSettingsPrefs()};return null;}
  const root=createRoot(document.createElement('div'));
  try{
@@ -71,7 +76,7 @@ for(const stage of ['enable','active'] as const)for(const kind of ['future','cor
   expect(JSON.parse(storage.get(prefsKey)!).readReceiptsDefault).toBe(false);
   expect(Object.values(current.prefs.readReceiptOverrides)).toEqual([false]);
   // Re-enablement must reread; only a compatible, decryptable snapshot can resume.
-  mocks.pull.mockResolvedValue(await encrypted(valid()));mocks.push.mockResolvedValue({ok:true});
+  mocks.pull.mockResolvedValue(await encrypted(valid(),stage==='active'));mocks.push.mockResolvedValue({ok:true});
   await act(async()=>{expect((await current.enableSyncAcrossDevices()).ok).toBe(true);});
   expect(current.syncState.hasSessionKey).toBe(true);
  }finally{await act(async()=>root.unmount());}

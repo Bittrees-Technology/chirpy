@@ -1,12 +1,13 @@
+import { editSyncPayloadV2, mergeSyncPayloadV2, syncPayloadV2View, upgradeSyncPayloadV1, type SyncPayloadV2 } from './versionedSync';
 import { emptyLocalData, localRecords, notifyLocalData, validateLocalData, type LocalData } from './localData';
 import { validateRecoveryData, type RecoveryData } from './recoveryArchive';
-import { assertNoRecoveryPending, parseSettingsRaw, recoveryMarkerKey, serializeSettings, walletSettingsKey, withSettingsLock } from './settingsStorage';
+import { applySyncPreferences, assertNoRecoveryPending, parseSettingsRaw, recoveryMarkerKey, serializeSettings, walletSettingsKey, withSettingsLock } from './settingsStorage';
 import { notifyWalletLabel, parseWalletLabelRaw, readWalletLabelRaw, walletProfileKey } from './walletProfile';
 
 export interface RecoveryJournal {
   wallet: string; // Reserved IndexedDB key; never a wallet authority claim.
   owner: string;
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   labelChange?: { before: string | null; after: string | null };
   id: string;
   createdAt: number;
@@ -27,8 +28,8 @@ function checkLabel(journal: RecoveryJournal) {
 }
 
 export function backupArchive(journal: RecoveryJournal): RecoveryData {
-  const prefs = parseSettingsRaw(journal.beforePrefs).prefs;
-  return validateRecoveryData({ ...(journal.labelChange ? { version: 2, localDisplayName: parseWalletLabelRaw(journal.labelChange.before) ?? null } : { version: 1 }), source: 'chirpy', wallet: journal.owner, createdAt: journal.createdAt,
+  const before = parseSettingsRaw(journal.beforePrefs), prefs = before.prefs;
+  return validateRecoveryData({ ...(before.syncPayload ? { version: 3, syncPayload: before.syncPayload, syncMinimum: before.syncMinimum, ...(journal.labelChange ? { localDisplayName: parseWalletLabelRaw(journal.labelChange.before) ?? null } : {}) } : journal.labelChange ? { version: 2, localDisplayName: parseWalletLabelRaw(journal.labelChange.before) ?? null } : { version: 1 }), source: 'chirpy', wallet: journal.owner, createdAt: journal.createdAt,
     contacts: journal.before.contacts, notes: journal.before.notes,
     preferences: { blocked: prefs.blocked, readReceiptsDefault: prefs.readReceiptsDefault, readReceiptOverrides: prefs.readReceiptOverrides ?? {} } });
 }
@@ -36,13 +37,13 @@ export function validateJournal(value: unknown, wallet: string): RecoveryJournal
   const owner = wallet.toLowerCase(); walletSettingsKey(owner);
   if (!value || typeof value !== 'object' || Array.isArray(value)) conflict();
   const data = value as RecoveryJournal;
-  const keys = ['wallet', 'owner', 'version', 'id', 'createdAt', 'source', 'phase', 'before', 'after', 'beforePrefs', 'afterPrefs', 'undoPrefs', ...(data.version === 2 ? ['labelChange'] : [])];
+  const keys = ['wallet', 'owner', 'version', 'id', 'createdAt', 'source', 'phase', 'before', 'after', 'beforePrefs', 'afterPrefs', 'undoPrefs', ...(data.version === 2 || data.version === 3 && Object.hasOwn(data, 'labelChange') ? ['labelChange'] : [])];
   if (Object.keys(data).length !== keys.length || keys.some(key => !Object.hasOwn(data, key))
-    || data.wallet !== journalKey(owner) || data.owner !== owner || ![1, 2].includes(data.version) || !uuid.test(data.id)
+    || data.wallet !== journalKey(owner) || data.owner !== owner || ![1, 2, 3].includes(data.version) || !uuid.test(data.id)
     || !Number.isSafeInteger(data.createdAt) || data.createdAt < 0 || data.createdAt > 8_640_000_000_000_000
     || !['chirpy', 'governance', 'research'].includes(data.source)
     || !['prepared', 'applied', 'undoing', 'undone', 'abandoned'].includes(data.phase)) conflict();
-  if (data.version === 2) {
+  if (data.version === 2 || data.version === 3 && Object.hasOwn(data, 'labelChange')) {
     const change = data.labelChange;
     if (!change || typeof change !== 'object' || Array.isArray(change) || Object.keys(change).length !== 2
       || !Object.hasOwn(change, 'before') || !Object.hasOwn(change, 'after') || data.source !== 'chirpy') conflict();
@@ -54,7 +55,14 @@ export function validateJournal(value: unknown, wallet: string): RecoveryJournal
   const afterPrefs = parseSettingsRaw(data.afterPrefs).prefs;
   const undoPrefs = parseSettingsRaw(data.undoPrefs).prefs;
   const beforePrefs = parseSettingsRaw(data.beforePrefs).prefs;
-  if (afterPrefs.syncAcrossDevices || undoPrefs.syncAcrossDevices
+  if (afterPrefs.syncAcrossDevices || undoPrefs.syncAcrossDevices) conflict();
+  if (data.version === 3) {
+    const beforeState = parseSettingsRaw(data.beforePrefs), afterState = parseSettingsRaw(data.afterPrefs), undoState = parseSettingsRaw(data.undoPrefs);
+    if (!afterState.syncPayload || !undoState.syncPayload || (afterState.syncMinimum ?? 0) < (beforeState.syncMinimum ?? 1)
+      || beforeState.syncPayload && !equal(mergeSyncPayloadV2(beforeState.syncPayload, afterState.syncPayload), afterState.syncPayload)
+      || !equal(mergeSyncPayloadV2(afterState.syncPayload, undoState.syncPayload), undoState.syncPayload)
+      || data.undoPrefs !== undoSyncSettings(data.beforePrefs, data.afterPrefs, data.createdAt)) conflict();
+  } else if ([data.beforePrefs, data.afterPrefs, data.undoPrefs].some(raw => parseSettingsRaw(raw).syncPayload)
     || serializeSettings(undoPrefs, 0) !== serializeSettings({ ...beforePrefs, syncAcrossDevices: false }, 0)) conflict();
   validateLocalData({ ...before, revision: after.revision + 1 }, owner);
   const result = { ...data, before, after };
@@ -79,13 +87,19 @@ function markPending(journal: RecoveryJournal) {
 /** First persist a complete before/after journal. No user records change in this preparation. */
 export async function prepareRecovery(wallet: string, before: LocalData, beforePrefs: string | null,
   after: LocalData, preferences: RecoveryData['preferences'], source: RecoveryData['source'], ensureCurrent: () => void,
-  labelChange?: { before: string | null; after: string | null }) {
+  labelChange?: { before: string | null; after: string | null }, incomingSync?: SyncPayloadV2, incomingMinimum: 1 | 2 = 2) {
   const key = walletSettingsKey(wallet); const owner = wallet.toLowerCase();
-  const createdAt = Date.now(); const priorTime = parseSettingsRaw(beforePrefs).updatedAt;
-  const journal = validateJournal({ wallet: journalKey(owner), owner, ...(labelChange ? { version: 2, labelChange: { ...labelChange } } : { version: 1 }), id: crypto.randomUUID(), createdAt, source,
-    phase: 'prepared', before, after: { ...after, revision: before.revision + 1 }, beforePrefs,
-    afterPrefs: serializeSettings({ ...preferences, syncAcrossDevices: false }, Math.max(createdAt, priorTime + 1)),
-    undoPrefs: serializeSettings({ ...parseSettingsRaw(beforePrefs).prefs, syncAcrossDevices: false }, Math.max(createdAt + 1, priorTime + 2)),
+  const createdAt = Date.now(), prior = parseSettingsRaw(beforePrefs), priorTime = prior.updatedAt;
+  if (incomingSync && (source !== 'chirpy' || incomingMinimum !== 1 && incomingMinimum !== 2)) conflict();
+  let metadata = prior.syncPayload;
+  if (incomingSync) metadata = mergeSyncPayloadV2(metadata ?? legacySyncSettings(beforePrefs), incomingSync);
+  if (metadata) metadata = applySyncPreferences(metadata, { ...preferences, syncAcrossDevices: false }, Math.max(createdAt, priorTime + 1));
+  const afterPrefs = serializeSettings({ ...preferences, syncAcrossDevices: false }, Math.max(createdAt, priorTime + 1, metadata?.updatedAt ?? 0), metadata, Math.max(prior.syncMinimum ?? 1, incomingSync ? incomingMinimum : 1) as 1 | 2);
+  const journal = validateJournal({ wallet: journalKey(owner), owner, version: metadata ? 3 : labelChange ? 2 : 1,
+    ...(labelChange ? { labelChange: { ...labelChange } } : {}), id: crypto.randomUUID(), createdAt, source,
+    phase: 'prepared', before, after: { ...after, revision: before.revision + 1 }, beforePrefs, afterPrefs,
+    undoPrefs: metadata ? undoSyncSettings(beforePrefs, afterPrefs, createdAt)
+      : serializeSettings({ ...prior.prefs, syncAcrossDevices: false }, Math.max(createdAt + 1, priorTime + 2)),
   }, owner);
   return withSettingsLock(key, async () => {
     ensureCurrent(); assertNoRecoveryPending(key);
@@ -209,4 +223,23 @@ export async function abandonRecovery(wallet: string, id: string, ensureCurrent:
     if (localStorage.getItem(recoveryMarkerKey(key)) !== marker) conflict();
     localStorage.removeItem(recoveryMarkerKey(key)); notifyLocalData(); notifyWalletLabel();
   });
+}
+
+function legacySyncSettings(raw: string | null) {
+  const state = parseSettingsRaw(raw);
+  return state.syncPayload ?? upgradeSyncPayloadV1({ version: 1, settingsPrefs: state.prefs, savedMessages: [], updatedAt: state.updatedAt });
+}
+/** Undo is explicit later intent, retaining tombstones instead of rolling the
+ * stored format or clocks backward. Sync stays off until separately enabled. */
+export function undoSyncSettings(beforeRaw: string | null, afterRaw: string, createdAt: number) {
+  const before = parseSettingsRaw(beforeRaw), after = parseSettingsRaw(afterRaw);
+  if (!after.syncPayload) conflict();
+  const prior = legacySyncSettings(beforeRaw), now = Math.max(createdAt + 1, after.updatedAt + 1);
+  let metadata = applySyncPreferences(after.syncPayload, { ...before.prefs, syncAcrossDevices: false }, now);
+  for (const id of new Set([...Object.keys(metadata.savedMessages), ...Object.keys(prior.savedMessages)])) {
+    const wanted = Object.hasOwn(prior.savedMessages, id) ? prior.savedMessages[id].value : null;
+    const current = Object.hasOwn(metadata.savedMessages, id) ? metadata.savedMessages[id].value : null;
+    if (!equal(current, wanted)) metadata = editSyncPayloadV2(metadata, { kind: 'savedMessage', id, value: wanted }, now);
+  }
+  return serializeSettings(syncPayloadV2View(metadata).settingsPrefs, Math.max(now, metadata.updatedAt), metadata, after.syncMinimum);
 }

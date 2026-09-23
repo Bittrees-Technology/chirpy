@@ -498,3 +498,10 @@ Native group summaries distinguish active, inactive and unavailable device acces
 
 
 Inbox reconciliation continues in background tabs because it also services other installations' history requests. Hidden selected-thread history is not reloaded. Healthy reconciliation normally runs once per minute; an explicit, successfully submitted history request checks every ten seconds for up to two minutes, then returns to the normal cadence. This does not resend the request or claim the archive has arrived. Browser suspension, offline devices and network/service failures can still delay transfer; exact final-head live acceptance remains required.
+
+
+## Opt-in deletion-aware encrypted settings upgrade
+
+Enabling sync now uses the format2 model and protected API slot. Atomic local metadata preserves explicit saved-item deletion, legacy unblock and receipt reset across offline merges; a prepared minimum1 record survives an uncertain first write and minimum2 is never lowered once observed. Older local snapshots meeting upgraded remote data require a receipt/block preference choice and cannot replay deleted saved items. Existing encryption/signature identities and the old encrypted local cache are retained.
+
+Archive3, restore preview and durable undo preserve the full metadata and format floor. Receipt and block import remain explicit; local contacts/notes and XMTP conversation history stay outside settings sync. Separate legacy saved-item deletion controls make the new behavior usable without conflating it with the Saved Messages conversation. Browser scenarios cover two installations, offline replay, lost acknowledgement, stale API, changed authorization epoch, legacy timestamps, revocation and recovery. Actual production-origin and physical-device acceptance remain required.
