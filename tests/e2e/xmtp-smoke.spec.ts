@@ -11,10 +11,7 @@ test.describe("XMTP dev network @xmtp", () => {
     await page.getByRole("button", { name: "Connect wallet" }).click();
     await expect(page.getByRole("textbox", { name: "Address", exact: true })).toHaveValue(walletAddress);
     await page.getByRole("button", { name: "Enable messaging" }).click();
-
-    await expect.poll(async () => {
-      const banner = page.locator(".error-banner");
-      return await banner.count();
-    }, { timeout: 120_000 }).toBe(0);
+    await expect(page.getByText("Messaging enabled on this device.")).toBeVisible({ timeout: 120_000 });
+    await expect(page.locator(".error-banner")).toHaveCount(0);
   });
 });
