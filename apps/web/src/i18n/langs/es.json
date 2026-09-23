@@ -668,5 +668,15 @@
   "restore.nameDefault": "Usar el nombre ENS predeterminado, si está disponible",
   "restore.nameBlank": "Mostrar mi dirección de billetera sin nombre",
   "restore.localName": "Restaurar mi elección de nombre privado en este dispositivo",
-  "push.chooseReply": "Elige un mensaje original de esta sala al que responder."
+  "push.chooseReply": "Elige un mensaje original de esta sala al que responder.",
+  "push.attachFile": "Adjuntar archivo",
+  "push.preparingFile": "Preparando archivo…",
+  "push.removeFile": "Quitar archivo",
+  "push.fileReplyHint": "Quita el archivo para responder a un mensaje.",
+  "push.fileSendLimit": "Un archivo de hasta 1 MB. Puedes añadir una descripción debajo.",
+  "push.fileTooLarge": "Elige un archivo de como máximo 1 MB.",
+  "push.fileInvalid": "El archivo seleccionado no es válido. Vuelve a elegirlo.",
+  "push.fileReadFailed": "No se pudo leer el archivo seleccionado. Vuelve a elegirlo.",
+  "push.fileOnly": "El envío de archivos solo está disponible en las salas de Push.",
+  "push.historyBudget": "Esta página del historial de Push supera el límite de visualización. No se ha sustituido ningún mensaje."
 }

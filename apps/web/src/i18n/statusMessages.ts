@@ -1,5 +1,12 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "This Push history page exceeds the display limit. No messages were replaced.": "push.historyBudget",
+  "Remove the file to reply to a message.": "push.fileReplyHint",
+  "Choose a file of at most 1 MB.": "push.fileTooLarge",
+  "The selected file is invalid. Choose it again.": "push.fileInvalid",
+  "The selected file could not be read. Choose it again.": "push.fileReadFailed",
+  "File sending is available in Push rooms only.": "push.fileOnly",
+
   "Choose an original message in this room to reply to.": "push.chooseReply",
   "Push took too long. Enable rooms again. A submitted action may have completed; check history or membership before retrying.": "status.pushTimeout",
   "Your display name could not be saved. Restore browser storage access and try again.": "settings.profileSaveError",

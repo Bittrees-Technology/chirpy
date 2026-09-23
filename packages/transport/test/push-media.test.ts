@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readPushAttachment, readPushMediaLink, PUSH_FILE_BYTES } from '../src/pushMedia';
+import { readPushAttachment, readPushMediaLink, PUSH_FILE_BYTES, preparePushFile, writePushFile } from '../src/pushMedia';
 import { readPushHistory } from '../src/pushMessages';
 import { pushConversationId } from '../src/pushRegistry';
 const data = (bytes: number, mime = 'application/octet-stream') => `data:${mime};base64,${Buffer.alloc(bytes, 31).toString('base64')}`;
@@ -46,5 +46,28 @@ describe('Push attachment parsing', () => {
     expect(()=>readPushHistory(rows,conversation)).toThrow('No messages were replaced');
     expect(readPushHistory(rows.slice(0,6),conversation).messages).toHaveLength(6);
     expect(()=>readPushHistory([row('QmMediaMessage',null,'https://example.org/a','MediaEmbed'),row('QmMediaMessage',null,'https://example.org/b','MediaEmbed')],conversation)).toThrow();
+  });
+});
+
+describe('Push file preparation and dispatch validation', () => {
+  it('round trips the full limit with a safe filename, normalized MIME and original bytes', () => {
+    const bytes = Uint8Array.from({ length: PUSH_FILE_BYTES }, (_, i) => i % 256);
+    const file = preparePushFile('../report\u202e.bin', 'Application/Octet-Stream', bytes);
+    expect(file.filename).toBe('__report_.bin');
+    const decoded = readPushAttachment('File', writePushFile(file))!;
+    expect(decoded).toEqual(file); expect(Buffer.from(decoded.base64, 'base64').equals(Buffer.from(bytes))).toBe(true);
+  });
+  it('allows empty files and defaults absent or unsafe MIME to a binary download', () => {
+    for (const mime of ['', 'text/html;charset=utf-8', 'image/svg+xml\ntracking', 'x'.repeat(128)]) {
+      expect(preparePushFile('', mime, new Uint8Array())).toEqual({ filename: 'attachment.bin', bytes: 0, mediaType: 'application/octet-stream', base64: '' });
+    }
+    expect(() => preparePushFile('large.bin', '', new Uint8Array(PUSH_FILE_BYTES + 1))).toThrow('at most 1 MB');
+  });
+  it.each([
+    { bytes: 0 }, { filename: '../bad.bin' }, { mediaType: 'TEXT/PLAIN' }, { base64: 'AB==' }, { base64: 'A'.repeat(1_340_004) },
+    { mediaType: 'text/html;charset=utf8' }, { base64: {} },
+  ])('rejects altered metadata or invalid encoded contents %#', change => {
+    const file = preparePushFile('good.txt', 'text/plain', Uint8Array.of(1));
+    expect(() => writePushFile({ ...file, ...change } as any)).toThrow('invalid');
   });
 });

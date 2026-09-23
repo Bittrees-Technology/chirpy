@@ -20,8 +20,12 @@ export const PushAPI = {
     await wait('initialize');
     const call = (kind: string, room: string, extra?: unknown) => state().calls.push({ kind, room, owner, extra });
     return { account: owner, decryptedPgpPvtKey: 'synthetic-test-key', chat: {
-      history: async (room: string, options: any) => { call('history', room, options); const rows = clone(state().pages[options?.reference ?? 'latest'] ?? []); await wait('history'); call('historyResult', room); return rows; },
-      send: async (room: string, content: any) => { call('send', room, content); await wait('send'); return {}; },
+      history: async (room: string, options: any) => { call('history', room, options); const rows = clone((state().pages[options?.reference ?? 'latest'] ?? []).slice(0, options?.limit ?? 30)); await wait('history'); call('historyResult', room); return rows; },
+      send: async (room: string, content: any) => {
+        call('send', room, content); await wait('send');
+        if (state().failSend) throw new Error('Synthetic uncertain send');
+        return {};
+      },
       group: {
         info: async (room: string) => { call('info', room); return { chatId: room, groupName: 'Existing room', groupDescription: 'Preserved source room', isPublic: state().publicRoom }; },
         permissions: async (room: string) => { call('permissions', room); return clone(state().permissions); },

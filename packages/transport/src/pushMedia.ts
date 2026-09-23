@@ -33,3 +33,21 @@ export function readPushMediaLink(content: unknown): string | undefined {
   if (typeof content !== 'string' || content.length > 2048 || !/^https:\/\//i.test(content) || /[\\\s\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/.test(content)) return;
   try { const url = new URL(content); if (url.protocol === 'https:' && url.hostname && !url.username && !url.password) return url.href; } catch { /* unsupported */ }
 }
+
+/** Prepare a user-selected file without interpreting its contents. */
+export function preparePushFile(name: string, type: string, bytes: Uint8Array): PushAttachment {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength > PUSH_FILE_BYTES) throw new Error('Choose a file of at most 1 MB.');
+  const mediaType = type.length <= 127 && /^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(type) ? type.toLowerCase() : 'application/octet-stream';
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  return { filename: filename(name, 'attachment.bin'), mediaType, bytes: bytes.byteLength, base64: btoa(binary) };
+}
+/** Snapshot and revalidate at dispatch; never trust UI size or MIME claims. */
+export function writePushFile(file: PushAttachment): string {
+  if (!file || typeof file !== 'object' || typeof file.filename !== 'string' || typeof file.mediaType !== 'string'
+    || typeof file.base64 !== 'string' || file.base64.length > MAX_CONTENT) throw new Error('The selected file is invalid. Choose it again.');
+  const content = JSON.stringify({ name: file.filename, content: `data:${file.mediaType};base64,${file.base64}` });
+  const parsed = readPushAttachment('File', content);
+  if (!parsed || parsed.bytes !== file.bytes || parsed.filename !== file.filename || parsed.mediaType !== file.mediaType) throw new Error('The selected file is invalid. Choose it again.');
+  return content;
+}
