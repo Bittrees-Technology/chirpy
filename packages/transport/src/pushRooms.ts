@@ -1,3 +1,4 @@
+import type { Message as PushSdkMessage } from '@pushprotocol/restapi';
 import { parsePushIdentity } from './pushIdentity.js';
 import type { Conversation, MessagePage } from './types.js';
 import { loadPushRegistry, type PushCatalog, type PushCatalogRoom, type PushSource } from './pushRegistry.js';
@@ -200,13 +201,30 @@ export class PushRooms {
     });
     return { members, page, hasMore: members.length === 20, pending };
   }
-  async send(id: string, body: string): Promise<void> {
+  async send(id: string, body: string, opts?: { replyTo?: string }): Promise<void> {
     if (!body.trim() || body.length > 16_000 || new TextEncoder().encode(body).byteLength > 64 * 1024) throw new Error('Write a message of at most 16,000 characters.');
-    const access = await this.refreshRoom(id);
+    const replyTo = opts?.replyTo;
+    if (replyTo !== undefined && (typeof replyTo !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(replyTo))) throw new Error('Choose an original message in this room to reply to.');
+    let access = await this.refreshRoom(id);
     if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
     const { room, client, epoch } = await this.#client(id);
     this.#ensureAccess(id, access, epoch);
-    await client.send(room.chatId, { type: 'Text', content: body }); this.#ensure(epoch, id);
+    if (replyTo !== undefined) {
+      // A CID alone is not a room binding. Resolve just that original message,
+      // validate its recipients/reference, then recheck posting authority.
+      const raw = await client.history(room.chatId, { reference: replyTo, limit: 1 });
+      this.#ensureAccess(id, access, epoch);
+      if (!Array.isArray(raw) || raw.length !== 1) throw new Error('Choose an original message in this room to reply to.');
+      const parent = readPushHistory(raw, id, replyTo);
+      if (parent.messages.length !== 1 || parent.messages[0].id !== replyTo) throw new Error('Choose an original message in this room to reply to.');
+      access = await this.refreshRoom(id);
+      if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
+      this.#ensureAccess(id, access, epoch);
+    }
+    const payload: PushSdkMessage = replyTo === undefined ? { type: 'Text', content: body }
+      : { type: 'Reply', content: { type: 'Text', content: body }, reference: replyTo };
+    await client.send(room.chatId, payload);
+    this.#ensure(epoch, id);
     // A resolved SDK send is not evidence of delivery/read. The caller refreshes history.
   }
   async join(id: string): Promise<PushRoomDetails> {

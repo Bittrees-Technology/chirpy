@@ -154,3 +154,58 @@ describe('source-scoped Push room adapter', () => {
     expect(f.session.dispose).toHaveBeenCalledOnce(); await expect(f.rooms.enable()).rejects.toThrow();
   });
 });
+
+const replyCid = 'QmOriginalMessage';
+const replyRow = (overrides = {}) => ({ cid: replyCid, link: null, fromDID: owner, toDID: group, timestamp: 1, messageType: 'Text', messageContent: 'Original message', ...overrides });
+describe('Push reply dispatch', () => {
+  it('resolves the original in the selected room and sends the SDK reply envelope once', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.history).mockResolvedValue([replyRow()]);
+    await f.rooms.send(id, 'Reply body', { replyTo: replyCid });
+    expect(f.client.history).toHaveBeenCalledWith(group, { reference: replyCid, limit: 1 });
+    expect(f.client.permissions).toHaveBeenCalledTimes(2);
+    expect(f.client.send).toHaveBeenCalledExactlyOnceWith(group, { type: 'Reply', content: { type: 'Text', content: 'Reply body' }, reference: replyCid });
+  });
+  it.each(['', 'https://example.test/message', '../another-room', 'x'.repeat(129), null, 7])('rejects malformed reference %s before any SDK read or write', async replyTo => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    await expect(f.rooms.send(id, 'body', { replyTo: replyTo as string })).rejects.toThrow('original message');
+    expect(f.client.info).not.toHaveBeenCalled(); expect(f.client.history).not.toHaveBeenCalled(); expect(f.client.send).not.toHaveBeenCalled();
+  });
+  it.each([
+    [], [replyRow({ cid: 'QmDifferentMessage' })], [replyRow({ toDID: 'b'.repeat(64) })],
+    [replyRow({ toCAIP10: 'b'.repeat(64) })], [replyRow(), replyRow()],
+  ].map(rows => ({ rows })))('rejects unavailable, substituted, foreign and excessive reference results %#', async ({ rows }) => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.history).mockResolvedValue(rows);
+    await expect(f.rooms.send(id, 'body', { replyTo: replyCid })).rejects.toThrow(); expect(f.client.send).not.toHaveBeenCalled();
+  });
+  it('does not read a private original when posting authority is absent', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.participantStatus).mockResolvedValue({ participant: false, pending: false, role: 'member' });
+    await expect(f.rooms.send(id, 'body', { replyTo: replyCid })).rejects.toThrow('not allowed');
+    expect(f.client.history).not.toHaveBeenCalled(); expect(f.client.send).not.toHaveBeenCalled();
+  });
+  it('rechecks authority after resolving a parent and rejects revocation during that read', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.history).mockImplementation(async () => {
+      vi.mocked(f.client.permissions).mockResolvedValue({ entry: true, chat: false }); return [replyRow()];
+    });
+    await expect(f.rooms.send(id, 'body', { replyTo: replyCid })).rejects.toThrow('not allowed'); expect(f.client.send).not.toHaveBeenCalled();
+  });
+  it.each(['disconnect', 'dispose', 'remove room', 'known denial'])('discards a delayed original on %s', async action => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const result = deferred<unknown>(); vi.mocked(f.client.history).mockReturnValue(result.promise);
+    const pending = f.rooms.send(id, 'body', { replyTo: replyCid });
+    await vi.waitFor(() => expect(f.client.history).toHaveBeenCalledOnce());
+    if (action === 'disconnect') f.disconnect();
+    if (action === 'dispose') f.rooms.dispose();
+    if (action === 'remove room') { f.load.mockResolvedValue({ ...catalog(), rooms: [] }); await f.rooms.discover(); }
+    if (action === 'known denial') { vi.mocked(f.client.permissions).mockResolvedValue({ entry: true, chat: false }); await f.rooms.refreshRoom(id); }
+    result.resolve([replyRow()]); await expect(pending).rejects.toThrow(); expect(f.client.send).not.toHaveBeenCalled();
+  });
+  it('never falls back to plain text or retries after a rejected SDK reply', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable(); vi.mocked(f.client.history).mockResolvedValue([replyRow()]);
+    vi.mocked(f.client.send).mockRejectedValue(new Error('Unknown delivery outcome'));
+    await expect(f.rooms.send(id, 'body', { replyTo: replyCid })).rejects.toThrow('Unknown delivery outcome'); expect(f.client.send).toHaveBeenCalledOnce();
+  });
+});

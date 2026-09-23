@@ -27,12 +27,15 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const conversationKey = activeConversation?.id ?? "";
   const currentConversationRef = useRef(conversationKey);
   currentConversationRef.current = conversationKey;
-  const draft = drafts[conversationKey] ?? "";
-  const setDraft = (value: string) => setDrafts((current) => ({ ...current, [conversationKey]: value }));
+  const draftKey = `${identityMode}:${identity.address.toLowerCase()}:${conversationKey}`;
+  const currentDraftKeyRef = useRef(draftKey); currentDraftKeyRef.current = draftKey;
+  const draft = drafts[draftKey] ?? "";
+  const setDraft = (value: string) => setDrafts((current) => ({ ...current, [draftKey]: value }));
   const [sending, setSending] = useState<string | null>(null);
   const sendingRef = useRef(false);
   const [sendError, setSendError] = useState<{ id: string; message: string } | null>(null);
-  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [reply, setReply] = useState<{ id: string; preview: string; scope: string } | null>(null);
+  const selectedReply = reply?.scope === draftKey ? reply : null;
   const [joinStatus, setJoinStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [consentPending, setConsentPending] = useState(false);
   const [joinPending, setJoinPending] = useState(false);
@@ -79,7 +82,10 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     if (switched || nearBottomRef.current) scrollToLatest();
     else setHasNewMessages(true);
   }, [latestMessageId, conversationKey]);
-  useEffect(() => { setReplyTo(null); setJoinStatus(null); }, [activeConversation?.id]);
+  useEffect(() => { setReply(null); setJoinStatus(null); }, [draftKey]);
+  useEffect(() => {
+    if (pushRoom && (pushStatus !== 'ready' || !pushRoom.canSend)) setReply(null);
+  }, [pushStatus, pushRoom?.canSend, draftKey]);
 
   if (!activeConversation) {
     return (
@@ -103,16 +109,15 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     sendingRef.current = true;
     setSending(id); setSendError(null);
     try {
-      await send(body, replyTo ?? undefined);
-      if (currentConversationRef.current === id) scrollToLatest();
-      setDrafts((current) => current[id] === body ? { ...current, [id]: "" } : current);
-      if (currentConversationRef.current === id) setReplyTo(null);
+      await send(body, selectedReply?.id);
+      if (currentDraftKeyRef.current === draftKey) scrollToLatest();
+      setDrafts((current) => current[draftKey] === body ? { ...current, [draftKey]: "" } : current);
+      setReply(current => current === selectedReply ? null : current);
     } catch (error) {
-      setSendError({ id, message: error instanceof Error ? error.message : "Message was not sent. Your draft is saved; try again." });
+      setSendError({ id: draftKey, message: error instanceof Error ? error.message : "Message was not sent. Your draft is saved; try again." });
     } finally { sendingRef.current = false; setSending(null); }
   };
 
-  const replyTarget = replyTo ? messages.find((m) => m.id === replyTo) : null;
   const isRoom = activeConversation.kind === "room";
   const policy: Policy | null = isRoom && !pushRoom ? (activeConversation.policy ?? null) : null;
   const readOnly = policy?.mode === "read-only";
@@ -266,13 +271,13 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
                   {pushRoom ? <PushMessageBody message={m}/> : <MessageBody body={m.body}/>}
                   <span className="msg-time">{fmtTime(m.sentAt, lang)}</span>
                 </div>
-                {!pushRoom && <div className="msg-tools">
-                  {EMOJIS.map((e) => (
+                {(!pushRoom || !postingBlocked) && <div className="msg-tools">
+                  {!pushRoom && EMOJIS.map((e) => (
                     <button key={e} className="react-btn" disabled={Boolean(needsConsent || postingBlocked)} aria-label={`${t("thread.reactWith", "React with")} ${e}`} onClick={() => {
                       void react(m.id, e).catch((error) => setJoinStatus({ ok: false, message: error instanceof Error ? error.message : t("thread.actionFailed", "This action failed. Try again.") }));
                     }}>{e}</button>
                   ))}
-                  <button className="react-btn" disabled={Boolean(needsConsent || postingBlocked)} aria-label={t("thread.reply", "Reply")} onClick={() => setReplyTo(m.id)}>↩</button>
+                  <button className="react-btn" disabled={Boolean(needsConsent || postingBlocked)} aria-label={t("thread.reply", "Reply")} onClick={() => setReply({ id: m.id, preview: m.body.slice(0, 80), scope: draftKey })}>↩</button>
                 </div>}
                 {m.reactions && Object.keys(m.reactions).length > 0 && (
                   <div className="msg-reactions">
@@ -289,14 +294,14 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       </div>
 
       {hasNewMessages && !isHistory && <button className="btn btn-ghost" onClick={scrollToLatest}>{t("thread.newMessages", "New messages — jump to latest")}</button>}
-      {replyTarget && !needsConsent && (
+      {selectedReply && !needsConsent && !postingBlocked && (
         <div className="reply-banner">
-          {t("thread.replyingTo", "Replying to:")} <em>{replyTarget.body.slice(0, 80)}</em>
-          <button className="icon-btn" aria-label={t("thread.cancelReply", "Cancel reply")} onClick={() => setReplyTo(null)}>✕</button>
+          {t("thread.replyingTo", "Replying to:")} <em>{selectedReply.preview}</em>
+          <button className="icon-btn" aria-label={t("thread.cancelReply", "Cancel reply")} onClick={() => setReply(null)}>✕</button>
         </div>
       )}
 
-      {sendError?.id === conversationKey && <div className="join-banner error" role="alert">{translateStatus(t, sendError.message)} {t("thread.draftKept", "Your draft has been kept.")}</div>}
+      {sendError?.id === draftKey && <div className="join-banner error" role="alert">{translateStatus(t, sendError.message)} {t("thread.draftKept", "Your draft has been kept.")}</div>}
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
       {readOnly && isAdmin && !configurationError && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chat. Administrators can still post; other clients may ignore this policy.")}</div>}
       {configurationError ? null : needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : postingBlocked ? (

@@ -667,5 +667,6 @@
   "restore.localNameHelp": "Opcional. Reemplaza la elección mostrada arriba y conserva la original para deshacer. No publica un perfil público ni cambia la identidad de tu billetera.",
   "restore.nameDefault": "Usar el nombre ENS predeterminado, si está disponible",
   "restore.nameBlank": "Mostrar mi dirección de billetera sin nombre",
-  "restore.localName": "Restaurar mi elección de nombre privado en este dispositivo"
+  "restore.localName": "Restaurar mi elección de nombre privado en este dispositivo",
+  "push.chooseReply": "Elige un mensaje original de esta sala al que responder."
 }

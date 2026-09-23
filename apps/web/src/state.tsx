@@ -1157,9 +1157,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const send = useCallback(async (body: string, replyTo?: string) => {
     if (!activeId || !body.trim()) return;
     if (parsePushConversationId(activeId)) {
-      if (replyTo) throw new Error('Replies are not supported for Push rooms yet.');
       const rooms = getPushAdapter(); if (!rooms) throw new Error('Push rooms are reconnecting.');
-      await rooms.send(activeId, body);
+      await rooms.send(activeId, body, { replyTo });
       if (getPushAdapter() !== rooms) throw new Error('Room connection changed. Check history before retrying.');
       if (activeIdRef.current === activeId) { resetHistory(); await reloadMessages(activeId); }
       return;

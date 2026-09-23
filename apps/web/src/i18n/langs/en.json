@@ -667,5 +667,6 @@
   "restore.localNameHelp": "Optional. Replaces the choice shown above and keeps the original for undo. This does not publish a public profile or change your wallet identity.",
   "restore.nameDefault": "Use the default ENS name, if available",
   "restore.nameBlank": "Show my wallet address without a name",
-  "restore.localName": "Restore my private display-name choice on this device"
+  "restore.localName": "Restore my private display-name choice on this device",
+  "push.chooseReply": "Choose an original message in this room to reply to."
 }
