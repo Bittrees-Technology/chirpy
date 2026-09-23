@@ -113,3 +113,9 @@ Chat now explicitly requests Mail transfer version 2, deployed in Mail v54 and i
 Isolated wallet/browser fixtures exercise the real formatting sanitizer and sandboxed `srcdoc` renderer in both ordinary web mode and with the native CSP applied. They verify readable basic formatting, an opaque frame that cannot read its parent, no active elements/attributes or external resource requests, plain-text return, shortened/missing-body notices, source identity/version/size rejection, and late responses after cancellation or wallet changes. The native-policy CI job includes these scenarios. Plain-text-only guidance is hidden while formatted content is displayed and returns with the plain view. No sanitizer bypass or CSP relaxation is used.
 
 This is browser-policy evidence with synthetic content. It does not establish packaged native mailbox availability, contract-wallet handoff, physical-device behavior or live rich-mail acceptance; those remain separate launch checks.
+
+### Wallet connection continuity
+
+Mail sign-in, reads, sends and attachment verification are tied to the current provider object and connection revision, as well as the wallet address. Reconnection, account changes, disconnect and session deletion cancel in-flight work; a replacement provider reporting the same address cannot complete an older sign-in or clear an uncertain-send receipt. Receipt reservation and completion recheck the connection inside their storage locks. Temporary wallet listeners are removed after each operation.
+
+The mailbox resets private content and drafts on a new provider session and clears them immediately on wallet-session events. A fresh mailbox check is required before content is displayed again. These client guards do not revoke the Mail grant or prove physical-device handoff acceptance; the server still independently enforces session, wallet and scope authority.

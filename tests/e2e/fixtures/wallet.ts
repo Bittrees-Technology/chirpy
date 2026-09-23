@@ -29,6 +29,7 @@ export async function injectSyntheticWallet(target: WalletInjectionTarget, priva
   await target.exposeFunction("__walletAddress", () => account.address);
   await target.addInitScript(() => {
     const handlers = new Map<string, Set<(...args: unknown[]) => void>>();
+    (window as any).__emitWalletEvent = (event:string,...args:unknown[]) => { handlers.get(event)?.forEach(callback=>callback(...args)); };
     (window as any).ethereum = {
       isMetaMask: true,
       request: async ({ method, params }: { method: string; params?: unknown[] }) => {

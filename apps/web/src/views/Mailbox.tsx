@@ -1,11 +1,16 @@
 import {formattedMailDocument} from '../mailHtml';
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useEffect,useRef,useState,useSyncExternalStore} from 'react';
 import {useIdentity} from '../state';
+import {getActiveProvider,getProviderRevision,subscribeProvider} from '../walletProviders';
 import {useI18n} from '../i18n';
 import {Button,Field} from '../ui';
 import {MailClientError,prepareMailAttachments,mailHtml,mailAttachments,downloadMailAttachment,type MailAttachment,type MailDownloadProgress,mailStatus,connectMail,disconnectMail,mailFolders,mailPage,mailThreadPage,mailThread,mailMessage,sendMail,mailReceipt,clearMailReceipt,validMailDraft,replyAddress,type MailThreadSummary,type MailThreadPage,type MailConnection,type MailSummary,type MailMessage,type MailDraft,type MailReceipt} from '../connectedMail';
 const emptyDraft=():MailDraft=>({to:'',subject:'',text:''});
 export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
+ const {identity,mode}=useIdentity(),revision=useSyncExternalStore(subscribeProvider,getProviderRevision);
+ return <MailboxSession key={`${identity.address.toLowerCase()}:${mode}:${revision}`} onOpenSettings={onOpenSettings}/>;
+}
+function MailboxSession({onOpenSettings}:{onOpenSettings:()=>void}){
  const {identity,mode}=useIdentity(),wallet=identity.address.toLowerCase(),{t}=useI18n();
  const canonical=['http:','https:'].includes(window.location.protocol)&&['chat.bittrees.org','localhost','127.0.0.1'].includes(window.location.hostname);
  const [connection,setConnection]=useState<MailConnection|null>(null),[authenticated,setAuthenticated]=useState(false),[phase,setPhase]=useState('checking');
@@ -32,6 +37,12 @@ export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
  });
  const epoch=useRef(0),busyRef=useRef(false),pollingRef=useRef(false),controller=useRef<AbortController|null>(null);
  const clearPrivate=()=>{messageFocus.current=null;composerFocus.current=null;setDownloadProgress(null);setDraft(emptyDraft());setComposing(false);setHtmlPreview(null);setAttachments(null);setThreads([]);setConversation(null);setMessages([]);setMessage(null);setFolders([]);setCursors([]);setNextCursor(null);};
+ useEffect(()=>{
+  const provider=getActiveProvider();
+  const invalidate=()=>{epoch.current++;controller.current?.abort();pollingRef.current=false;busyRef.current=false;setBusy(false);clearPrivate();setConnection(null);setAuthenticated(false);setPhase('signedOut');setError('wallet');};
+  provider?.on?.('accountsChanged',invalidate);provider?.on?.('disconnect',invalidate);provider?.on?.('session_delete',invalidate);
+  return()=>{provider?.removeListener?.('accountsChanged',invalidate);provider?.removeListener?.('disconnect',invalidate);provider?.removeListener?.('session_delete',invalidate);};
+ },[wallet,mode]);
  const readReceipt=()=>{try{setReceipt(mailReceipt(wallet));setReceiptBroken(false);}catch{setReceiptBroken(true);}};
  const cancelPoll=()=>{if(pollingRef.current){epoch.current++;controller.current?.abort();pollingRef.current=false;}};
  const run=async(fn:(signal:AbortSignal,current:()=>boolean)=>Promise<void>,background=false)=>{

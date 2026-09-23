@@ -1,10 +1,11 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {createSiweMessage} from 'viem/siwe';
 import {mailHtml,mailAttachments,downloadMailAttachment,connectMail,mailStatus,mailMessages,mailPage,mailThreadPage,mailThread,mailMessage,mailReceipt,sendMail,replyAddress,MailClientError} from '../src/connectedMail';
-const mocks=vi.hoisted(()=>({provider:null as any}));
-vi.mock('../src/walletProviders',()=>({getActiveProvider:()=>mocks.provider}));
+const mocks=vi.hoisted(()=>({provider:null as any,revision:0,listeners:new Set<()=>void>()}));
+vi.mock('../src/walletProviders',()=>({getActiveProvider:()=>mocks.provider,getProviderRevision:()=>mocks.revision,subscribeProvider:(fn:()=>void)=>{mocks.listeners.add(fn);return ()=>mocks.listeners.delete(fn);}}));
 const wallet='0x'+'1'.repeat(40);let storage:Map<string,string>;let requests:any[],fetcher:ReturnType<typeof vi.fn>;
 beforeEach(()=>{
+ mocks.revision=0;mocks.listeners.clear();
  storage=new Map();vi.stubGlobal('localStorage',{getItem:(k:string)=>storage.get(k)??null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)});requests=[];mocks.provider={request:vi.fn(async({method})=>method==='eth_accounts'?[wallet]:'0x'+'2'.repeat(130))};
  fetcher=vi.fn(async(url,init)=>{const action=String(url).split('/').at(-1);requests.push({action,body:init?.body?JSON.parse(init.body):undefined});
   if(action==='disconnect')return Response.json({ok:true,sourceRevoked:true});
@@ -173,4 +174,52 @@ it('opts into larger message and preview reads and rejects downgraded attachment
  for(const change of [{transferVersion:undefined,maxAttachmentBytes:262144},{transferVersion:1},{transferVersion:'2'},{maxAttachmentBytes:2097152}]){
   await fileFixture(data=>({...data,...change}));await expect(mailAttachments(wallet,'INBOX',id,version)).rejects.toMatchObject({code:'failed'});
  }
+});
+
+function reconnectSameWallet(){mocks.revision++;mocks.listeners.forEach(fn=>fn());}
+it('does not verify a signature from an earlier connection of the same wallet',async()=>{
+ mocks.provider.request.mockImplementation(async({method})=>{if(method==='personal_sign'){reconnectSameWallet();return '0x'+'2'.repeat(130);}return [wallet];});
+ await expect(connectMail(wallet,false)).rejects.toMatchObject({code:'wallet'});
+ expect(requests.some(r=>r.action==='verify'||r.action==='start')).toBe(false);
+});
+it('rejects a same-address provider replacement during a private mailbox response',async()=>{
+ fetcher.mockImplementation(async()=>{mocks.provider={request:async()=>[wallet]};return Response.json({enabled:true,wallet,connection:null});});
+ await expect(mailStatus(wallet)).rejects.toMatchObject({code:'wallet'});
+});
+it('retains a dispatched receipt when the same wallet reconnects before the response',async()=>{
+ fetcher.mockImplementation(async()=>{reconnectSameWallet();return Response.json({ok:true});});
+ await expect(sendMail(wallet,draft)).rejects.toMatchObject({code:'wallet'});expect(mailReceipt(wallet)).not.toBeNull();
+});
+it('rejects an attachment if the connection changes during integrity verification',async()=>{
+ await fileFixture();
+ await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,fileItem,undefined,progress=>{if(progress.phase==='checking')reconnectSameWallet();})).rejects.toMatchObject({code:'wallet'});
+});
+
+it('does not dispatch verification after a same-address provider object changes during signing',async()=>{
+ mocks.provider.request.mockImplementation(async({method})=>{if(method==='personal_sign'){mocks.provider={request:async()=>[wallet]};return '0x'+'2'.repeat(130);}return [wallet];});
+ await expect(connectMail(wallet,false)).rejects.toMatchObject({code:'wallet'});expect(requests.some(r=>r.action==='verify')).toBe(false);
+});
+it.each(['accountsChanged','disconnect','session_delete'])('a %s event aborts the request and removes every temporary listener',async event=>{
+ const events=new Map<string,Set<()=>void>>();
+ mocks.provider.on=(name:string,fn:()=>void)=>{const set=events.get(name)??new Set();set.add(fn);events.set(name,set);};
+ mocks.provider.removeListener=(name:string,fn:()=>void)=>events.get(name)?.delete(fn);
+ fetcher.mockImplementation(async(_url,init)=>{events.get(event)?.forEach(fn=>fn());expect(init.signal.aborted).toBe(true);return Response.json({enabled:true,wallet,connection:null});});
+ await expect(mailStatus(wallet)).rejects.toMatchObject({code:'wallet'});
+ expect([...events.values()].every(set=>set.size===0)).toBe(true);expect(mocks.listeners.size).toBe(0);
+});
+it('does not clear an uncertain receipt if reconnection occurs while waiting for its completion lock',async()=>{
+ const real=navigator.locks.request.bind(navigator.locks);let locks=0;
+ vi.spyOn(navigator.locks,'request').mockImplementation(((name:string,options:any,fn:()=>unknown)=>real(name,options,()=>{if(++locks===2)reconnectSameWallet();return fn();})) as any);
+ await expect(sendMail(wallet,draft)).rejects.toMatchObject({code:'wallet'});expect(mailReceipt(wallet)).not.toBeNull();
+});
+it('a cancelled reservation cannot write a receipt or dispatch when its lock arrives late',async()=>{
+ const real=navigator.locks.request.bind(navigator.locks);
+ vi.spyOn(navigator.locks,'request').mockImplementation(((name:string,options:any,fn:()=>unknown)=>real(name,options,()=>{reconnectSameWallet();return fn();})) as any);
+ await expect(sendMail(wallet,draft)).rejects.toMatchObject({code:'wallet'});expect(mailReceipt(wallet)).toBeNull();expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('a provider replacement after reservation prevents dispatch and preserves its recovery ID',async()=>{
+ const real=navigator.locks.request.bind(navigator.locks);
+ vi.spyOn(navigator.locks,'request').mockImplementation((async(name:string,options:any,fn:()=>unknown)=>{const value=await real(name,options,fn);mocks.provider={request:async()=>[wallet]};return value;}) as any);
+ await expect(sendMail(wallet,draft)).rejects.toMatchObject({code:'wallet'});expect(mailReceipt(wallet)).not.toBeNull();expect(fetcher).not.toHaveBeenCalled();
 });

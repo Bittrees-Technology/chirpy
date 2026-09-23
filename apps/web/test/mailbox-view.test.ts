@@ -1,3 +1,4 @@
+import {clearActiveProvider,setActiveProvider} from '../src/walletProviders';
 import React,{act} from 'react';
 import {createRoot,type Root} from 'react-dom/client';
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
@@ -13,12 +14,12 @@ const item={id:'a'.repeat(64),from:'Fixture <fixture@bittrees.org>',subject:'Acc
 const render=()=>act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(I18nProvider,null,React.createElement(Mailbox,{key:state.identity.address,onOpenSettings:()=>{}})))));
 const click=async(text:string)=>{const button=[...container.querySelectorAll('button')].find(b=>b.textContent===text);expect(button).toBeDefined();await act(async()=>button!.click());};
 beforeEach(()=>{
- vi.clearAllMocks();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);vi.stubGlobal('localStorage',{getItem:()=>null,setItem:()=>{}});
+ clearActiveProvider();vi.clearAllMocks();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);vi.stubGlobal('localStorage',{getItem:()=>null,setItem:()=>{}});
  state.identity={address:'0x'+'1'.repeat(40)};state.mode='wallet';
  vi.mocked(mail.mailStatus).mockResolvedValue(connection());vi.mocked(mail.mailFolders).mockResolvedValue(['INBOX','Sent']);vi.mocked(mail.mailPage).mockResolvedValue({messages:[item],nextCursor:null});vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'<img src=x onerror=alert(1)> private fixture'});vi.mocked(mail.mailReceipt).mockReturnValue(null);
  container=document.createElement('div');document.body.append(container);root=createRoot(container);
 });
-afterEach(async()=>{await act(async()=>root.unmount());container.remove();vi.useRealTimers();vi.unstubAllGlobals();});
+afterEach(async()=>{await act(async()=>root.unmount());clearActiveProvider();container.remove();vi.useRealTimers();vi.unstubAllGlobals();});
 it('renders message content as text, respects read-only scope and clears it on disconnect',async()=>{
  vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),scopes:['read']});vi.mocked(mail.disconnectMail).mockResolvedValue(false);
  await render();expect(container.textContent).toContain(item.subject);
@@ -235,4 +236,30 @@ it('rejects oversized selections before reading and clears files when access exp
  vi.useFakeTimers();vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),expiresAt:new Date(Date.now()+1000).toISOString()});await render();await click('New email');
  const read=vi.fn();await chooseFiles([{...fileFixture(),size:1048577,arrayBuffer:read} as File]);expect(read).not.toHaveBeenCalled();expect(container.querySelector('[role=alert]')?.textContent).toContain('1 MiB');
  await chooseFiles([fileFixture()]);expect(container.textContent).toContain('private.txt');await act(async()=>vi.advanceTimersByTimeAsync(1001));expect(container.textContent).not.toContain('private.txt');expect(container.querySelector('input[type=file]')).toBeNull();
+});
+
+it('a new provider session clears private state even for the same wallet address',async()=>{
+ setActiveProvider({request:async()=>[state.identity.address]},'injected');await render();
+ await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());expect(container.textContent).toContain('private fixture');
+ vi.mocked(mail.mailStatus).mockResolvedValue(null);
+ await act(async()=>setActiveProvider({request:async()=>[state.identity.address]},'injected'));
+ expect(container.textContent).not.toContain('private fixture');expect(container.textContent).toContain('Connect your mailbox');
+});
+it.each(['accountsChanged','disconnect','session_delete'])('wallet %s events clear idle private content and reject delayed responses',async event=>{
+ const handlers=new Map<string,Set<(...args:any[])=>void>>();
+ setActiveProvider({request:async()=>[state.identity.address],on:(name,fn)=>{const set=handlers.get(name)??new Set();set.add(fn);handlers.set(name,set);},removeListener:(name,fn)=>{handlers.get(name)?.delete(fn);}},'injected');
+ await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());expect(container.textContent).toContain('private fixture');
+ let resolve!:(value:mail.MailMessage)=>void;vi.mocked(mail.mailMessage).mockImplementation(()=>new Promise(r=>resolve=r));
+ await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());
+ await act(async()=>handlers.get(event)?.forEach(fn=>fn([state.identity.address])));
+ await act(async()=>resolve({...item,text:'old connection secret'}));
+ expect(container.textContent).not.toContain('private fixture');expect(container.textContent).not.toContain('old connection secret');expect(container.textContent).not.toContain(item.subject);
+});
+
+it('same-wallet provider replacement discards the previous private draft',async()=>{
+ setActiveProvider({request:async()=>[state.identity.address]},'injected');await render();await click('New email');
+ await act(async()=>{const textarea=container.querySelector('textarea')!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textarea,'Previous connection draft');textarea.dispatchEvent(new Event('input',{bubbles:true}));});
+ expect(container.querySelector('textarea')?.value).toBe('Previous connection draft');
+ await act(async()=>setActiveProvider({request:async()=>[state.identity.address]},'injected'));
+ expect(container.querySelector('textarea')).toBeNull();await click('New email');expect(container.querySelector('textarea')?.value).toBe('');
 });
