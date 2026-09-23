@@ -1,4 +1,4 @@
-import {test,expect} from './fixtures/wallet';
+import {dismissAnalyticsConsent,test,expect} from './fixtures/wallet';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 
@@ -19,7 +19,7 @@ test('a complete attachment uses one read, shows progress, and saves only verifi
   if(mode==='hold')await new Promise<void>(r=>release=r);
   await route.fulfill({json:{id,sourceVersion:version,transfer:'complete',maxAttachmentBytes:1048576,transferVersion:2,attachment:file,data:bytes.toString('base64'),sha256:mode==='bad'?'c'.repeat(64):sha256}}).catch(()=>{});
  });
- await page.goto('/');await page.getByRole('button',{name:'Decline',exact:true}).click();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Email/}).click();
+ await page.goto('/');await dismissAnalyticsConsent(page);await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Settings/}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:/Email/}).click();
  await page.getByRole('button',{name:/Download fixture/}).click();await page.getByRole('button',{name:'Show attachments',exact:true}).click();await page.getByRole('button',{name:'Download',exact:true}).click();
  await expect(page.getByRole('progressbar',{name:'Attachment download progress'})).toBeVisible();await expect(page.getByRole('status')).toContainText('Preparing fixture.bin (1048576 bytes)');await expect.poll(()=>typeof release).toBe('function');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath('email-download-progress-mobile.png'),fullPage:true});

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { test as base, type BrowserContext, type Page } from "@playwright/test";
+import { test as base, expect, type BrowserContext, type Page } from "@playwright/test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 type WalletFixtures = {
@@ -78,6 +78,18 @@ export async function injectSyntheticWallet(target: WalletInjectionTarget, priva
   });
 
   return account.address;
+}
+
+/** The native policy intentionally prevents loading the external analytics
+ * consent script. Still require a ready app, and keep the web banner assertion. */
+export async function dismissAnalyticsConsent(page: Page) {
+  const decline = page.getByRole('button', { name: 'Decline', exact: true });
+  if (process.env.CHIRPY_TEST_NATIVE_CSP === '1') {
+    await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();
+    await expect(decline).toHaveCount(0);
+  } else {
+    await decline.click();
+  }
 }
 
 export const test = base.extend<WalletFixtures>({
