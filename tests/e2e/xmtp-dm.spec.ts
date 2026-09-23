@@ -159,9 +159,27 @@ test.describe("XMTP two-wallet direct messages @xmtp", () => {
           await freshPage.getByRole('button', { name: 'Inbox', exact: true }).click();
         }
         await openConversationWithMessage(freshPage, 'group reply from B');
-        await expect(freshPage.locator('.composer-input')).toBeVisible();
         await expect(freshPage.locator('.msg-body', { hasText: 'group message after adding B' })).toBeVisible({ timeout: 120_000 });
         await expect(freshPage.locator('.msg-body', { hasText: 'group reply from B' })).toBeVisible({ timeout: 120_000 });
+        if (wallet === walletB) {
+          await expect(freshPage.locator('.composer-input')).toHaveCount(0);
+          await expect(freshPage.getByText('Saved messages are available. Sending is unavailable until active access is restored on this device.')).toBeVisible();
+          console.info('XMTP acceptance: blocked invitee local history restored with inactive access.');
+          // An existing member's normal send updates installation membership.
+          // Only verified active access may make this device writable again.
+          await pageA.bringToFront();
+          await pageA.locator('.composer-input').fill('restore invitee installation access');
+          await pageA.getByRole('button', { name: 'Send', exact: true }).click();
+          await freshPage.bringToFront();
+          await expect(freshPage.locator('.msg-body', { hasText: 'restore invitee installation access' })).toBeVisible({ timeout: 120_000 });
+        }
+        await expect(freshPage.locator('.composer-input')).toBeVisible({ timeout: 120_000 });
+        if (wallet === walletB) {
+          await freshPage.locator('.composer-input').fill('restored invitee can reply');
+          await freshPage.getByRole('button', { name: 'Send', exact: true }).click();
+          await expect(pageA.locator('.msg-body', { hasText: 'restored invitee can reply' })).toBeVisible({ timeout: 120_000 });
+          console.info('XMTP acceptance: restored invitee active access and reply verified.');
+        }
         await freshPage.locator('.room-members summary').click();
         await expect(freshPage.getByRole('list', { name: 'Room members' }).getByText(other.toLowerCase(), { exact: true })).toBeVisible();
         if (wallet === walletA) await expect(freshPage.getByRole('button', { name: 'Add member', exact: true })).toBeDisabled();

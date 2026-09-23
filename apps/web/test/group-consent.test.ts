@@ -70,3 +70,16 @@ it('separates accepted, requested and blocked rooms and resets filters across or
   state.org = { namespace: 'different' }; await list(); expect(button('Inbox')!.getAttribute('aria-pressed')).toBe('true');
   await click('Blocked'); state.chat.pushSource = 'governance'; await list(); expect(button('Blocked')).toBeUndefined(); expect(container.textContent).toContain('Accepted room');
 });
+
+it.each(['inactive', 'unavailable'])('shows restored group history but disables actions when device access is %s', async deviceAccess => {
+  state.chat.activeConversation = { ...room, deviceAccess, isAdmin: true, canAddMembers: true };
+  await render();
+  expect(container.textContent).toContain('Secret incoming text');
+  expect(container.querySelector('.composer-input')).toBeNull();
+  expect(container.querySelector('.room-members form')).toBeNull();
+  expect(container.querySelector('.room-members summary')?.textContent).toBe('roomMembers.savedTitle');
+  expect(button('Pause member posting')).toBeUndefined();
+  expect(Array.from(container.querySelectorAll<HTMLButtonElement>('.react-btn')).every(b => b.disabled)).toBe(true);
+  state.chat.activeConversation = { ...room, deviceAccess: 'active' }; await render();
+  expect(container.querySelector('.composer-input')).not.toBeNull();
+});

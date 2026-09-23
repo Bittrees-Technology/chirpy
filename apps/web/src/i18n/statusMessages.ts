@@ -1,5 +1,6 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "Active access from this device is required. You can still read restored messages.": "status.activeAccessRequired",
   "Consent update already in progress.": "status.consentUpdatePending",
   "Wallet changed. Reload the conversation.": "status.historyWalletChanged",
   "You are already a member of this room.": "roomMembers.self",

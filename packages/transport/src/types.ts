@@ -53,6 +53,8 @@ export interface Conversation {
   unread: number;
   /** Existing native group supports per-user consent; directory entries do not. */
   consentSupported?: boolean;
+  /** Native group access on this installation; restored history can be inactive. */
+  deviceAccess?: "active" | "inactive" | "unavailable";
   /** A native conversation the current user has not yet accepted. */
   pending?: boolean;
   /** A denied conversation stays discoverable without message previews. */

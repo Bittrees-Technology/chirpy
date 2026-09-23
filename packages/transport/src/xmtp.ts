@@ -563,6 +563,7 @@ export class XmtpTransport implements Transport {
       lastMessage = undefined;
     }
 
+    const deviceAccess = await this.groupDeviceAccess(conversation);
     const isAdmin = await this.isCurrentUserAdmin(conversation).catch(() => false);
     const unread = initialConsent === sdk.ConsentState.Denied ? 0 : await this.unreadCount(conversation);
     const consent = await conversation.consentState();
@@ -576,13 +577,14 @@ export class XmtpTransport implements Transport {
       description: meta.description,
       peers: blocked ? [] : peers,
       consentSupported: true,
+      deviceAccess,
       pending,
       blocked,
       namespace: meta.namespace,
       gate: meta.gate,
       policy: meta.policy,
       isAdmin,
-      canAddMembers: !pending && !blocked && isAdmin && !meta.invalid && !hasGate(meta.gate) && meta.namespace === this.org.namespace,
+      canAddMembers: deviceAccess === "active" && !pending && !blocked && isAdmin && !meta.invalid && !hasGate(meta.gate) && meta.namespace === this.org.namespace,
       configurationError: meta.invalid === true,
       lastMessage: blocked ? undefined : lastMessage,
       unread: blocked ? 0 : unread,
@@ -785,7 +787,15 @@ export class XmtpTransport implements Transport {
       const sdk = await this.loadSdk();
       if (await conversation.consentState() === sdk.ConsentState.Denied) return { messages: [], olderCursor: undefined };
       current();
-      await conversation.sync();
+      const room = this.isRoomConversation(sdk, conversation);
+      // Imported local history can be valid even before this installation is
+      // active. Unblocking does not itself restore MLS access.
+      if (!room || await this.groupDeviceAccess(conversation) === 'active') {
+        try { await conversation.sync(); }
+        catch (error) {
+          if (!room || await this.groupDeviceAccess(conversation) !== 'inactive') throw error;
+        }
+      }
       if (await conversation.consentState() === sdk.ConsentState.Denied) return { messages: [], olderCursor: undefined };
       current();
       const page = await readMessagePage((query) => conversation.messages({
@@ -917,10 +927,18 @@ export class XmtpTransport implements Transport {
     try { await conversation.sendReadReceipt(); this.lastReceiptAt.set(conversationId, now); } catch { /* Local read state is independent of best-effort receipts. */ }
   }
 
+  private async groupDeviceAccess(conversation: XmtpConversation): Promise<NonNullable<Conversation['deviceAccess']>> {
+    try { return await conversation.isActive() ? 'active' : 'inactive'; }
+    catch { return 'unavailable'; }
+  }
+
   private async assertConversationAccepted(conversation: XmtpConversation): Promise<void> {
     const sdk = await this.loadSdk();
     if (await conversation.consentState() !== sdk.ConsentState.Allowed || this.consentUpdates.has(conversation.id)) {
       throw new Error("Accept or unblock this conversation before sending messages or reactions.");
+    }
+    if (this.isRoomConversation(sdk, conversation) && await this.groupDeviceAccess(conversation) !== 'active') {
+      throw new Error("Active access from this device is required. You can still read restored messages.");
     }
   }
 

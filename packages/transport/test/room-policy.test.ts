@@ -6,7 +6,7 @@ function setup() {
   const t = new XmtpTransport(PERSONAL_ORG, { address }, null) as any;
   t.sdk = { ConversationType: { Group: 'group' }, ConsentState: { Allowed: 1 } };
   t.client = { inboxId: 'self' }; t.status = 'ready';
-  const room = { consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Room', isAdmin: vi.fn(async () => false), isSuperAdmin: vi.fn(async () => false), sendReaction: vi.fn(), updateDescription: vi.fn() };
+  const room = { isActive: vi.fn().mockResolvedValue(true), consentState: vi.fn().mockResolvedValue(1), id: 'room', name: 'Room', isAdmin: vi.fn(async () => false), isSuperAdmin: vi.fn(async () => false), sendReaction: vi.fn(), updateDescription: vi.fn() };
   t.conversations.set('room', room);
   t.roomMeta.set('room', { gate: { combine: 'all', rules: [] }, policy: { mode: 'read-only', attachments: 'allow' } });
   return { t, room };

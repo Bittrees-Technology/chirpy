@@ -15,10 +15,13 @@ export function RoomMembers({ conversation }: { conversation: Conversation }) {
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const busy = useRef(false); const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const canAdd = !conversation.pending && !conversation.blocked && conversation.canAddMembers === true && conversation.isAdmin === true && !conversation.configurationError && !conversation.gate?.rules.length;
+  const savedRoster = Boolean(conversation.deviceAccess && conversation.deviceAccess !== "active");
+  const title = t(savedRoster ? "roomMembers.savedTitle" : "roomMembers.title");
+  const canAdd = (!conversation.deviceAccess || conversation.deviceAccess === "active") && !conversation.pending && !conversation.blocked && conversation.canAddMembers === true && conversation.isAdmin === true && !conversation.configurationError && !conversation.gate?.rules.length;
   return <details className="join-banner room-members" onToggle={event => setExpanded(event.currentTarget.open)}>
-    <summary>{t('roomMembers.title')}</summary>
-    <ul aria-label={t('roomMembers.title')}>{conversation.peers.map(peer => <li key={peer}>{profiles.get(peer.toLowerCase())?.label && <span>{profiles.get(peer.toLowerCase())!.label} · </span>}<code>{peer}</code></li>)}</ul>
+    <summary>{title}</summary>
+    {savedRoster && <p>{t('roomMembers.savedHint')}</p>}
+    <ul aria-label={title}>{conversation.peers.map(peer => <li key={peer}>{profiles.get(peer.toLowerCase())?.label && <span>{profiles.get(peer.toLowerCase())!.label} · </span>}<code>{peer}</code></li>)}</ul>
     {canAdd && <form onSubmit={async event => {
       event.preventDefault();
       if (busy.current || !/^0x[a-fA-F0-9]{40}$/.test(address.trim())) return;

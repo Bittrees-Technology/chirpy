@@ -14,7 +14,7 @@ function setup(initial = 0) {
     ReactionAction: { Added: 'added', Removed: 'removed' }, ReactionSchema: { Unicode: 'unicode' },
     isText: m => typeof m.content === 'string', isTextReply: () => false, isReply: () => false, encodeText: vi.fn(async s => s) };
   const raw = { id: 'm', conversationId: 'group', senderInboxId: 'peer', sentAtNs: 10n, content: 'private group message' };
-  const group = { id: 'group', name: 'Group', description: JSON.stringify({ chirpyRoom: 1, namespace: 'personal', gate: { combine: 'any', rules: [] } }),
+  const group = { isActive: vi.fn().mockResolvedValue(true), id: 'group', name: 'Group', description: JSON.stringify({ chirpyRoom: 1, namespace: 'personal', gate: { combine: 'any', rules: [] } }),
     consentState: vi.fn(async () => consent), updateConsentState: vi.fn(async value => { consent = value; }),
     members: vi.fn().mockResolvedValue([{ inboxId: 'self' }, { inboxId: 'peer' }]),
     messages: vi.fn().mockResolvedValue([raw]), sync: vi.fn(), countMessages: vi.fn().mockResolvedValue(1n),
@@ -161,4 +161,40 @@ it('explicitly includes denied groups in full and fallback SDK listing so they r
   expect(client.conversations.list).toHaveBeenCalledWith({ consentStates: [0, 1, 2] });
   await t.setConversationConsent('group', 'allowed');
   expect((await t.listConversations())[0]).toMatchObject({ blocked: false, pending: false });
+});
+
+it('reads restored inactive group history without network sync and refuses new actions', async () => {
+  const { t, group } = setup(1); group.isActive.mockResolvedValue(false);
+  group.sync.mockRejectedValue(new Error('Group is inactive'));
+  expect((await t.listMessagePage('group')).messages[0].body).toBe('private group message');
+  expect(group.sync).not.toHaveBeenCalled();
+  expect(await t.mapRoomConversation(group)).toMatchObject({ deviceAccess: 'inactive', canAddMembers: false });
+  await expect(t.send('group', 'no')).rejects.toThrow('Active access');
+  await expect(t.react('group', 'm', '👍')).rejects.toThrow('Active access');
+  await expect(t.setRoomPolicy('group', { mode: 'read-only' })).rejects.toThrow('Active access');
+  expect(group.sendText).not.toHaveBeenCalled(); expect(group.sendReaction).not.toHaveBeenCalled(); expect(group.updateDescription).not.toHaveBeenCalled();
+});
+it('keeps local group history readable when device access cannot be confirmed, without granting actions', async () => {
+  const { t, group } = setup(1); group.isActive.mockRejectedValue(new Error('access unavailable'));
+  expect((await t.listMessagePage('group')).messages[0].body).toBe('private group message');
+  expect(await t.mapRoomConversation(group)).toMatchObject({ deviceAccess: 'unavailable', canAddMembers: false });
+  await expect(t.send('group', 'no')).rejects.toThrow('Active access');
+  expect(group.sync).not.toHaveBeenCalled(); expect(group.sendText).not.toHaveBeenCalled();
+});
+it('preserves genuine network sync errors while allowing history after confirmed inactivity', async () => {
+  const { t, group } = setup(1); group.sync.mockRejectedValue(new Error('network offline'));
+  await expect(t.listMessagePage('group')).rejects.toThrow('network offline');
+  group.isActive.mockResolvedValueOnce(true).mockResolvedValue(false);
+  expect((await t.listMessagePage('group')).messages[0].body).toBe('private group message');
+});
+
+it('rechecks device access before a delayed send is dispatched', async () => {
+  const { t, group } = setup(1); const gate = deferred<void>();
+  t.assertGateAllows = vi.fn(() => gate.promise);
+  const pending = t.send('group', 'do not send after access changes');
+  const rejected = expect(pending).rejects.toThrow('Active access');
+  await vi.waitFor(() => expect(t.assertGateAllows).toHaveBeenCalled());
+  group.isActive.mockResolvedValue(false); gate.resolve();
+  await rejected;
+  expect(group.sendText).not.toHaveBeenCalled();
 });

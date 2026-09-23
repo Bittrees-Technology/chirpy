@@ -95,7 +95,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
     else setHasNewMessages(true);
   }, [latestMessageId, conversationKey]);
   useEffect(() => { setReply(null); setAttachment(null); setFileReading(false); setJoinStatus(null); }, [draftKey]);
-  useEffect(() => { if (activeConversation?.blocked) setReply(null); }, [activeConversation?.blocked, draftKey]);
+  useEffect(() => { if (activeConversation?.blocked || (activeConversation?.deviceAccess && activeConversation.deviceAccess !== "active")) setReply(null); }, [activeConversation?.blocked, activeConversation?.deviceAccess, draftKey]);
   useEffect(() => {
     if (pushRoom && (pushStatus !== 'ready' || !pushRoom.canSend)) { setReply(null); setAttachment(null); setFileReading(false); }
   }, [pushStatus, pushRoom?.canSend, draftKey]);
@@ -137,7 +137,8 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const readOnly = policy?.mode === "read-only";
   const isAdmin = isRoom && activeConversation.isAdmin === true;
   const configurationError = isRoom && activeConversation.configurationError === true;
-  const postingBlocked = Boolean(pushRoom && (pushStatus !== "ready" || !pushRoom.canSend)) || configurationError || (readOnly && !isAdmin);
+  const deviceReadOnly = Boolean(activeConversation.deviceAccess && activeConversation.deviceAccess !== "active");
+  const postingBlocked = deviceReadOnly || Boolean(pushRoom && (pushStatus !== "ready" || !pushRoom.canSend)) || configurationError || (readOnly && !isAdmin);
   const supportsConsent = !pushRoom && (!isRoom || activeConversation.consentSupported === true);
   const needsConsent = supportsConsent && (activeConversation.pending || activeConversation.blocked);
   const changeConsent = async (state: "allowed" | "denied") => {
@@ -185,7 +186,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
               : shortAddr(activeConversation.peers.find((p) => p !== identity.address) ?? activeConversation.peers[0])}
           </div>
         </div>
-        {!needsConsent && !configurationError && ((isRoom && policy) || isGatedRoom) ? (
+        {!needsConsent && !deviceReadOnly && !configurationError && ((isRoom && policy) || isGatedRoom) ? (
           <div className="thread-actions">
             {isGatedRoom && !isMember && (
               <Button variant="primary" disabled={joinPending} onClick={requestJoin}>
@@ -335,7 +336,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
       {isGatedRoom && <div className="muted">{t("thread.roomId", "Room ID")}: {activeConversation.id}</div>}
       {readOnly && isAdmin && !configurationError && <div className="join-banner">{t("thread.adminPosting", "Member posting is paused in Chat. Administrators can still post; other clients may ignore this policy.")}</div>}
       {configurationError ? null : needsConsent ? <div className="composer readonly-note">{t("thread.acceptToSend", "Accept or unblock this conversation to send messages.")}</div> : isGatedRoom && !isMember ? <div className="composer readonly-note">{t("thread.joinToSend", "Join this room to send messages.")}</div> : postingBlocked ? (
-        <div className="composer readonly-note">{pushRoom ? t("push.cannotSend") : t("thread.readOnly", "Member posting is paused in Chat. Other clients may still send messages.")}</div>
+        <div className="composer readonly-note">{pushRoom ? t("push.cannotSend") : deviceReadOnly ? t(activeConversation.deviceAccess === "inactive" ? "thread.deviceInactive" : "thread.deviceUnavailable") : t("thread.readOnly", "Member posting is paused in Chat. Other clients may still send messages.")}</div>
       ) : (
         <form className="composer" onSubmit={submit}>
           <input
