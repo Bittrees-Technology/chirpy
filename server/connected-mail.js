@@ -108,7 +108,7 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
   async operation(token,input){
    exactMailInput(input,['wallet','action','input']);const record=await session(token,input.wallet),grant=record.value.connection;
    if(!address(input.wallet)||!liveGrant(grant,now()))throw denied();
-   const scope=input.action==='send'?'send':['folders','messages','message','threads','thread','attachments','attachment','html'].includes(input.action)?'read':null;
+   const scope=input.action==='send'?'send':['folders','messages','message','threads','thread','attachments','attachment','attachmentFile','html'].includes(input.action)?'read':null;
    if(!scope||!grant.scopes.includes(scope))throw new ConnectedMailError(403,'This connection does not allow that action.');
    if(input.action==='send'&&input.input?.attachments!==undefined&&!validOutgoingAttachments(input.input.attachments))throw new ConnectedMailError(400,'Invalid email attachments.');
    const result=await mail('operation',input,grant.token);

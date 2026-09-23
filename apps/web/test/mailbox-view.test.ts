@@ -186,15 +186,15 @@ it('downloads only an explicitly selected attachment with the source member fold
  try{
   await render();await act(async()=>container.querySelector<HTMLSelectElement>('select')!.value='Sent');await act(async()=>container.querySelector('select')!.dispatchEvent(new Event('change',{bubbles:true})));
   await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());expect(mail.mailAttachments).not.toHaveBeenCalled();await click('Show attachments');expect(mail.downloadMailAttachment).not.toHaveBeenCalled();
-  expect(container.textContent).toContain(file.filename);await click('Download');expect(mail.downloadMailAttachment).toHaveBeenCalledWith(state.identity.address,'Sent',item.id,version,file,expect.any(AbortSignal));expect(anchor).toHaveBeenCalledTimes(1);expect(create).toHaveBeenCalledTimes(1);expect(create.mock.calls[0][0].type).toBe('application/octet-stream');
+  expect(container.textContent).toContain(file.filename);await click('Download');expect(mail.downloadMailAttachment).toHaveBeenCalledWith(state.identity.address,'Sent',item.id,version,file,expect.any(AbortSignal),expect.any(Function));expect(anchor).toHaveBeenCalledTimes(1);expect(create).toHaveBeenCalledTimes(1);expect(create.mock.calls[0][0].type).toBe('application/octet-stream');
   await act(async()=>vi.advanceTimersByTimeAsync(30000));expect(revoke).toHaveBeenCalledWith('blob:fixture');
  }finally{anchor.mockRestore();}
 });
 it('cancels an attachment transfer without creating a file from a late response',async()=>{
  const create=vi.fn();vi.stubGlobal('URL',Object.assign(class extends URL {},{createObjectURL:create}));let resolve!:(v:any)=>void;
  const file={id:'1.2',filename:'private.bin',contentType:'application/octet-stream',bytes:3,downloadable:true};
- vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Body',sourceVersion:'b'.repeat(64),replyTo:'',threadedReply:false});vi.mocked(mail.mailAttachments).mockResolvedValue([file]);vi.mocked(mail.downloadMailAttachment).mockImplementation(()=>new Promise(r=>resolve=r));
- await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());await click('Show attachments');await click('Download');await click('Cancel');await act(async()=>resolve({filename:file.filename,bytes:new Uint8Array([1,2,3])}));expect(create).not.toHaveBeenCalled();
+ vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Body',sourceVersion:'b'.repeat(64),replyTo:'',threadedReply:false});vi.mocked(mail.mailAttachments).mockResolvedValue([file]);vi.mocked(mail.downloadMailAttachment).mockImplementation((_w,_f,_id,_v,_file,_signal,progress)=>{progress?.({phase:'preparing',bytes:3});return new Promise(r=>resolve=r);});
+ await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());await click('Show attachments');await click('Download');expect(container.textContent).toContain('Preparing private.bin (3 bytes)');expect(container.querySelector('progress')).not.toBeNull();await click('Cancel');expect(container.querySelector('progress')).toBeNull();await act(async()=>resolve({filename:file.filename,bytes:new Uint8Array([1,2,3])}));expect(create).not.toHaveBeenCalled();
 });
 
 it('loads formatting only on request, strips unsafe content and isolates the preview',async()=>{

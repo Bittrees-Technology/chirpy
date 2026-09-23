@@ -97,25 +97,25 @@ it('rejects conversation responses that claim completeness while omitting member
  fetcher.mockResolvedValueOnce(Response.json({id,version,count:1,messages:[message],nextCursor:'c'.repeat(64)}));await expect(mailThread(wallet,'INBOX',id)).rejects.toMatchObject({code:'failed'});
 });
 
-const fileItem={id:'1.2',filename:'fixture.bin',contentType:'application/octet-stream',bytes:13000,downloadable:true};
+const fileItem={id:'1.2',filename:'fixture.bin',contentType:'application/octet-stream',bytes:262144,downloadable:true};
 const fileContext={id:'a'.repeat(64),sourceVersion:'b'.repeat(64),chunkBytes:12288,maxAttachmentBytes:262144};
 async function fileFixture(changes?:(data:any,index:number)=>any){
  const bytes=Uint8Array.from({length:fileItem.bytes},(_,i)=>i%256),sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');let count=0;
- fetcher.mockImplementation(async(_url,init)=>{const request=JSON.parse(init.body),offset=request.input.offset??0,chunk=bytes.slice(offset,offset+12288);const data=request.action==='attachments'?{...fileContext,attachments:[fileItem]}:{...fileContext,attachment:fileItem,offset,sha256,nextOffset:offset+chunk.length<bytes.length?offset+chunk.length:null,data:btoa(String.fromCharCode(...chunk))};return Response.json(changes?changes(data,count++):data);});return bytes;
+ fetcher.mockImplementation(async(_url,init)=>{const request=JSON.parse(init.body);const data=request.action==='attachments'?{...fileContext,attachments:[fileItem]}:{...fileContext,transfer:'complete',attachment:fileItem,sha256,data:Buffer.from(bytes).toString('base64')};return Response.json(changes?changes(data,count++):data);});return bytes;
 }
-it('downloads bounded source-version chunks and checks the complete file digest',async()=>{
+it('downloads the full bounded file in one operation and checks its digest',async()=>{
  const expected=await fileFixture(),items=await mailAttachments(wallet,'INBOX',fileContext.id,fileContext.sourceVersion);
- const result=await downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,items[0]);expect(result.bytes).toEqual(expected);expect(result.filename).toBe('fixture.bin');expect(fetcher).toHaveBeenCalledTimes(3);
+ const result=await downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,items[0]);expect(result.bytes).toEqual(expected);expect(result.filename).toBe('fixture.bin');expect(fetcher).toHaveBeenCalledTimes(2);expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toMatchObject({action:'attachmentFile',input:{part:'1.2',version:fileContext.sourceVersion}});
 });
-it('rejects changed content, selectors, partial chunks and repeated cursors without returning a file',async()=>{
- for(const change of [(d:any)=>({...d,sourceVersion:'c'.repeat(64)}),(d:any)=>({...d,offset:12288}),(d:any)=>({...d,nextOffset:0}),(d:any)=>({...d,sha256:'c'.repeat(64)}),(d:any)=>({...d,data:d.data.slice(4)}),(d:any)=>({...d,attachment:{...fileItem,filename:'different.bin'}})]){
+it('rejects changed content, selectors, truncated files and noncanonical bytes without returning a file',async()=>{
+ for(const change of [(d:any)=>({...d,sourceVersion:'c'.repeat(64)}),(d:any)=>({...d,transfer:'chunk'}),(d:any)=>({...d,maxAttachmentBytes:524288}),(d:any)=>({...d,id:'c'.repeat(64)}),(d:any)=>({...d,data:d.data+'\n'}),(d:any)=>({...d,sha256:'c'.repeat(64)}),(d:any)=>({...d,data:d.data.slice(4)}),(d:any)=>({...d,attachment:{...fileItem,filename:'different.bin'}})]){
   await fileFixture((data,index)=>index===0?change(data):data);await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,fileItem)).rejects.toMatchObject({code:'failed'});
  }
 });
 it('does not finish an attachment after wallet change, revocation or cancellation',async()=>{
  await fileFixture();const original=fetcher.getMockImplementation()!;
  fetcher.mockImplementation(async(...args)=>{const result=await original(...args);mocks.provider={request:async()=>['0x'+'2'.repeat(40)]};return result;});await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,fileItem)).rejects.toMatchObject({code:'wallet'});
- mocks.provider={request:async()=>[wallet]};await fileFixture();const run=fetcher.getMockImplementation()!;let calls=0;fetcher.mockImplementation(async(...args)=>++calls===2?Response.json({error:'revoked'},{status:403}):run(...args));await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,fileItem)).rejects.toMatchObject({code:'denied'});
+ mocks.provider={request:async()=>[wallet]};await fileFixture();const run=fetcher.getMockImplementation()!;let calls=0;fetcher.mockImplementation(async(...args)=>++calls===1?Response.json({error:'revoked'},{status:403}):run(...args));await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,fileItem)).rejects.toMatchObject({code:'denied'});
  const controller=new AbortController();await fileFixture(()=>{controller.abort();return {};});await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,fileItem,controller.signal)).rejects.toBeDefined();
 });
 it('rejects unsafe or oversized attachment metadata before downloading',async()=>{
@@ -155,4 +155,10 @@ it('send snapshots attachment bytes before wallet checks and uncertain sends can
  const promise=sendMail(wallet,outgoing);outgoing.attachments[0].content='eQ==';outgoing.attachments[0].filename='changed.bin';
  await expect(promise).rejects.toThrow();expect(JSON.parse(fetcher.mock.calls[0][1].body).input.attachments).toEqual([{filename:'original.bin',content:'eA=='}]);
  expect(JSON.stringify([...storage])).not.toContain('original.bin');await expect(sendMail(wallet,outgoing)).rejects.toMatchObject({code:'storage'});expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('reports real transfer phases and cancellation during verification releases no file',async()=>{
+ await fileFixture();const progress=vi.fn();await downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,fileItem,undefined,progress);
+ expect(progress.mock.calls.map(([p])=>p)).toEqual([{phase:'preparing',bytes:262144},{phase:'checking',bytes:262144}]);
+ const c=new AbortController();await fileFixture();await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,fileItem,c.signal,p=>{if(p.phase==='checking')c.abort();})).rejects.toThrow();
 });
