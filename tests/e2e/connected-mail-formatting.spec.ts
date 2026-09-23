@@ -32,6 +32,7 @@ async function fixture(page:Page,wallet:string){
 }
 
 test('formatted email renders basic content in an opaque sandbox without active content or external requests',async({page,walletAddress},testInfo)=>{
+ await page.setViewportSize({width:390,height:844});
  const source=await fixture(page,walletAddress);await openMessage(page);expect(source.reads).toBe(0);
  await page.getByRole('button',{name:'View formatting',exact:true}).click();
  const preview=page.getByTitle('Formatted email preview',{exact:true}),body=preview.contentFrame().locator('body');
@@ -43,8 +44,8 @@ test('formatted email renders basic content in an opaque sandbox without active 
  expect(await body.evaluate(()=>{try{void parent.document.body;return false;}catch{return true;}})).toBe(true);
  expect(await page.evaluate(()=>(window as any).__mailExecuted)).toBeUndefined();expect(source.external).toBe(0);
  expect(await preview.contentFrame().locator('meta[http-equiv]').getAttribute('content')).toContain("default-src 'none'");
- await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await preview.scrollIntoViewIfNeeded();await expect(body.locator('strong')).toBeVisible();await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));await page.screenshot({path:testInfo.outputPath('formatted-email-mobile.png')});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await body.locator('strong').scrollIntoViewIfNeeded();await expect(body.locator('strong')).toBeInViewport();await page.screenshot({path:testInfo.outputPath('formatted-email-mobile.png')});
  await page.getByRole('button',{name:'Plain text',exact:true}).click();await expect(preview).toHaveCount(0);await expect(page.locator('.mailbox-body')).toHaveText('Plain first fixture');await expect(page.getByText('This is a plain-text preview.',{exact:false})).toBeVisible();
  expect(source.reads).toBe(1);expect(source.external).toBe(0);
 });
