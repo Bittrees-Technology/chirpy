@@ -759,5 +759,21 @@
   "ownership.self": "Ya eres propietario de esta sala.",
   "ownership.unknown": "Acción de propiedad desconocida.",
   "ownership.retryHint": "Una solicitud interrumpida puede haberse completado. Actualiza la sala antes de reintentar; es seguro volver a nombrar a quien ya sea propietario.",
-  "ownership.changed": "La autorización de la sala ha cambiado. Actualiza antes de cambiar la propiedad."
+  "ownership.changed": "La autorización de la sala ha cambiado. Actualiza antes de cambiar la propiedad.",
+  "displayWallet.title": "Billetera pública mostrada",
+  "displayWallet.enable": "Activa la mensajería para elegir una billetera vinculada que mostrar.",
+  "displayWallet.notice": "Elige la billetera vinculada y el perfil público que verán los demás miembros de Chat. Esto no cambia la entrega de mensajes, los roles ni las vinculaciones de billeteras.",
+  "displayWallet.current": "Billetera mostrada actualmente",
+  "displayWallet.select": "Billetera para mostrar",
+  "displayWallet.automatic": "Automática (billetera de recuperación si está disponible)",
+  "displayWallet.preview": "Vista previa pública",
+  "displayWallet.nameHint": "Para editar el nombre público de esta billetera, conéctala y usa Perfil público arriba.",
+  "displayWallet.latest": "Se usa la última elección válida de una billetera vinculada en todos los dispositivos. Los demás miembros pueden ver los cambios tras su próxima actualización.",
+  "displayWallet.consent": "Publicar esta elección y su asociación con la bandeja de entrada.",
+  "displayWallet.save": "Publicar elección de billetera",
+  "displayWallet.reload": "Actualizar elección de billetera",
+  "displayWallet.working": "Comprobando billeteras vinculadas o esperando tu firma…",
+  "displayWallet.failed": "No se pudieron cargar las elecciones. Actualiza antes de editar.",
+  "displayWallet.uncertain": "Actualiza para comprobar la elección actual. Un guardado interrumpido puede haberse completado.",
+  "displayWallet.saved": "Elección guardada. La elección compartida actual aparece arriba."
 }

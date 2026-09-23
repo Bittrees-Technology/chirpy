@@ -1,3 +1,4 @@
+import { readDisplayWallets, DISPLAY_WALLET_CHANGED } from './displayWallets';
 import {decryptSettingsPayload,SyncReadError,SYNC_READ_PAUSED} from "./syncPayload";
 import { loadSettings, saveSettings, withSettingsLock, assertNoRecoveryPending, recoveryMarkerKey, SettingsStorageError, SETTINGS_STORAGE_ERROR, type SettingsPrefs } from "./settingsStorage";
 import { receiptOverride, receiptPreferenceKey } from "./receiptPreferences";
@@ -6,7 +7,7 @@ import {
   PERSONAL_ORG, parseOrg, type Identity, type OrgConfig, type Policy,
 } from "@app/core";
 import {
-  createTransport, parsePushConversationId, type PushMemberPage, type PushAttachment, type PushSource, type ChatMessage, type Conversation, type StartRoomInput, type Transport,
+  createTransport, parsePushConversationId, type PushMemberPage, type PushAttachment, type PushSource, type ChatMessage, type Conversation, type StartRoomInput, type DisplayWalletContext, type Transport,
 } from "@app/transport";
 import { usePushRooms } from "./usePushRooms";
 import { createRefreshQueue } from "./refreshQueue";
@@ -970,6 +971,7 @@ interface ChatCtx {
   navigateHistory: (direction: "older" | "newer" | "latest" | "refresh") => void;
   enableMessaging: (opts?: { revokeStale?: boolean }) => Promise<void>;
   requestHistorySync: () => Promise<void>;
+  getDisplayWalletContext: () => Promise<DisplayWalletContext>;
   select: (id: string | null) => void;
   markRead: (throughMessageId: string) => Promise<void>;
   send: (body: string, replyTo?: string, files?: PushAttachment[]) => Promise<void>;
@@ -1079,7 +1081,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     messageLoadRef.current++;
     (async () => {
       const provider = mode === "wallet" ? getActiveProvider() : null;
-      const t = createTransport(DEFAULT_TRANSPORT, activeOrg, identity, provider);
+      const t = createTransport(DEFAULT_TRANSPORT, activeOrg, identity, provider, readDisplayWallets);
       setTransportError(null);
       await t.init().catch((err) => {
         if (!cancelled) setTransportError(err instanceof Error ? err.message : "Transport failed to initialize.");
@@ -1103,7 +1105,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) setTransportError(error instanceof Error ? error.message : "Unable to refresh chats.");
       });
       const stop = t.subscribe(queue.notify);
-      unsub = () => { queue.cancel(); stop(); };
+      const changed = () => { if (!cancelled) t.refreshDisplayWallets?.(); };
+      window.addEventListener(DISPLAY_WALLET_CHANGED, changed);
+      unsub = () => { window.removeEventListener(DISPLAY_WALLET_CHANGED, changed); queue.cancel(); stop(); };
     })();
     return () => { cancelled = true; unsub(); };
   }, [activeOrg.id, identity.address, mode, push.connectionRevision]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1216,6 +1220,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     await reloadConversations();
   }, [reloadConversations]);
 
+  const getDisplayWalletContext = useCallback(async () => {
+    const transport = transportRef.current, scope = memberScopeRef.current;
+    if (!transport?.getDisplayWalletContext) throw new Error('Enable messaging to choose a display wallet.');
+    const context = await transport.getDisplayWalletContext();
+    if (transportRef.current !== transport || memberScopeRef.current !== scope) throw new Error('Wallet changed. Reload display choices.');
+    return context;
+  }, []);
+
   const requestRoomLeave = useCallback(async () => {
     const id = activeIdRef.current; const transport = transportRef.current;
     if (!id || parsePushConversationId(id) || !transport?.requestRoomLeave) throw new Error('Native room leaving is unavailable.');
@@ -1321,8 +1333,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     pushError: push.error ?? push.snapshot.error ?? null, enablePushRooms, refreshPushRooms: push.refresh, leavePushRoom, managePushMember, loadPushMembers, historyError,
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages: pushReadDenied ? [] : messages,
     historyLoading, isHistory: history.before !== undefined, hasOlderMessages: !pushReadDenied && olderCursor !== undefined, navigateHistory,
-    enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, pushReadDenied, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+    enableMessaging, requestHistorySync, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent,
+  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, pushReadDenied, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

@@ -57,6 +57,13 @@ export async function injectSyntheticWallet(target: WalletInjectionTarget, priva
     return route.fulfill({json: {service: new URL('/api/profile', url).href,
       profiles: (url.searchParams.get('wallet') ?? '').split(',').map(wallet => ({version: 1, wallet, revision: 0, label: null, updatedAt: 0}))}});
   });
+  await target.route("**/api/profile?kind=display-wallet*", route => {
+    if (route.request().method() !== 'GET') return route.fulfill({status: 405, body: ''});
+    const url = new URL(route.request().url());
+    return route.fulfill({json: {service: new URL('/api/profile', url).href + '?kind=display-wallet',
+      choices: (url.searchParams.get('wallet') ?? '').split(',').map(wallet => ({version: 1, wallet,
+        network: url.searchParams.get('network'), revision: 0, inboxId: null, displayWallet: null, updatedAt: 0}))}});
+  });
   await target.route("https://api.ensideas.com/ens/resolve/**", async (route) => {
     await route.fulfill({
       status: 200,
