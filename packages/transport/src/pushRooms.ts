@@ -1,9 +1,10 @@
+import { writePushFile, type PushAttachment } from './pushMedia.js';
 import type { Message as PushSdkMessage } from '@pushprotocol/restapi';
 import { parsePushIdentity } from './pushIdentity.js';
 import type { Conversation, MessagePage } from './types.js';
 import { loadPushRegistry, type PushCatalog, type PushCatalogRoom, type PushSource } from './pushRegistry.js';
 import { PushRoomSession, type PushRoomClient, type PushSessionStatus } from './pushSession.js';
-import { PUSH_HISTORY_LIMIT, readPushHistory } from './pushMessages.js';
+import { PUSH_HISTORY_LIMIT, PushHistoryBudgetError, readPushHistory } from './pushMessages.js';
 
 type Session = Pick<PushRoomSession, 'getSnapshot' | 'subscribe' | 'enable' | 'dispose'>;
 export interface PushRoomDetails {
@@ -153,10 +154,20 @@ export class PushRooms {
     const { room, client, epoch } = await this.#client(id);
     const cursor = before === undefined ? undefined : this.#cursors.get(before);
     if (before !== undefined && (!cursor || cursor.room !== id || cursor.epoch !== epoch)) throw new Error('This history page expired. Return to latest messages.');
-    const raw = await client.history(room.chatId, { limit: PUSH_HISTORY_LIMIT, ...(cursor ? { reference: cursor.reference } : {}) });
-    this.#ensure(epoch, id);
-    this.#ensureAccess(id, access, epoch);
-    const page = readPushHistory(raw, id, cursor?.reference);
+    let limit = PUSH_HISTORY_LIMIT;
+    let page: ReturnType<typeof readPushHistory>;
+    for (;;) {
+      const raw = await client.history(room.chatId, { limit, ...(cursor ? { reference: cursor.reference } : {}) });
+      this.#ensureAccess(id, access, epoch);
+      if (!Array.isArray(raw) || raw.length > limit) throw new Error('Push returned an unsupported room history response. No messages were replaced.');
+      try { page = readPushHistory(raw, id, cursor?.reference); break; }
+      catch (error) {
+        // Retry reads only, and only for a known aggregate budget failure.
+        // No truncation or skipping: the smaller page retains protocol links.
+        if (!(error instanceof PushHistoryBudgetError) || limit === 1) throw error;
+        limit = Math.max(1, Math.floor(Math.min(raw.length, limit) / 2));
+      }
+    }
     const path = cursor?.path ?? { positions: new Map<string, number>(), fingerprints: new Map<number, string>() };
     const depth = cursor?.depth ?? 0;
     // The backend must not splice an already visited page into this traversal.
@@ -201,9 +212,11 @@ export class PushRooms {
     });
     return { members, page, hasMore: members.length === 20, pending };
   }
-  async send(id: string, body: string, opts?: { replyTo?: string }): Promise<void> {
-    if (!body.trim() || body.length > 16_000 || new TextEncoder().encode(body).byteLength > 64 * 1024) throw new Error('Write a message of at most 16,000 characters.');
+  async send(id: string, body: string, opts?: { replyTo?: string; file?: PushAttachment }): Promise<void> {
+    const fileContent = opts?.file === undefined ? undefined : writePushFile(opts.file);
+    if ((!body.trim() && fileContent === undefined) || body.length > 16_000 || new TextEncoder().encode(body).byteLength > 64 * 1024) throw new Error('Write a message of at most 16,000 characters.');
     const replyTo = opts?.replyTo;
+    if (replyTo !== undefined && fileContent !== undefined) throw new Error('Remove the file to reply to a message.');
     if (replyTo !== undefined && (typeof replyTo !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(replyTo))) throw new Error('Choose an original message in this room to reply to.');
     let access = await this.refreshRoom(id);
     if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
@@ -221,8 +234,11 @@ export class PushRooms {
       if (!access.canSend) throw new Error('Push has not allowed this wallet to post in the room.');
       this.#ensureAccess(id, access, epoch);
     }
-    const payload: PushSdkMessage = replyTo === undefined ? { type: 'Text', content: body }
-      : { type: 'Reply', content: { type: 'Text', content: body }, reference: replyTo };
+    const payload: PushSdkMessage = fileContent !== undefined
+      ? body.trim() ? { type: 'Composite', content: [{ type: 'Text', content: body }, { type: 'File', content: fileContent }] }
+        : { type: 'File', content: fileContent }
+      : replyTo === undefined ? { type: 'Text', content: body }
+        : { type: 'Reply', content: { type: 'Text', content: body }, reference: replyTo };
     await client.send(room.chatId, payload);
     this.#ensure(epoch, id);
     // A resolved SDK send is not evidence of delivery/read. The caller refreshes history.

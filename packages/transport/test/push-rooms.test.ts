@@ -1,3 +1,4 @@
+import { preparePushFile, readPushAttachment } from '../src/pushMedia';
 import { describe, expect, it, vi } from 'vitest';
 import { PushRooms } from '../src/pushRooms';
 import { parsePushRegistry } from '../src/pushRegistry';
@@ -207,5 +208,80 @@ describe('Push reply dispatch', () => {
     const f = setup(); await f.rooms.discover(); await f.rooms.enable(); vi.mocked(f.client.history).mockResolvedValue([replyRow()]);
     vi.mocked(f.client.send).mockRejectedValue(new Error('Unknown delivery outcome'));
     await expect(f.rooms.send(id, 'body', { replyTo: replyCid })).rejects.toThrow('Unknown delivery outcome'); expect(f.client.send).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('Push file dispatch', () => {
+  const selected = () => preparePushFile('chosen.txt', 'text/plain', new TextEncoder().encode('Exact chosen bytes'));
+  it('sends a file without requiring text and preserves its bytes and safe name', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const file = selected(); await f.rooms.send(id, '', { file });
+    expect(f.client.send).toHaveBeenCalledOnce();
+    const [room, payload] = vi.mocked(f.client.send).mock.calls[0];
+    expect(room).toBe(group); expect(payload.type).toBe('File'); expect(readPushAttachment(payload.type, payload.content)).toEqual(file);
+  });
+  it('sends a caption and file as one ordered Composite without a second network write', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const file = selected(); await f.rooms.send(id, 'Original caption', { file });
+    const [, payload] = vi.mocked(f.client.send).mock.calls[0];
+    expect(payload.type).toBe('Composite'); expect(payload.content).toHaveLength(2);
+    expect(payload.content[0]).toEqual({ type: 'Text', content: 'Original caption' });
+    expect(readPushAttachment(payload.content[1].type, payload.content[1].content)).toEqual(file);
+    expect(f.client.send).toHaveBeenCalledOnce();
+  });
+  it('snapshots the chosen content before asynchronous authority checks', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    const file = selected(), original = { ...file };
+    const pending = f.rooms.send(id, '', { file }); file.base64 = btoa('Changed after click'); file.filename = 'changed.bin';
+    await pending; const [, payload] = vi.mocked(f.client.send).mock.calls[0];
+    expect(readPushAttachment(payload.type, payload.content)).toEqual(original);
+  });
+  it('rejects invalid files, oversized captions and reply/file combinations before network access', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    for (const [body, opts] of [['', { file: { ...selected(), bytes: 0 } }], ['x'.repeat(16_001), { file: selected() }], ['', { file: selected(), replyTo: replyCid }]] as const) {
+      await expect(f.rooms.send(id, body, opts)).rejects.toThrow();
+    }
+    expect(f.client.info).not.toHaveBeenCalled(); expect(f.client.send).not.toHaveBeenCalled();
+  });
+  it('denies lost posting authority and never retries an uncertain file send', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.permissions).mockResolvedValueOnce({ entry: true, chat: false });
+    await expect(f.rooms.send(id, '', { file: selected() })).rejects.toThrow('not allowed'); expect(f.client.send).not.toHaveBeenCalled();
+    vi.mocked(f.client.send).mockRejectedValue(new Error('Unknown outcome'));
+    await expect(f.rooms.send(id, '', { file: selected() })).rejects.toThrow('Unknown outcome'); expect(f.client.send).toHaveBeenCalledOnce();
+  });
+});
+
+describe('bounded file-heavy Push history', () => {
+  const file = { type: 'File', content: JSON.stringify({ name: 'large.bin', content: 'data:application/octet-stream;base64,' + Buffer.alloc(1_000_000, 31).toString('base64') }) };
+  const rows = Array.from({ length: 8 }, (_, i) => ({ cid: `QmLargeMessage${i}`, link: i === 7 ? null : `QmLargeMessage${i + 1}`, fromDID: owner, toDID: group, timestamp: i, messageType: file.type, messageObj: { content: file.content } }));
+  it('shrinks oversized reads without losing original links or file bytes, including stable page revisits', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.history).mockImplementation(async (_room, options) => {
+      const start = options.reference ? rows.findIndex(r => r.cid === options.reference) : 0;
+      return rows.slice(start, start + options.limit);
+    });
+    const first = await f.rooms.history(id); expect(first.messages.map(m => m.id)).toEqual(rows.slice(0, 4).map(r => r.cid).reverse());
+    expect(vi.mocked(f.client.history).mock.calls.map(c => c[1].limit)).toEqual([30, 4]);
+    const second = await f.rooms.history(id, first.olderCursor);
+    expect(second.messages.map(m => m.id)).toEqual(rows.slice(4).map(r => r.cid).reverse()); expect(second.olderCursor).toBeUndefined();
+    expect((await f.rooms.history(id, first.olderCursor)).messages).toEqual(second.messages);
+    expect(first.messages[0].pushAttachment?.bytes).toBe(1_000_000);
+  });
+  it('does not retry malformed history, ignored read limits or lost access', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.history).mockResolvedValueOnce([{ ...rows[0], toDID: 'b'.repeat(64) }]);
+    await expect(f.rooms.history(id)).rejects.toThrow('unsupported'); expect(f.client.history).toHaveBeenCalledOnce();
+    vi.mocked(f.client.history).mockClear().mockResolvedValue(rows);
+    await expect(f.rooms.history(id)).rejects.toThrow('unsupported'); expect(f.client.history).toHaveBeenCalledTimes(2);
+    vi.mocked(f.client.history).mockClear().mockImplementation(async () => { f.disconnect(); return rows; });
+    await expect(f.rooms.history(id)).rejects.toThrow('connection changed'); expect(f.client.history).toHaveBeenCalledOnce();
+  });
+  it('stops at one unsupported large composite instead of skipping it or retrying forever', async () => {
+    const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+    vi.mocked(f.client.history).mockResolvedValue([{ ...rows[0], messageType: 'Composite', messageObj: { content: Array(7).fill({ messageType: 'File', messageObj: { content: file.content } }) } }]);
+    await expect(f.rooms.history(id)).rejects.toThrow('display limit'); expect(f.client.history).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(f.client.history).mock.calls.map(c => c[1].limit)).toEqual([30, 1]);
   });
 });

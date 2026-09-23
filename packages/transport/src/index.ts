@@ -27,3 +27,6 @@ export function createTransport(
 ): Transport {
   return mode === "xmtp" ? new XmtpTransport(org, identity, provider ?? null) : new MockTransport(org, identity);
 }
+
+export { PUSH_FILE_BYTES, preparePushFile } from "./pushMedia.js";
+export type { PushAttachment } from "./pushMedia.js";

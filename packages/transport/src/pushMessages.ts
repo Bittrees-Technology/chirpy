@@ -5,6 +5,9 @@ import { readPushContent } from './pushContent.js';
 export const PUSH_HISTORY_LIMIT = 30;
 const MAX_PAGE_BYTES = 512 * 1024;
 const MAX_MEDIA_PAGE_BYTES = 8 * 1024 * 1024;
+export class PushHistoryBudgetError extends Error {
+  constructor() { super('This Push history page exceeds the display limit. No messages were replaced.'); }
+}
 export interface PushHistoryPage { messages: ChatMessage[]; nextReference?: string }
 function invalid(): never { throw new Error('Push returned an unsupported room history response. No messages were replaced.'); }
 function object(value: unknown): Record<string, unknown> {
@@ -37,12 +40,12 @@ export function readPushHistory(raw: unknown, conversationId: string, requestedR
     let content: ReturnType<typeof readPushContent>;
     try { content = readPushContent(row, id); } catch { invalid(); }
     size += new TextEncoder().encode(content.body).byteLength;
-    if (size > MAX_PAGE_BYTES) invalid();
+    if (size > MAX_PAGE_BYTES) throw new PushHistoryBudgetError();
     const next = { message: { id, conversationId, sender: from, sentAt: row.timestamp, ...content }, link };
     const previous = seen.get(id);
     if (previous && JSON.stringify(previous) !== JSON.stringify(next)) invalid();
     if (!previous) mediaSize += (content.pushAttachment?.base64.length ?? 0) + (content.pushParts?.reduce((sum, part) => sum + (part.pushAttachment?.base64.length ?? 0), 0) ?? 0);
-    if (mediaSize > MAX_MEDIA_PAGE_BYTES) invalid();
+    if (mediaSize > MAX_MEDIA_PAGE_BYTES) throw new PushHistoryBudgetError();
     seen.set(id, next);
   }
   if (!seen.size) {

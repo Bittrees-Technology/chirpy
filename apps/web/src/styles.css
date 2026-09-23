@@ -347,3 +347,8 @@ input, textarea, select { font-family: inherit; }
 .push-attachment{display:flex;flex-direction:column;align-items:flex-start;gap:8px;max-width:100%;overflow-wrap:anywhere}.push-attachment small{color:var(--muted)}
 
 .push-message-parts{display:flex;flex-direction:column;gap:10px}
+
+.push-file-compose { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 18px; border-top: 1px solid var(--line); font-size: 12px; }
+.push-file-compose span { min-width: 0; overflow-wrap: anywhere; }
+.push-file-compose small { color: var(--muted); }
+.push-file-compose p { flex-basis: 100%; margin: 0; }
