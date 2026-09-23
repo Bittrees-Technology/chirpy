@@ -87,7 +87,7 @@ describe('Connected Mail browser HTTP boundary',()=>{
   const f=fixture(),call=httpFixture(f);
   for(const [headers,status]of [[{host:'chirpy.bittrees.org'},403],[{origin:'https://evil.test'},403],[{origin:undefined},403],[{authorization:'Bearer injected'},400],[{'content-type':'text/plain'},415]] as any)expect((await call('challenge',{wallet},headers)).code).toBe(status);
   expect((await call('challenge',{wallet},{},'GET')).code).toBe(405);expect((await call('challenge',{wallet,extra:'x'})).code).toBe(400);
-  expect((await call('operation',{padding:'x'.repeat(65537)})).code).toBe(413);
+  expect((await call('operation',{padding:'x'.repeat(410001)})).code).toBe(413);
  });
  it('uses HttpOnly secure host cookies and returns no raw session tokens',async()=>{
   const f=fixture(),call=httpFixture(f),challenge=await call('challenge',{wallet});expect(challenge.headers['Set-Cookie']).toContain('HttpOnly; Secure; SameSite=Strict');
@@ -202,4 +202,16 @@ it('callback and authenticated activity refresh the private browser cookie for u
  const response=await call('callback',new URLSearchParams(p.input as any).toString(),{cookie,origin:'https://mail.bittrees.org','content-type':'application/x-www-form-urlencoded'});
  expect(response.code).toBe(303);expect(response.headers['Set-Cookie']).toContain('Max-Age=34560000');
  const operation=await call('operation',{wallet,action:'folders',input:{}},{cookie});expect(operation.code).toBe(200);expect(operation.headers['Set-Cookie']).toContain('Max-Age=34560000');
+});
+
+it('relays exact bounded files only under sending authority and leaves small HTTP limits intact',async()=>{
+ const f=fixture(),p=await f.connected(),call=httpFixture(f),cookie='__Host-chat_mail_session='+p.session.token;
+ const attachment={filename:'fixture.bin',content:Buffer.alloc(262144,120).toString('base64')};
+ const input={wallet,action:'send',input:{to:f.grant.mailbox,subject:'Files',text:'Body',idempotencyKey:'file-request-12345',attachments:[attachment]}};
+ expect((await call('operation',input,{cookie})).code).toBe(200);expect(f.calls.at(-1).body).toEqual(input);
+ for(const attachments of [[{...attachment,content:Buffer.alloc(262145).toString('base64')}],[{filename:'../file',content:'eA=='}],[{filename:'file',content:'eB=='}],[{filename:'file',content:'eA==',url:'https://evil.test'}],Array(5).fill({filename:'file',content:''})]){
+  const count=f.calls.length;expect((await call('operation',{...input,input:{...input.input,attachments}},{cookie})).code).toBe(400);expect(f.calls).toHaveLength(count);
+ }
+ expect((await call('challenge',{wallet,padding:'x'.repeat(65537)})).code).toBe(413);
+ const read=fixture();read.grant.scopes=['read'];const q=await read.connected();await expect(read.api.operation(q.session.token,input)).rejects.toMatchObject({status:403});expect(read.calls).toHaveLength(1);
 });

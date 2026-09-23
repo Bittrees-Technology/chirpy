@@ -130,3 +130,29 @@ it('validates the selected HTML source and bounded preview flags',async()=>{
  fetcher.mockResolvedValue(Response.json(valid));expect(await mailHtml(wallet,'Sent',id,version)).toEqual({html:valid.html,bodyAvailable:true,truncated:false});
  for(const change of [{id:'c'.repeat(64)},{sourceVersion:'c'.repeat(64)},{html:'😀'.repeat(4001)},{bodyAvailable:false},{truncated:'false'}]){fetcher.mockResolvedValue(Response.json({...valid,...change}));await expect(mailHtml(wallet,'Sent',id,version)).rejects.toMatchObject({code:'failed'});}
 });
+
+it('prepares bounded binary files without persisting content and validates the total budget',async()=>{
+ const {prepareMailAttachments,validMailDraft}=await import('../src/connectedMail');
+ const bytes=new Uint8Array(262144);for(let i=0;i<bytes.length;i++)bytes[i]=i%256;
+ const read=vi.fn(async()=>bytes.buffer),file={name:'fixture 🐦.bin',size:bytes.length,arrayBuffer:read} as unknown as File;
+ const files=await prepareMailAttachments([file]);expect(atob(files[0].content).length).toBe(bytes.length);expect(atob(files[0].content).charCodeAt(255)).toBe(255);expect(validMailDraft({...draft,attachments:files})).toBe(true);
+ expect(validMailDraft({...draft,text:'x'.repeat(20000),attachments:files})).toBe(false);
+ await expect(prepareMailAttachments([{...file,size:262145} as File])).rejects.toMatchObject({code:'attachmentFiles'});expect(read).toHaveBeenCalledTimes(1);
+ await expect(prepareMailAttachments([{...file,size:1} as File],files)).rejects.toMatchObject({code:'attachmentFiles'});expect(read).toHaveBeenCalledTimes(1);
+ for(const filename of ['../x','x\nBcc:bad','\ud800','x\u202ey',' '])expect(validMailDraft({...draft,attachments:[{filename,content:'eA=='}]})).toBe(false);
+ for(const content of ['eB==','eA=','eA==\n','bad!'])expect(validMailDraft({...draft,attachments:[{filename:'x',content}]})).toBe(false);
+ expect(storage.size).toBe(0);
+});
+it('aborted file reads cannot return private bytes or start a send',async()=>{
+ const {prepareMailAttachments}=await import('../src/connectedMail');const c=new AbortController();let finish!:(v:ArrayBuffer)=>void;
+ const file={name:'x.bin',size:1,arrayBuffer:()=>new Promise<ArrayBuffer>(r=>finish=r)} as File;
+ const promise=prepareMailAttachments([file],[],c.signal);c.abort();finish(new Uint8Array([120]).buffer);
+ await expect(promise).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();expect(storage.size).toBe(0);
+});
+it('send snapshots attachment bytes before wallet checks and uncertain sends cannot repeat',async()=>{
+ const outgoing={...draft,attachments:[{filename:'original.bin',content:'eA=='}]};
+ fetcher.mockRejectedValue(new Error('offline'));
+ const promise=sendMail(wallet,outgoing);outgoing.attachments[0].content='eQ==';outgoing.attachments[0].filename='changed.bin';
+ await expect(promise).rejects.toThrow();expect(JSON.parse(fetcher.mock.calls[0][1].body).input.attachments).toEqual([{filename:'original.bin',content:'eA=='}]);
+ expect(JSON.stringify([...storage])).not.toContain('original.bin');await expect(sendMail(wallet,outgoing)).rejects.toMatchObject({code:'storage'});expect(fetcher).toHaveBeenCalledTimes(1);
+});

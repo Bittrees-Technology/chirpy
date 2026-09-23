@@ -220,3 +220,19 @@ it('until-revoked connections do not schedule a synthetic expiry and can still b
  await act(async()=>vi.advanceTimersByTimeAsync(500*86400000));expect(container.textContent).toContain('fixture@bittrees.org');expect(container.textContent).not.toContain('session expired');
  await click('Disconnect Mail');expect(container.textContent).not.toContain('fixture@bittrees.org');
 });
+
+const chooseFiles=async(files:File[])=>act(async()=>{const picker=container.querySelector<HTMLInputElement>('input[type=file]')!;Object.defineProperty(picker,'files',{configurable:true,value:files});picker.dispatchEvent(new Event('change',{bubbles:true}));});
+const fileFixture=(name='private.txt')=>({name,size:1,arrayBuffer:async()=>new Uint8Array([120]).buffer} as File);
+it('selects and removes draft files without uploading and clears them on refresh',async()=>{
+ await render();await click('New email');await chooseFiles([fileFixture()]);expect(container.textContent).toContain('private.txt · 1 B');expect(mail.sendMail).not.toHaveBeenCalled();
+ await click('Remove');expect(container.textContent).not.toContain('private.txt');await chooseFiles([fileFixture()]);await click('Refresh');expect(container.textContent).not.toContain('private.txt');await click('New email');expect(container.textContent).not.toContain('private.txt');
+});
+it('cancelled file selection cannot repopulate the next draft',async()=>{
+ let finish!:(value:ArrayBuffer)=>void;await render();await click('New email');await chooseFiles([{...fileFixture(),arrayBuffer:()=>new Promise<ArrayBuffer>(r=>finish=r)} as File]);
+ expect(container.querySelector<HTMLInputElement>('input[type=file]')!.disabled).toBe(true);await click('Cancel');await click('New email');await act(async()=>finish(new Uint8Array([120]).buffer));expect(container.textContent).not.toContain('private.txt');expect(mail.sendMail).not.toHaveBeenCalled();
+});
+it('rejects oversized selections before reading and clears files when access expires',async()=>{
+ vi.useFakeTimers();vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),expiresAt:new Date(Date.now()+1000).toISOString()});await render();await click('New email');
+ const read=vi.fn();await chooseFiles([{...fileFixture(),size:262145,arrayBuffer:read} as File]);expect(read).not.toHaveBeenCalled();expect(container.querySelector('[role=alert]')?.textContent).toContain('256 KiB');
+ await chooseFiles([fileFixture()]);expect(container.textContent).toContain('private.txt');await act(async()=>vi.advanceTimersByTimeAsync(1001));expect(container.textContent).not.toContain('private.txt');expect(container.querySelector('input[type=file]')).toBeNull();
+});

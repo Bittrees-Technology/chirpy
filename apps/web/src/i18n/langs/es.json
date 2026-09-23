@@ -567,7 +567,7 @@
   "mailbox.to": "Para",
   "mailbox.subject": "Asunto",
   "mailbox.message": "Mensaje",
-  "mailbox.draftHint": "Solo texto. El borrador se borra al salir de Correo o recargar. El aviso de envío pendiente se guarda en este dispositivo.",
+  "mailbox.draftHint": "El cuerpo del mensaje es texto sin formato. El borrador se borra al salir de Correo o recargar. El aviso de envío pendiente se guarda en este dispositivo.",
   "mailbox.send": "Enviar correo",
   "mailbox.unthreadedReply": "Este mensaje no tiene referencias de conversación válidas. La respuesta puede aparecer como una conversación aparte.",
   "mailbox.reply": "Responder",
@@ -650,5 +650,10 @@
   "publicProfile.saved": "Nombre público guardado. Los clientes activos de Chat se actualizan en unos 40 segundos.",
   "publicProfile.withdrawn": "Nombre de Chat retirado. Los clientes activos se actualizan en unos 40 segundos. No se pueden borrar copias ya vistas ni registros ENS externos.",
   "publicProfile.failed": "No se pudo cargar el perfil público. Prueba a recargarlo.",
-  "publicProfile.uncertain": "No se pudo confirmar el resultado. Recarga el perfil público antes de reintentar; es posible que una actualización anterior ya se haya guardado."
+  "publicProfile.uncertain": "No se pudo confirmar el resultado. Recarga el perfil público antes de reintentar; es posible que una actualización anterior ya se haya guardado.",
+  "mailbox.addAttachments": "Adjuntar archivos",
+  "mailbox.outgoingAttachmentHint": "Hasta 4 archivos, 256 KiB en total. Los archivos permanecen en este borrador hasta que lo envíes. Los borradores se borran al actualizar o salir de Email.",
+  "mailbox.removeAttachment": "Eliminar {filename}",
+  "mailbox.removeFile": "Eliminar",
+  "mailbox.error.attachmentFiles": "Elige hasta 4 archivos que sumen 256 KiB o menos. Usa nombres sin barras ni caracteres de control ocultos."
 }
