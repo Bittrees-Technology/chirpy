@@ -10,7 +10,9 @@ describe('Push attachment parsing', () => {
     const content = data(PUSH_FILE_BYTES);
     for (const value of [content, JSON.stringify({content,name:'report.bin',size:1})]) {
       const parsed = readPushAttachment('File', value)!;
-      expect(parsed.bytes).toBe(PUSH_FILE_BYTES); expect(Buffer.from(parsed.base64,'base64')).toEqual(Buffer.alloc(PUSH_FILE_BYTES,31));
+      expect(parsed.bytes).toBe(PUSH_FILE_BYTES);
+      // Native equality still compares every byte without a million JS assertion entries.
+      expect(Buffer.from(parsed.base64,'base64').equals(Buffer.alloc(PUSH_FILE_BYTES,31))).toBe(true);
     }
     expect(readPushAttachment('File', data(0))?.bytes).toBe(0);
   });
