@@ -1,6 +1,6 @@
 # Encrypted sync format compatibility
 
-The API supports a guarded future payload-format upgrade. The current client still writes format1; deletion/unblock tombstones and their client migration are not implemented by this prerequisite.
+The API supports a guarded payload-format upgrade. The current application still writes format1. The pure v2 model and encryption helpers are implemented and tested, but are not connected to application state, storage or recovery; no wallet is upgraded by these helpers alone.
 
 ## Signed envelope and storage boundary
 
@@ -23,3 +23,11 @@ Before enabling format2 in a client:
 - Review retained legacy ciphertext against the operator's retention policy. No automatic deletion or retention promise is introduced here.
 
 Validation uses real Redis transactions, including an old-handler legacy write after upgrade, concurrent modification between read and commit, expired upgrades, corrupted storage, permanent-key retention and exact large revisions. These tests do not replace the future client migration or actual multi-device production acceptance.
+
+## Client model and encryption prerequisite
+
+`apps/web/src/versionedSync.ts` retains a timestamp on each preference, per-conversation receipt override, blocked-wallet entry and legacy saved-message entry. Explicit unblock (`false`), override reset (`null`) and saved-message deletion (`null`) remain in the payload, so replaying an older snapshot cannot resurrect them. Absent entries do not imply deletion. A later explicit action can recreate an entry. Equal-time conflicts keep receipts off, blocks on and message deletions; differing surviving message values use canonical JSON order. Merge is deterministic, idempotent, commutative and associative. Edits advance a safe logical timestamp even when the local clock moves backward. Unknown fields, corrupt records and exhausted size/clock limits stop processing rather than silently dropping data. Tombstones are not compacted.
+
+`versionedSyncCipher.ts` accepts the existing derived AES key without changing wallet signatures or HKDF identities. Its v2 AES-GCM additional authenticated data binds the format, wallet and inner timestamp. It uses fresh random IVs and strict canonical encoding, schema and wire-size checks. Legacy encryption cannot be mislabeled as v2. Both helpers are unused by the active application until the state/recovery migration is complete.
+
+The legacy saved-message array is distinct from the XMTP Saved Messages self-conversation and from explicitly local contacts/notes. These helpers do not delete XMTP messages or upload the local library. Before activation, store per-item metadata atomically with preferences, retain it through recovery/export/undo, require API format capability before applying any remote state, and verify acknowledgement plus an authoritative reread. Never regenerate upgraded records from their materialized display view or reimport legacy state after upgrade.
