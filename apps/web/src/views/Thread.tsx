@@ -5,7 +5,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { formatBytes, type Policy } from "@app/core";
 import { useChat, useIdentity, useSettingsPrefs } from "../state";
 import { Avatar, Button, Empty, fmtTime, shortAddr } from "../ui";
-import { nameFor, useEnsProfiles } from "../useEns";
+import { useEnsProfiles } from "../useEns";
+import { usePublicProfiles, publicName } from "../usePublicProfiles";
 import { translateStatus } from "../i18n/statusMessages";
 import { useI18n } from "../i18n";
 
@@ -13,7 +14,7 @@ const EMOJIS = ["👍", "❤️", "😂", "🎉", "🤝"];
 
 export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) {
   const { activeConversation, messages, send, react, setRoomPolicy, requestRoomJoin, setConversationConsent, markRead, historyLoading, isHistory, hasOlderMessages, navigateHistory, historyError, pushStatus, enablePushRooms, leavePushRoom, managePushMember } = useChat();
-  const { identity } = useIdentity();
+  const { identity, mode: identityMode } = useIdentity();
   const { prefs, storageBusy, storageError, recoveryPaused, setChatReadReceipts } = useSettingsPrefs();
   const { t, lang } = useI18n();
   const policySummary = (policy: Policy) => [
@@ -65,8 +66,10 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const peerAddress = activeConversation && !isRoomConv
     ? (activeConversation.peers.find((p) => p.toLowerCase() !== selfAddress) ?? activeConversation.peers[0])
     : undefined;
-  // Resolve the peer + every message sender to ENS (name + avatar), cached app-wide.
-  const profiles = useEnsProfiles([peerAddress, ...messages.map((m) => m.sender)]);
+  const profileWallets = activeConversation?.blocked ? [] : [peerAddress, ...messages.slice(-100).map(m => m.sender)];
+  const publicProfiles = usePublicProfiles(profileWallets, identityMode === "wallet");
+  const profiles = useEnsProfiles(profileWallets.filter(a => identityMode !== "wallet" || publicProfiles.get(a?.toLowerCase() ?? "")?.revision === 0));
+  const name = (address: string, custom?: string) => publicName(address, publicProfiles.get(address.toLowerCase()), profiles.get(address.toLowerCase()), custom, identityMode === "wallet");
 
   useEffect(() => { setDrafts({}); setSendError(null); }, [selfAddress]);
   useEffect(() => {
@@ -88,7 +91,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
   const peerRecord = peerAddress ? profiles.get(peerAddress.toLowerCase()) : undefined;
   const headerName = isRoomConv
     ? `# ${activeConversation.title}`
-    : nameFor(peerAddress ?? activeConversation.title, peerRecord, activeConversation.title);
+    : name(peerAddress ?? activeConversation.title, activeConversation.title);
   const headerAvatar = !isRoomConv ? peerRecord?.avatar ?? undefined : undefined;
 
   const submit = async (e: React.FormEvent) => {
@@ -153,7 +156,7 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           <div className="thread-title">
             {headerName}
           </div>
-          <div className="thread-sub">
+          <div className="thread-sub" title={peerAddress}>
             {pushRoom ? `${t(`push.${pushRoom.source}`)} · Push · ${t(pushRoom.publicRoom === true ? "push.publicRoom" : pushRoom.publicRoom === false ? "push.privateRoom" : "push.visibilityUnknown")} · ${t(`push.membership.${pushRoom.membership}`)}` : isRoom
               ? `${t(activeConversation.peers.length === 1 ? "thread.member" : "thread.members", undefined, { count: new Intl.NumberFormat(lang).format(activeConversation.peers.length) })} · ${t(activeConversation.gate?.rules.length ? "thread.gated" : "thread.open")}${policy ? ` · ${policySummary(policy)}` : ""}`
               : shortAddr(activeConversation.peers.find((p) => p !== identity.address) ?? activeConversation.peers[0])}
@@ -251,8 +254,9 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
           const parent = m.replyTo ? messages.find((x) => x.id === m.replyTo) : null;
           return (
             <div key={m.id} className={`msg-row ${mine ? "mine" : ""}`}>
-              {!mine && <Avatar id={m.sender} size={28} label={nameFor(m.sender, senderRecord)} src={senderRecord?.avatar ?? undefined} />}
+              {!mine && <Avatar id={m.sender} size={28} label={name(m.sender)} src={senderRecord?.avatar ?? undefined} />}
               <div className="msg-bubble-wrap">
+                {!mine && isRoom && <div className="profile-wallet" title={m.sender}>{name(m.sender)} · {shortAddr(m.sender)}</div>}
                 {m.replyTo && (
                   <div className="msg-reply-ref">↩ {(parent?.body ?? m.replyPreview)?.slice(0, 60) ?? t("thread.earlierReply", "Reply to an earlier message")}</div>
                 )}

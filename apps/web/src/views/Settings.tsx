@@ -3,6 +3,7 @@ import { serializeOrg } from "@app/core";
 import { useChat, useIdentity, useOrgs, useSettingsPrefs } from "../state";
 import { Avatar, Button, Field, Modal, Toggle, shortAddr } from "../ui";
 import { download } from "./dialogs";
+import { PublicProfile } from "./PublicProfile";
 import { UpdateCard } from "./UpdateCard";
 import { HistoryRecovery } from "./HistoryRecovery";
 import { SettingsRestore } from "./SettingsRestore";
@@ -173,6 +174,8 @@ export function Settings(
           <p className="muted status-line">{t("settings.pictureHelp")}</p>
         )}
       </section>
+
+      <PublicProfile />
 
       <section className="card">
         <h2>{t("settings.account")}</h2>
