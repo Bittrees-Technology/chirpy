@@ -77,3 +77,12 @@ for(const interruption of ['cancel and select another message','wallet change'] 
  else await expect(page.locator('.mailbox-body')).toHaveText('Plain second fixture');
  await expect(page.getByTitle('Formatted email preview')).toHaveCount(0);expect(source.external).toBe(0);
 });
+
+test('a same-address wallet event clears formatted mail and requires a fresh mailbox check',async({page,walletAddress})=>{
+ await fixture(page,walletAddress);await openMessage(page);
+ await page.getByRole('button',{name:'View formatting',exact:true}).click();await expect(page.getByTitle('Formatted email preview')).toBeVisible();
+ await page.evaluate(wallet=>(window as any).__emitWalletEvent('accountsChanged',[wallet]),walletAddress);
+ await expect(page.getByTitle('Formatted email preview')).toHaveCount(0);await expect(page.locator('.mailbox-list')).toHaveCount(0);
+ await expect(page.getByRole('alert')).toBeVisible();
+ await page.getByRole('button',{name:'Refresh',exact:true}).click();await expect(page.locator('.mailbox-list')).toBeVisible();
+});

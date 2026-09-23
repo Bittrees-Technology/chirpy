@@ -2,7 +2,7 @@ import {MAIL_ATTACHMENT_BYTES,MAIL_ATTACHMENT_COUNT,validAttachmentName,validOut
 export {MAIL_ATTACHMENT_BYTES,MAIL_ATTACHMENT_COUNT,validAttachmentName};
 import {stringToHex} from 'viem';
 import {parseSiweMessage,createSiweMessage} from 'viem/siwe';
-import {getActiveProvider} from './walletProviders';
+import {getActiveProvider,getProviderRevision,subscribeProvider} from './walletProviders';
 export type MailConnection={mailbox:string;scopes:('read'|'send')[];expiresAt:string|null};
 export type MailSummary={id:string;from:string;subject:string;date:string};
 export type MailMessage=MailSummary&{text:string;sourceVersion?:string;replyTo?:string;threadedReply?:boolean};
@@ -11,14 +11,35 @@ export class MailClientError extends Error {constructor(public code:'session'|'u
 const isWallet=(v:unknown):v is string=>typeof v==='string'&&/^0x[a-f0-9]{40}$/.test(v);
 const messageId=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 export const validMailFolder=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$/.test(v)&&v===v.trim();
+/** Keep authority tied to one connection, even if a replacement reports the same address. */
+async function withMailWalletSession<T>(wallet:string,signal:AbortSignal|undefined,work:(scope:AbortSignal,current:()=>void)=>Promise<T>):Promise<T>{
+ const provider=getActiveProvider(),revision=getProviderRevision();
+ if(!provider||!isWallet(wallet))throw new MailClientError('wallet');
+ const cancelled=new AbortController(),cancel=()=>cancelled.abort(new MailClientError('wallet'));
+ const scope=AbortSignal.any([cancelled.signal,...(signal?[signal]:[])]);
+ const current=()=>{
+  if(cancelled.signal.aborted||getActiveProvider()!==provider||getProviderRevision()!==revision)throw new MailClientError('wallet');
+  scope.throwIfAborted();
+ };
+ const unsubscribe=subscribeProvider(cancel);
+ try{
+  provider.on?.('accountsChanged',cancel);provider.on?.('disconnect',cancel);provider.on?.('session_delete',cancel);
+  current();const value=await work(scope,current);current();return value;
+ }catch(error){current();throw error;}
+ finally{
+  unsubscribe();provider.removeListener?.('accountsChanged',cancel);provider.removeListener?.('disconnect',cancel);provider.removeListener?.('session_delete',cancel);
+ }
+}
 export async function assertMailWallet(wallet:string){
  const provider=getActiveProvider();if(!provider||!isWallet(wallet))throw new MailClientError('wallet');
  const accounts=await provider.request({method:'eth_accounts'});
  if(!Array.isArray(accounts)||String(accounts[0]).toLowerCase()!==wallet||getActiveProvider()!==provider)throw new MailClientError('wallet');return provider;
 }
 async function request(action:string,input?:unknown,signal?:AbortSignal){
+ signal?.throwIfAborted();
  const response=await fetch('/api/mail/'+action,{method:input===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:input===undefined?undefined:JSON.stringify(input),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(40000)]):AbortSignal.timeout(40000)});
  let data;try{data=await response.json();}catch{throw new MailClientError('failed');}
+ signal?.throwIfAborted();
  if(!response.ok)throw new MailClientError(response.status===401?'session':response.status===403?'denied':response.status===503?'unavailable':'failed',response.status);return data;
 }
 function connection(v:any):MailConnection|null{
@@ -27,31 +48,37 @@ function connection(v:any):MailConnection|null{
  return {mailbox:v.mailbox,scopes:v.scopes,expiresAt:v.expiresAt};
 }
 export async function mailStatus(wallet:string,signal?:AbortSignal){
- await assertMailWallet(wallet);const data=await request('status?wallet='+encodeURIComponent(wallet),undefined,signal);await assertMailWallet(wallet);
+ return withMailWalletSession(wallet,signal,async(signal,current)=>{
+ await assertMailWallet(wallet);current();const data=await request('status?wallet='+encodeURIComponent(wallet),undefined,signal);await assertMailWallet(wallet);current();
  if(data.wallet!==wallet||data.enabled!==true)throw new MailClientError('wallet');return connection(data.connection);
+ });
 }
 export async function disconnectMail(signal?:AbortSignal){const data=await request('disconnect',{},signal);if(data.ok!==true||typeof data.sourceRevoked!=='boolean')throw new MailClientError('failed');return data.sourceRevoked as boolean;}
 export async function connectMail(wallet:string,authenticated:boolean,signal?:AbortSignal){
- const provider=await assertMailWallet(wallet);
+ return withMailWalletSession(wallet,signal,async(signal,current)=>{
+ const provider=await assertMailWallet(wallet);current();
  if(!authenticated){
   // Clears an expired or different wallet's browser session before a fresh sign-in.
-  await disconnectMail(signal);
+  await disconnectMail(signal);current();
   const data=await request('challenge',{wallet},signal),m=typeof data.message==='string'?parseSiweMessage(data.message):{};
   const now=Date.now();
   if(m.address?.toLowerCase()!==wallet||m.domain!=='chat.bittrees.org'||m.uri!=='https://chat.bittrees.org/api/mail/verify'||m.version!=='1'||m.chainId!==1||!/^[a-f0-9]{64}$/.test(m.nonce||'')||!m.issuedAt||!m.expirationTime||m.issuedAt.getTime()>now+30000||m.expirationTime.getTime()<=now||m.expirationTime.getTime()-m.issuedAt.getTime()>300000||m.statement!=='Sign in to connect your mailbox to Chat. Mail will separately ask for read and send permission. No transaction is authorized.')throw new MailClientError('failed');
   if(createSiweMessage({address:m.address!,domain:m.domain!,uri:m.uri!,version:'1',chainId:1,nonce:m.nonce!,issuedAt:m.issuedAt,expirationTime:m.expirationTime,statement:m.statement})!==data.message)throw new MailClientError('failed');
-  await assertMailWallet(wallet);if(getActiveProvider()!==provider)throw new MailClientError('wallet');
+  await assertMailWallet(wallet);current();if(getActiveProvider()!==provider)throw new MailClientError('wallet');
   signal?.throwIfAborted();
   const signature=await provider.request({method:'personal_sign',params:[stringToHex(data.message),wallet]});
-  await assertMailWallet(wallet);signal?.throwIfAborted();
+  await assertMailWallet(wallet);current();signal?.throwIfAborted();
   const signed=await request('verify',{wallet,message:data.message,signature},signal);if(signed.wallet!==wallet)throw new MailClientError('wallet');
  }
- await assertMailWallet(wallet);const data=await request('start',{wallet},signal);await assertMailWallet(wallet);signal?.throwIfAborted();
+ await assertMailWallet(wallet);current();const data=await request('start',{wallet},signal);await assertMailWallet(wallet);current();signal?.throwIfAborted();
  let url:URL;try{url=new URL(data.url);}catch{throw new MailClientError('failed');}
  const params=new URLSearchParams(url.hash.slice(1));
  if(url.origin!=='https://mail.bittrees.org'||url.pathname!=='/connect/chat'||url.search||url.username||url.password||params.get('wallet')!==wallet||!/^[a-f0-9]{64}$/.test(params.get('state')||'')||!/^[A-Za-z0-9_-]{43}$/.test(params.get('challenge')||'')||[...params.keys()].length!==3)throw new MailClientError('failed');return url.href;
+ });
 }
-async function operation(wallet:string,action:string,input:unknown,signal?:AbortSignal){await assertMailWallet(wallet);const data=await request('operation',{wallet,action,input},signal);await assertMailWallet(wallet);signal?.throwIfAborted();return data;}
+async function operation(wallet:string,action:string,input:unknown,signal?:AbortSignal){
+ return withMailWalletSession(wallet,signal,async(signal,current)=>{await assertMailWallet(wallet);current();const data=await request('operation',{wallet,action,input},signal);await assertMailWallet(wallet);current();signal?.throwIfAborted();return data; });
+}
 export async function mailFolders(wallet:string,signal?:AbortSignal){const data=await operation(wallet,'folders',{},signal);if(!Array.isArray(data.folders)||data.folders.length>1000||!data.folders.every(validMailFolder))throw new MailClientError('failed');return [...new Set(data.folders)] as string[];}
 function summary(v:any):MailSummary{if(!v||!messageId(v.id)||typeof v.from!=='string'||Array.from(v.from).length>200||typeof v.subject!=='string'||Array.from(v.subject).length>200||typeof v.date!=='string'||Array.from(v.date).length>80)throw new MailClientError('failed');return {id:v.id,from:v.from,subject:v.subject,date:v.date};}
 export async function mailPage(wallet:string,folder:string,cursor:string|null=null,signal?:AbortSignal){
@@ -113,17 +140,19 @@ export async function mailAttachments(wallet:string,folder:string,id:string,vers
 }
 export type MailDownloadProgress={phase:'preparing'|'checking';bytes:number};
 export async function downloadMailAttachment(wallet:string,folder:string,id:string,version:string,selection:MailAttachment,signal?:AbortSignal,onProgress?:(progress:MailDownloadProgress)=>void){
+ return withMailWalletSession(wallet,signal,async(signal,current)=>{
  const item=attachmentItem(selection);if(!item.downloadable||item.bytes===null||!validMailFolder(folder)||!messageId(id)||!messageId(version))throw new MailClientError('failed');
- signal?.throwIfAborted();onProgress?.({phase:'preparing',bytes:item.bytes});
+ signal?.throwIfAborted();onProgress?.({phase:'preparing',bytes:item.bytes});current();
  const data=await operation(wallet,'attachmentFile',{folder,id,version,part:item.id,transferVersion:2},signal),returned=attachmentItem(data.attachment);
  if(data.id!==id||data.sourceVersion!==version||data.transfer!=='complete'||data.transferVersion!==2||data.maxAttachmentBytes!==attachmentMaxBytes||JSON.stringify(returned)!==JSON.stringify(item)||!messageId(data.sha256)||typeof data.data!=='string'||data.data.length>4*Math.ceil(attachmentMaxBytes/3))throw new MailClientError('failed');
  let decoded:string;try{decoded=atob(data.data);if(btoa(decoded)!==data.data)throw Error();}catch{throw new MailClientError('failed');}
  if(decoded.length!==item.bytes)throw new MailClientError('failed');
  const bytes=Uint8Array.from(decoded,c=>c.charCodeAt(0));signal?.throwIfAborted();onProgress?.({phase:'checking',bytes:item.bytes});
  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
- await assertMailWallet(wallet);signal?.throwIfAborted();if(digest!==data.sha256)throw new MailClientError('failed');
+ await assertMailWallet(wallet);current();signal?.throwIfAborted();if(digest!==data.sha256)throw new MailClientError('failed');
  // No browser download is created until the entire bounded file is authenticated.
  return {filename:item.filename,bytes};
+ });
 }
 export type MailDraft={to:string;subject:string;text:string;attachments?:OutgoingAttachment[];reply?:{folder:string;id:string;version:string}};
 export function validMailDraft(d:MailDraft){
@@ -144,18 +173,22 @@ const receiptKey=(wallet:string)=>'chat:mail-pending:v1:'+wallet;
 export function mailReceipt(wallet:string):MailReceipt|null{try{const raw=localStorage.getItem(receiptKey(wallet));if(!raw)return null;const r=JSON.parse(raw);if(!messageId(r.id)||!Number.isSafeInteger(r.createdAt)||r.createdAt<=0)throw Error();return {id:r.id,createdAt:r.createdAt};}catch{throw new MailClientError('storage');}}
 export function clearMailReceipt(wallet:string){try{localStorage.removeItem(receiptKey(wallet));}catch{throw new MailClientError('storage');}}
 export async function sendMail(wallet:string,draft:MailDraft,signal?:AbortSignal){
- const snapshot=structuredClone(draft);if(!validMailDraft(snapshot))throw new MailClientError('failed');await assertMailWallet(wallet);
+ return withMailWalletSession(wallet,signal,async(signal,current)=>{
+ const snapshot=structuredClone(draft);if(!validMailDraft(snapshot))throw new MailClientError('failed');await assertMailWallet(wallet);current();
  signal?.throwIfAborted();
  if(!navigator.locks)throw new MailClientError('storage');
  const receipt=await navigator.locks.request(receiptKey(wallet),{signal:signal?AbortSignal.any([signal,AbortSignal.timeout(5000)]):AbortSignal.timeout(5000)},()=>{
+ current();
  if(mailReceipt(wallet))throw new MailClientError('storage');
  const receipt={id:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join(''),createdAt:Date.now()};
  try{localStorage.setItem(receiptKey(wallet),JSON.stringify(receipt));}catch{throw new MailClientError('storage');}
  return receipt;
  });
+ current();
  // Retain this receipt on every uncertain result, including navigation or wallet changes.
  const result=await operation(wallet,'send',{...snapshot,transferVersion:2,idempotencyKey:receipt.id},signal);
  if(result.ok!==true)throw new MailClientError('failed');
- await navigator.locks.request(receiptKey(wallet),{},()=>{if(mailReceipt(wallet)?.id===receipt.id)clearMailReceipt(wallet);});
+ await navigator.locks.request(receiptKey(wallet),{signal},()=>{current();if(mailReceipt(wallet)?.id===receipt.id)clearMailReceipt(wallet);});
+ });
 }
 export function replyAddress(from:string){const match=/<([^<>]+)>$/.exec(from);const candidate=(match?.[1]||from).trim();return validMailDraft({to:candidate,subject:'',text:'x'})?candidate:'';}
