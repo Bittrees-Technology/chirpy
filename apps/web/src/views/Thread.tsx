@@ -1,5 +1,5 @@
 import { PushMembers } from "./PushMembers";
-import { PushAttachment } from "./PushAttachment";
+import { PushMessageBody } from "./PushMessageBody";
 import { MessageBody } from "./MessageBody";
 import { receiptOverride } from "../receiptPreferences";
 import React, { useEffect, useRef, useState } from "react";
@@ -252,20 +252,18 @@ export function Thread({ showBack = false, onBack }: { showBack?: boolean; onBac
         {(activeConversation.blocked ? [] : messages).map((m) => {
           const mine = m.sender.toLowerCase() === selfAddress;
           const senderRecord = profiles.get(m.sender.toLowerCase());
-          const parent = m.replyTo ? messages.find((x) => x.id === m.replyTo) : null;
+          const parent = m.replyTo ? messages.find((x) => x.id === m.replyTo && x.conversationId === m.conversationId) : null;
           return (
             <div key={m.id} className={`msg-row ${mine ? "mine" : ""}`}>
               {!mine && <Avatar id={m.sender} size={28} label={name(m.sender)} src={senderRecord?.avatar ?? undefined} />}
               <div className="msg-bubble-wrap">
                 {!mine && isRoom && <div className="profile-wallet" title={m.sender}>{name(m.sender)} · {shortAddr(m.sender)}</div>}
                 {m.replyTo && (
-                  <div className="msg-reply-ref">↩ {(parent?.body ?? m.replyPreview)?.slice(0, 60) ?? t("thread.earlierReply", "Reply to an earlier message")}</div>
+                  <div className="msg-reply-ref">↩ {(parent?.body ?? m.replyPreview)?.slice(0, 60) ?? t(pushRoom ? "push.replyUnavailable" : "thread.earlierReply", "Reply to an earlier message")}</div>
                 )}
                 {pushRoom && !/^0x[a-fA-F0-9]{40}$/.test(m.sender) && <div className="push-identity">{t("push.sourceIdentity")}: <code>{m.sender}</code></div>}
                 <div className="msg-bubble">
-                  {!(pushRoom && (m.pushAttachment || m.pushMediaUrl)) && <MessageBody body={m.body} />}
-                  {pushRoom && m.pushAttachment && <PushAttachment file={m.pushAttachment}/>}
-                  {pushRoom && m.pushMediaUrl && <div className="push-attachment"><span>{t('push.externalMedia')}</span><a href={m.pushMediaUrl} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{m.pushMediaUrl}</a></div>}
+                  {pushRoom ? <PushMessageBody message={m}/> : <MessageBody body={m.body}/>}
                   <span className="msg-time">{fmtTime(m.sentAt, lang)}</span>
                 </div>
                 {!pushRoom && <div className="msg-tools">
