@@ -175,4 +175,45 @@ describe.skipIf(!container)("real Redis sync transactions", () => {
     } finally {beforeWrite=undefined;release?.();await pending;}
   });
 
+  it('runs real client crypto, capability negotiation and signed upgrade against Redis while old clients replay legacy data', async () => {
+    const current = await session(), owner = current.wallet.address.toLowerCase();
+    const { readVersionedSync, decryptVersionedSync, authorizeVersionedSync, writeVersionedSync } = await import('../../apps/web/src/versionedSyncTransport');
+    const { encryptSyncPayloadV2 } = await import('../../apps/web/src/versionedSyncCipher');
+    const { editSyncPayloadV2 } = await import('../../apps/web/src/versionedSync');
+    const key = await crypto.subtle.importKey('raw', new Uint8Array(32).fill(8), 'AES-GCM', false, ['encrypt', 'decrypt']);
+    const legacy = { version: 1, settingsPrefs: { readReceiptsDefault: false, syncAcrossDevices: true, blocked: [current.device.address] }, savedMessages: [{ id: 'legacy', body: 'preserve before explicit deletion', custom: { synthetic: true } }], updatedAt: 10 };
+    const iv = new Uint8Array(12).fill(9), encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(legacy)));
+    const oldBlob = JSON.stringify({ version: 1, algorithm: 'AES-GCM', kdf: 'HKDF-SHA-256', address: owner, iv: Buffer.from(iv).toString('base64'), ciphertext: Buffer.from(encrypted).toString('base64'), updatedAt: 10 });
+    expect((await call(await current.write(oldBlob))).code).toBe(200);
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('window', { location: { href: 'https://chirpy.test/' } });
+    vi.stubGlobal('fetch', async (input, options) => {
+      const url = new URL(String(input), 'https://chirpy.test');
+      if (url.href.startsWith(service)) {
+        const result = options?.method === 'POST' ? await call(JSON.parse(options.body)) : await call({ address: url.searchParams.get('address') }, 'GET');
+        return new Response(JSON.stringify(result.body), { status: result.code, headers: { 'content-type': 'application/json' } });
+      }
+      return realFetch(input, options);
+    });
+    try {
+      const guard = () => {}, initial = await readVersionedSync(owner, 1, guard);
+      const authorization = await authorizeVersionedSync(initial, message => current.wallet.signMessage({ message }), guard);
+      const decoded = await decryptVersionedSync(initial, key);
+      expect(decoded!.savedMessages.legacy.value).toEqual(legacy.savedMessages[0]);
+      const deleted = editSyncPayloadV2(decoded, { kind: 'savedMessage', id: 'legacy', value: null }, 20);
+      const unblocked = editSyncPayloadV2(deleted, { kind: 'block', address: current.device.address, value: false }, 21);
+      const envelope = await encryptSyncPayloadV2(unblocked, key, owner);
+      const latest = await writeVersionedSync(initial, authorization, envelope, guard);
+      expect(latest).toMatchObject({ revision: 2, minimum: 2 });
+      expect(await decryptVersionedSync(latest, key)).toEqual(unblocked);
+      await expect(writeVersionedSync(initial, authorization, envelope, guard)).rejects.toMatchObject({ reason: 'stale' });
+      expect((await call(await current.write(oldBlob, 2))).code).toBe(426);
+      // Simulate an immutable older handler, which only knows the retained legacy slot.
+      await redis(['SET', 'chirpy:usersync:' + owner, JSON.stringify({ blob: oldBlob, updatedAt: Date.now(), revision: 100 })]);
+      const reread = await readVersionedSync(owner, 2, guard);
+      expect(reread.revision).toBe(2); expect(await decryptVersionedSync(reread, key)).toEqual(unblocked);
+      expect(await redis(['TTL', 'chirpy:usersync:payload-v2:' + owner])).toBe(-1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
 });
