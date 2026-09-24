@@ -129,3 +129,22 @@ it('shows independent provider facts without claiming reading and clears stale f
  expect(row.textContent).toContain('Recipient mail server accepted');expect(row.textContent).toContain('Recipient mail server rejected');expect(row.textContent).toContain('does not prove inbox placement or reading');expect(storage.get(key)).toBe(original);
  vi.mocked(submitWalletEmail).mockRejectedValueOnce(Error('offline'));await act(async()=>row.querySelector('button')!.click());expect(row.querySelector('.wallet-email-delivery')).toBeNull();expect(storage.get(key)).toBe(original);
 });
+
+it('holds a server-uncertain request across failed lookups without enabling another send',async()=>{
+ vi.mocked(submitWalletEmail).mockImplementation(async c=>({id:c.id,status:'uncertain'}));
+ await render();await fillDraft();await click('Sign and queue email');
+ await waitFor(()=>expect(container.textContent).toContain('Automatic retries are paused'));
+ const command=vi.mocked(submitWalletEmail).mock.calls[0][0];
+ expect(button('Retry same request').disabled).toBe(true);
+ expect(button('Check request status').disabled).toBe(false);
+ vi.mocked(submitWalletEmail).mockRejectedValue(Error('connection lost'));
+ await click('Check request status');
+ expect(container.textContent).toContain('Automatic retries are paused');
+ expect(button('Retry same request').disabled).toBe(true);
+ expect(readWalletEmailRecovery(a,command.service).active).toBe(command.id);
+ // Clearing the composer is explicit and keeps the held ID in recovery history.
+ await click('New message');
+ expect(readWalletEmailRecovery(a,command.service).receipts.map(r=>r.id)).toContain(command.id);
+ expect(readWalletEmailRecovery(a,command.service).active).toBeNull();
+ expect(vi.mocked(submitWalletEmail).mock.calls.map(([c])=>c.action)).toEqual(['send','status']);
+});

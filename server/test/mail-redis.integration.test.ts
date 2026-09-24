@@ -1,6 +1,6 @@
 import {backfillMailHistory} from '../mail-history.js';
 import { redirectFixture } from './helpers/mail-redirect-fixture.js';
-import { beforeEach, afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
@@ -233,6 +233,34 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     expect((await service.execute(c)).status).toBe('limited');
     await redis(['DEL',`${config.prefix}quota:wallet:${wallet}`]);await redis(['SET',`${config.prefix}quota:email:${hash(c.to)}`,'50']);expect((await service.execute(c)).status).toBe('limited');
     await redis(['ZADD',queue,'0',key]);await service.drain();expect(await redis(['ZSCORE',queue,key])).toBeNull();
+  });
+
+  it.each(['normal','deadline','attempt-limit'])('preserves SMTP uncertainty through %s and never claims it again',async(kind)=>{
+    const send=vi.fn(async()=>{throw Error('must not send');});
+    const service=createMailService(config,redis,send);await service.execute(c);
+    const claim=await redis(['EVAL',CLAIM_MAIL,'5',key,queue,bk,`${key}:payload`,suppressionKey(config,c.to),'smtp-lease']);
+    expect(claim).not.toBeNull();
+    const job=await status();
+    if(kind==='deadline'){job.createdAt=Date.now()-82801000;job.deadline=job.createdAt+82800000;}
+    if(kind==='attempt-limit')job.attempts=5;
+    await redis(['SET',key,JSON.stringify(job),'KEEPTTL']);
+    const ttl=await redis(['PTTL',key]);
+    expect(await redis(['EVAL',FINISH_MAIL,'3',key,queue,`${key}:payload`,'wrong-lease','uncertain',''])).toBe(0);
+    expect(await redis(['EVAL',FINISH_MAIL,'3',key,queue,`${key}:payload`,'smtp-lease','uncertain',''])).toBe(1);
+    const receipt=await service.execute({...c,action:'status'});
+    expect(receipt.status).toBe('uncertain');expect(receipt.receipt.attempts).toBe(job.attempts);
+    expect(await redis(['PTTL',key])).toBeLessThanOrEqual(ttl);
+    expect(await redis(['GET',`${key}:payload`])).toBeNull();expect(await redis(['ZSCORE',queue,key])).toBeNull();
+    expect(JSON.stringify(receipt)).not.toMatch(/smtp-lease|recipient|Synthetic|private body/);
+    expect((await service.execute({...c,action:'status',wallet:'0x'+'4'.repeat(40)})).status).toBe('unknown');
+    // Even a stale queue pointer, renewed permission or late worker cannot replay it.
+    await redis(['SET',bk,JSON.stringify({...binding,revoked:true})]);
+    expect((await service.execute(c)).status).toBe('uncertain');
+    await readyAgain();await service.drain();expect(send).not.toHaveBeenCalled();
+    expect((await status()).status).toBe('uncertain');
+    expect(await redis(['EVAL',FINISH_MAIL,'3',key,queue,`${key}:payload`,'smtp-lease','queued',''])).toBe(0);
+    const query={action:'history',wallet,service:config.service,id:'a'.repeat(32),cursor:null,expiresAt:Date.now()+300000};
+    expect((await service.execute(query)).ids).toContain(c.id);
   });
 
   it('records queue transitions with Redis timestamps and exposes no content or provider identifiers',async()=>{
