@@ -25,7 +25,8 @@ describe('protected Wallet service access',()=>{
   const invalid=[{CHIRPY_MAIL_IDENTITY_ACCESS_ORIGIN:''},{CHIRPY_MAIL_IDENTITY_ACCESS_SECRET:''},
    ...['short',credential,secret+'\n',secret+' ',secret+'\x7f','x'.repeat(513)].map(value=>({CHIRPY_MAIL_IDENTITY_ACCESS_SECRET:value})),
    ...['http://wallet.example','https://different.example','https://wallet.example/path','https://wallet.example?x=1',
-    'https://user:pass@wallet.example','https://wallet.example#part','https://wallet.example:8443'].map(value=>({CHIRPY_MAIL_IDENTITY_ACCESS_ORIGIN:value}))];
+    'https://user:pass@wallet.example','https://wallet.example#part','https://wallet.example:8443',
+    'https://wallet.example/a/..','https://wallet.example?','https://wallet.example#',' https://wallet.example'].map(value=>({CHIRPY_MAIL_IDENTITY_ACCESS_ORIGIN:value}))];
   for(const patch of invalid)expect(()=>mailIdentityConfig({...outboundEnv,...accessEnv,...patch})).toThrow();
   expect(()=>mailIdentityConfig(accessEnv)).toThrow();
   expect(walletAccessConfig(outboundEnv.CHIRPY_MAIL_IDENTITY_URL,credential,undefined,undefined)).toBeNull();

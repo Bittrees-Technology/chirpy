@@ -8,7 +8,8 @@ export function walletAccessConfig(endpoint, credential, origin, secret) {
   }
   const pin = new URL(origin), target = new URL(endpoint);
   if (pin.protocol !== 'https:' || pin.username || pin.password || pin.search || pin.hash ||
-    pin.port || pin.pathname !== '/' || pin.origin !== target.origin) {
+    pin.port || pin.pathname !== '/' || (origin !== pin.origin && origin !== pin.origin + '/') ||
+    pin.origin !== target.origin) {
     throw Error('Invalid Wallet deployment access origin');
   }
   return {origin: pin.origin, secret};
