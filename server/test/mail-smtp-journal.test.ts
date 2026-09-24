@@ -53,6 +53,15 @@ describe('durable SMTP submission boundary',()=>{
    release();expect(await first).toMatchObject({status:'accepted'});expect(send).toHaveBeenCalledTimes(1);
   }finally{release();other.close();}
  });
+ it('recovers an overlapping submission instead of reporting a later denial as never sent',async()=>{
+  const f=fixture(),other=openSmtpJournal(f.config);let release!:(allowed:boolean)=>void;
+  const authorization=new Promise<boolean>(resolve=>{release=resolve});const send=vi.fn();
+  try{
+   const delayed=f.journal.submit(f.command,{authorize:()=>authorization,send});
+   const accepted=await other.submit(f.command,callbacks());
+   release(false);expect(await delayed).toEqual(accepted);expect(send).not.toHaveBeenCalled();
+  }finally{release(false);other.close();}
+ });
  it('permits bounded retries only on explicit definitive nonacceptance, with fresh permission',async()=>{
   const f=fixture(),c=callbacks();c.send.mockResolvedValue({status:'retryable',definitiveNoAcceptance:true});
   const ids=new Set();for(let i=1;i<=5;i++){const r=await f.journal.submit(f.command,c);expect(r).toMatchObject({status:i===5?'rejected':'retryable',attempts:i});ids.add(r.id);}

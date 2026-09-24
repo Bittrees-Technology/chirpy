@@ -68,7 +68,10 @@ export function openSmtpJournal({filename,key:rawKey,journalId,now=Date.now}){
    if(s.deadline<=time)return {status:'expired'};
    if(s.deadline>time+maxLifetime)fail();
    signal?.throwIfAborted();
-   if(await authorize()!==true)return {status:'denied'};
+   const authorized=await authorize();
+   // Another worker may have submitted while this authority check was pending.
+   row=read(s);if(row&&row.state!=='retryable')return projection(row);
+   if(authorized!==true)return {status:'denied'};
    signal?.throwIfAborted();live();time=now();
    if(!Number.isSafeInteger(time)||time<=0)fail();
    if(s.deadline<=time)return {status:'expired'};
