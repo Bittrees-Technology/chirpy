@@ -203,6 +203,12 @@ Sources: [Resend send API](https://resend.com/docs/api-reference/emails/send-ema
 
 ## Worker monitoring
 
+For a supervised Resend deployment, use the disabled-by-default
+[API scheduler](../selfhost/MAIL-API-SCHEDULER.md). It checks private health after
+each tick and requires only the worker capability on the scheduler host. The
+local SMTP worker has a separate deployment contract and must remain disabled
+when the selected transport is Resend.
+
 Run `node scripts/mail-worker.mjs status` with the same service URL and worker
 secret as the scheduled tick. It performs an authenticated, read-only snapshot;
 it never dequeues mail, contacts the provider or refreshes the heartbeat. The
