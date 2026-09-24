@@ -5,6 +5,9 @@ const a = '0x000000000000000000000000000000000000000a';
 const b = '0x000000000000000000000000000000000000000b';
 const c = '0x000000000000000000000000000000000000000c';
 
+// Drain native-CSP response rewrites before Playwright disposes the context.
+test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: 'wait' }); });
+
 test.beforeEach(async ({ page }) => {
   if (process.env.CHIRPY_TEST_NATIVE_CSP === '1') {
     const policy = JSON.parse(readFileSync('apps/web/src-tauri/tauri.conf.json', 'utf8')).app.security.csp;
