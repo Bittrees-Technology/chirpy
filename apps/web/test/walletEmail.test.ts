@@ -98,3 +98,12 @@ it('refuses delivery evidence on send, queued or unknown responses',async()=>{
  for(const status of ['queued','unknown']){fetcher.mockResolvedValue(Response.json({id:command().id,status,delivery}));await expect(submitWalletEmail(command())).rejects.toThrow();}
  fetcher.mockResolvedValue(Response.json({id:command().id,status:'accepted',delivery}));await expect(submitWalletEmail({...command(),action:'send'})).rejects.toThrow();
 });
+
+it('accepts a server-held uncertain receipt without treating it as delivery evidence',async()=>{
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'uncertain',receipt:details()}));
+ expect(await submitWalletEmail(command())).toEqual({id:command().id,status:'uncertain',receipt:details()});
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'uncertain',receipt:{...details(),attempts:0}}));
+ await expect(submitWalletEmail(command())).rejects.toThrow();
+ fetcher.mockResolvedValue(Response.json({id:command().id,status:'uncertain',delivery:{version:1,events:[]}}));
+ await expect(submitWalletEmail(command())).rejects.toThrow();
+});

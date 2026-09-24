@@ -370,6 +370,7 @@
   "mail.status.limited": "The forwarding limit has been reached.",
   "mail.status.conflict": "This request ID belongs to a different message. Check its status.",
   "mail.status.unknown": "No queued request was found for this wallet and ID.",
+  "mail.status.submissionUncertain": "The mail server may have accepted this message. Automatic retries are paused. Keep the request ID and check its status or contact support before sending it again.",
   "mail.status.uncertain": "The result is unknown. Keep the request ID; check its status or retry the same request before composing another message.",
   "status.walletConnectMissing": "WalletConnect is not configured.",
   "status.walletConnectAccountMissing": "WalletConnect did not provide a wallet account. Reconnect and try again.",

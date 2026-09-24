@@ -47,7 +47,7 @@ jobs:
       - name: Wallet browser flows under the native security policy
         env:
           CHIRPY_TEST_NATIVE_CSP: '1'
-        run: pnpm exec playwright test tests/e2e/sync.spec.ts tests/e2e/sync-v2.spec.ts tests/e2e/sync-preservation.spec.ts tests/e2e/recovery-restore.spec.ts tests/e2e/settings-recovery.spec.ts tests/e2e/connected-mail-attachments.spec.ts tests/e2e/connected-mail-formatting.spec.ts tests/e2e/connected-mail-download.spec.ts tests/e2e/connected-mail-keyboard.spec.ts tests/e2e/public-profiles.spec.ts tests/e2e/wallet-email-recovery.spec.ts
+        run: pnpm exec playwright test tests/e2e/sync.spec.ts tests/e2e/sync-v2.spec.ts tests/e2e/sync-preservation.spec.ts tests/e2e/recovery-restore.spec.ts tests/e2e/settings-recovery.spec.ts tests/e2e/connected-mail-attachments.spec.ts tests/e2e/connected-mail-formatting.spec.ts tests/e2e/connected-mail-download.spec.ts tests/e2e/connected-mail-keyboard.spec.ts tests/e2e/public-profiles.spec.ts tests/e2e/wallet-email-recovery.spec.ts tests/e2e/wallet-email.spec.ts
       - name: Push SDK browser compatibility and session hardening
         run: pnpm e2e:push-runtime
       - name: Push room controller and UI acceptance

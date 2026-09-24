@@ -73,8 +73,8 @@ procedure must account for all submissions after the backup before resuming.
 Do not claim exactly-once delivery or restore safety from this journal alone.
 
 Remaining work includes the actual TLS SMTP adapter, per-job provider pinning,
-the isolated Acer outbound worker, queue and client handling of persistent
-uncertainty, reconciliation/backup procedures, sender and bounce configuration,
+the isolated Acer outbound worker, recovery of interrupted queue claims,
+reconciliation/backup procedures, sender and bounce configuration,
 and authorized live delivery/withdrawal acceptance. Keep launch and forwarding
 gated until those checks pass.
 
@@ -82,3 +82,22 @@ The regression suite exercises independent database handles, scope changes,
 denial and expiry, bounded retries, file replacement, reopen recovery, and an
 actual child-process kill after the durable boundary. It uses synthetic callbacks
 and does not send email or prove an SMTP provider's delivery behavior.
+
+## Queue and client outcome contract
+
+The queue accepts `uncertain` as a terminal automatic-delivery outcome. It
+removes the queue pointer and encrypted payload, keeps the bounded private
+receipt/history, and never converts that outcome into `stopped` merely because
+its deadline or attempt limit was reached. A stale lease cannot overwrite it.
+Signed status/discovery retain the usual wallet isolation. The UI disables
+resending this request, preserves its lookup ID, and keeps that protection after
+a later connection failure. A new composer requires an explicit action and
+retains the previous ID in recovery history.
+
+This contract does not yet connect the journal to a worker. An interrupted SMTP
+claim must be recovered against the journal before ordinary queue expiry or
+revocation can classify it. That provider-specific recovery, provider pinning
+and the actual adapter remain required before activation. Reconciliation must
+use preserved immutable scope/receipt references and authoritative MTA evidence;
+it cannot depend on an expired or deleted message payload. The existing Resend
+worker does not emit this new outcome yet.

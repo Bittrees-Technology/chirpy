@@ -48,7 +48,7 @@ async function requestWalletEmail<T>(command:MailCommand|MailHistoryCommand,pars
 export async function submitWalletEmail(command:MailCommand,signal?:AbortSignal){
  return requestWalletEmail(command,(response,result)=>{
   if(!response.ok && !['denied','limited','conflict'].includes(result.status)) throw Error('Email service unavailable. Check the request status before creating another message.');
-  if(result.id!==command.id || !['queued','sending','accepted','stopped','unknown','denied','limited','conflict'].includes(result.status)) throw Error('Invalid email status response.');
+  if(result.id!==command.id || !['queued','sending','accepted','stopped','uncertain','unknown','denied','limited','conflict'].includes(result.status)) throw Error('Invalid email status response.');
   if(result.receipt!==undefined&&command.action!=='status')throw Error('Unexpected forwarding receipt.');
   const receipt=result.receipt===undefined?undefined:parseMailReceiptDetails(result.receipt,result.status);
   if(result.delivery!==undefined&&(command.action!=='status'||result.status!=='accepted'))throw Error('Unexpected provider delivery evidence.');

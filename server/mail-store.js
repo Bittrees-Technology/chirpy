@@ -75,7 +75,10 @@ local raw=redis.call('GET',KEYS[1]); if not raw then return 0 end
 local j=cjson.decode(raw); if j.lease~=ARGV[1] or j.status~='sending' then return 0 end
 local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
 j.providerId=ARGV[3]; j.lockedUntil=0; j.updatedAt=now
-if ARGV[2]=='accepted' then j.status='accepted'
+-- An uncertain submission is terminal for automatic delivery even after expiry.
+-- It must not be rewritten as a definite stop or requeued.
+if ARGV[2]=='uncertain' then j.status='uncertain'
+elseif ARGV[2]=='accepted' then j.status='accepted'
 elseif ARGV[2]=='stopped' or j.attempts>=5 or now>=j.deadline then j.status='stopped'
 else j.status='queued' end
 if j.status=='queued' then redis.call('ZADD',KEYS[2],now+math.min(900000,60000*2^(j.attempts-1)),KEYS[1])

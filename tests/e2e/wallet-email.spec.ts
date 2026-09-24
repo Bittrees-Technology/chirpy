@@ -1,4 +1,4 @@
-import {expect,test,injectSyntheticWallet} from './fixtures/wallet';
+import {expect,test,injectSyntheticWallet,dismissAnalyticsConsent} from './fixtures/wallet';
 import {recoverMessageAddress} from 'viem';
 import {mailSignMessage} from '../../packages/core/src/mailAuth.js';
 test('wallet email signs scoped requests, retries with the same ID and recovers status after reload',async({page,walletAddress})=>{
@@ -68,4 +68,45 @@ test('two tabs cannot replace an unresolved request reservation',async({context}
   await pages[1].reload();await pages[1].locator('.nav-item',{hasText:'Channels'}).click();
   await expect(pages[1].getByLabel('Request ID',{exact:false})).toHaveValue(sends[0].id);
   expect(sends).toHaveLength(1);
+});
+
+test('server-uncertain email stays held across a failed lookup and reload without another send',async({page,walletAddress})=>{
+  const sends:any[]=[],checks:any[]=[];let failLookup=true;
+  const createdAt=Date.now()-1000;
+  await page.route('**/api/mail',async route=>{
+    const service=new URL('/api/mail',route.request().url()).href;
+    if(route.request().method()==='GET')return route.fulfill({json:{enabled:true,service}});
+    const {command,signature}=route.request().postDataJSON();
+    expect((await recoverMessageAddress({message:mailSignMessage(command),signature})).toLowerCase()).toBe(walletAddress.toLowerCase());
+    if(command.action==='send'){sends.push(command);return route.fulfill({json:{id:command.id,status:'uncertain'}});}
+    checks.push(command);
+    if(failLookup){failLookup=false;return route.fulfill({status:503,json:{error:'synthetic lookup outage'}});}
+    return route.fulfill({json:{id:command.id,status:'uncertain',receipt:{version:1,createdAt,updatedAt:createdAt+100,attempts:1,retryUntil:createdAt+82800000}}});
+  });
+  await page.goto('/');await dismissAnalyticsConsent(page);await page.locator('.nav-item',{hasText:'Settings'}).click();
+  await page.getByRole('button',{name:'Connect wallet',exact:true}).click();await page.locator('.nav-item',{hasText:'Channels'}).click();
+  await page.getByLabel('Recipient',{exact:true}).fill('synthetic@example.invalid');
+  await page.getByLabel('Subject',{exact:true}).fill('Uncertain synthetic submission');
+  await page.getByLabel('Email message',{exact:true}).fill('No real email sent.');
+  await page.getByRole('button',{name:'Sign and queue email'}).click();
+  await expect(page.getByRole('status')).toContainText('Automatic retries are paused');
+  await expect(page.getByRole('button',{name:'Retry same request'})).toBeDisabled();
+  await page.getByRole('button',{name:'Check request status'}).click();
+  await expect(page.getByRole('alert')).toContainText('Automatic retries are paused');
+  await expect(page.getByRole('button',{name:'Retry same request'})).toBeDisabled();
+  await page.reload();await page.locator('.nav-item',{hasText:'Channels'}).click();
+  await expect(page.getByLabel('Request ID',{exact:false})).toHaveValue(sends[0].id);
+  await expect(page.getByRole('button',{name:'Sign and queue email'})).toBeDisabled();
+  await page.getByRole('button',{name:'Check request status'}).click();
+  await expect(page.getByRole('status')).toContainText('Automatic retries are paused');
+  await expect(page.locator('.wallet-email-receipt').first()).toContainText('Processing attempts');
+  await page.getByRole('button',{name:'New message',exact:true}).last().click();
+  await page.setViewportSize({width:390,height:844});await page.getByText('Forwarding request history',{exact:true}).click();
+  await expect(page.locator('details code')).toHaveText(sends[0].id);
+  await expect(page.locator('.wallet-email-history')).toContainText('Automatic retries are paused');
+  const warning=page.locator('.wallet-email-history p').filter({hasText:'Automatic retries are paused'});
+  await warning.scrollIntoViewIfNeeded();await expect(warning).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  expect(sends).toHaveLength(1);expect(checks).toHaveLength(2);
+  await page.screenshot({path:test.info().outputPath('mail-uncertain-mobile.png'),fullPage:true});
 });

@@ -370,6 +370,7 @@
   "mail.status.limited": "Se alcanzó el límite de reenvío.",
   "mail.status.conflict": "Este ID pertenece a otro mensaje. Comprueba su estado.",
   "mail.status.unknown": "No se encontró ninguna solicitud para esta cartera e ID.",
+  "mail.status.submissionUncertain": "El servidor de correo pudo haber aceptado este mensaje. Los reintentos automáticos están en pausa. Conserva el ID de la solicitud y consulta su estado o contacta con soporte antes de volver a enviarlo.",
   "mail.status.uncertain": "El resultado es desconocido. Guarda el ID; comprueba su estado o reintenta la misma solicitud antes de redactar otro mensaje.",
   "status.walletConnectMissing": "WalletConnect no está configurado.",
   "status.walletConnectAccountMissing": "WalletConnect no proporcionó una cuenta de billetera. Vuelve a conectarla e inténtalo de nuevo.",

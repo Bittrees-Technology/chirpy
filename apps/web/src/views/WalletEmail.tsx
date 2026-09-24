@@ -15,7 +15,8 @@ export function WalletEmail() {
   return <WalletEmailSession key={`${identity.address.toLowerCase()}:${mode}:${revision}`} />;
 }
 
-type ReceiptObservation=WalletEmailResult&{checkedAt:number|null};
+type ReceiptObservation=WalletEmailResult&{checkedAt:number|null;serverUncertain?:boolean};
+const observationStatus=(value:ReceiptObservation)=>value.serverUncertain&&!['accepted','stopped'].includes(value.status)?'submissionUncertain':value.status;
 function ReceiptDetails({value}:{value:ReceiptObservation}){
  const {t,lang}=useI18n();
  const date=(at:number)=><time dateTime={new Date(at).toISOString()}>{new Date(at).toLocaleString(lang)}</time>;
@@ -49,7 +50,7 @@ function WalletEmailSession() {
   const selected=useRef(receipt);
   const [status,setStatus]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState(false);
   const [observations,setObservations]=useState<Record<string,ReceiptObservation>>({});
-  const remember=(id:string,value:ReceiptObservation)=>setObservations(previous=>Object.fromEntries([...Object.entries(previous).filter(([key])=>key!==id).slice(-99),[id,value]]));
+  const remember=(id:string,value:ReceiptObservation)=>setObservations(previous=>Object.fromEntries([...Object.entries(previous).filter(([key])=>key!==id).slice(-99),[id,{...value,serverUncertain:previous[id]?.serverUncertain===true||value.status==='uncertain'&&value.checkedAt!==null}]]));
   const choose=(id:string)=>{selected.current=id;setReceipt(id);setStatus('');setError(false);};
   const refresh=()=>{
     try {
@@ -108,7 +109,9 @@ function WalletEmailSession() {
     }catch{if(!controller.signal.aborted){refresh();setStorageError(true);}}
     finally{operation.current=null;if(!controller.signal.aborted)setBusy(false);}
   };
-  const terminal=['accepted','stopped','denied','unknown','limited'].includes(status);
+  // A failed later lookup must not unlock a server-held submission for resend.
+  const terminal=['accepted','stopped','denied','unknown','limited'].includes(status)||observations[receipt]?.serverUncertain===true;
+  const visibleStatus=observations[receipt]?.status===status?observationStatus(observations[receipt]):status;
   return <div className="card" data-insights-ignore="true">
     <h2>{t('mail.title')}</h2>
     <p>{t('mail.notice')}</p>
@@ -123,12 +126,12 @@ function WalletEmailSession() {
       <Field label={t('mail.receipt')} hint={t('mail.receiptHint')}><input className="input" value={receipt} disabled={busy||!!pending||!!recovery?.active} onChange={e=>choose(e.target.value)} /></Field>
       <Button disabled={busy||mode!=='wallet'||!/^[a-f0-9]{32}$/.test(receipt)} onClick={()=>void run('status')}>{t('mail.check')}</Button>
       {terminal && <Button disabled={busy||storageError} onClick={()=>void startNew()}>{t('mail.new')}</Button>}
-      {status && <p role={error?'alert':'status'}>{t(`mail.status.${status}`,t('mail.status.uncertain'))}</p>}
+      {status && <p role={error?'alert':'status'}>{t(`mail.status.${visibleStatus}`,t('mail.status.uncertain'))}</p>}
       {status&&observations[receipt]?.status===status&&<ReceiptDetails value={observations[receipt]}/>}
       {!!recovery?.receipts.length&&<details className="wallet-email-history"><summary>{t('mail.savedRequests')}</summary>
         <p>{t('mail.savedRequestsHint')}</p>
         <ul>{recovery.receipts.map(item=><li key={item.id}><code>{item.id}</code>{' '}<Button disabled={busy||mode!=='wallet'} onClick={()=>void run('status',item.id)}>{t('mail.check')}</Button>
-          {observations[item.id]&&<><p role={observations[item.id].status==='uncertain'?'alert':'status'}>{t(`mail.status.${observations[item.id].status}`,t('mail.status.uncertain'))}</p><ReceiptDetails value={observations[item.id]}/></>}
+          {observations[item.id]&&<><p role={observations[item.id].status==='uncertain'?'alert':'status'}>{t(`mail.status.${observationStatus(observations[item.id])}`,t('mail.status.uncertain'))}</p><ReceiptDetails value={observations[item.id]}/></>}
         </li>)}</ul>
       </details>}
     </>}

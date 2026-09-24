@@ -18,10 +18,10 @@ export function mailSignMessage(command) {
 export function parseMailReceiptDetails(value, status) {
   const timestamp = n => Number.isSafeInteger(n) && n > 0 && n <= 8640000000000000;
   if (!value || Object.keys(value).sort().join(',') !== 'attempts,createdAt,retryUntil,updatedAt,version' || value.version !== 1 ||
-      !['queued','sending','accepted','stopped'].includes(status) || !timestamp(value.createdAt) || !timestamp(value.retryUntil) ||
+      !['queued','sending','accepted','stopped','uncertain'].includes(status) || !timestamp(value.createdAt) || !timestamp(value.retryUntil) ||
       value.retryUntil-value.createdAt !== 82800000 || !(value.updatedAt === null || timestamp(value.updatedAt) && value.updatedAt >= value.createdAt) ||
       !Number.isSafeInteger(value.attempts) || value.attempts < 0 || value.attempts > 5 ||
-      ['sending','accepted'].includes(status) && value.attempts === 0 || status === 'queued' && value.attempts >= 5) throw Error('Invalid forwarding receipt.');
+      ['sending','accepted','uncertain'].includes(status) && value.attempts === 0 || status === 'queued' && value.attempts >= 5) throw Error('Invalid forwarding receipt.');
   return {version:1,createdAt:value.createdAt,updatedAt:value.updatedAt,attempts:value.attempts,retryUntil:value.retryUntil};
 }
 
