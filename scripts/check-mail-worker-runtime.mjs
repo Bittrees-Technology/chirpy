@@ -49,6 +49,10 @@ try{
     if(result.error||result.status!==(mode==='--once'?0:2)||JSON.parse(result.stdout).enabled!==false)throw Error('Disabled outbound worker contract failed');
   }
   console.log('Isolated worker dependency and disabled command checks passed.');
+  if(process.env.CHAT_TEST_SYSTEMD_INSTALL==='1'){
+    if(process.env.GITHUB_ACTIONS!=='true')throw Error('Administrator acceptance is for disposable CI only');
+    run('sudo',['-n','env','GITHUB_ACTIONS=true','/usr/bin/python3','-I',join(repo,'scripts/test-mail-outbound-systemd.py'),app,process.execPath]);
+  }
   if(process.env.XMTP_MAIL_PROVISION_DRILL==='1')run(process.execPath,[join(repo,'scripts/test-mail-provisioning.mjs'),'--register-dev',app]);
 }finally{
   // Exact mkdtemp folder only; no parent traversal and no deployed state.
