@@ -85,7 +85,6 @@ export async function connectWalletConnect(): Promise<{ provider: WalletEventPro
     await provider.disconnect?.();
     throw new Error("WalletConnect did not return an account.");
   }
-  setActiveProvider(provider, "walletconnect");
   return { provider, address };
 }
 
@@ -95,6 +94,5 @@ export async function restoreWalletConnect(): Promise<{ provider: WalletEventPro
   const address = accountFromResponse(provider.accounts)
     ?? accountFromResponse(await provider.request({ method: "eth_accounts" }));
   if (!address) return null;
-  setActiveProvider(provider, "walletconnect");
   return { provider, address };
 }

@@ -1,3 +1,4 @@
+import { discoverBrowserWallets, type BrowserWallet } from './browserWallets';
 import { prepareSyncMigration, SyncMigrationChoiceError, type SyncMigrationChoice } from './syncMigration';
 import { readVersionedSync, decryptVersionedSync, authorizeVersionedSync, writeVersionedSync, VersionedSyncError } from './versionedSyncTransport';
 import { encryptSyncPayloadV2 } from './versionedSyncCipher';
@@ -61,6 +62,7 @@ interface IdentityCtx {
   identity: Identity;
   mode: IdentityMode;
   hasInjectedWallet: boolean;
+  browserWallets: BrowserWallet[];
   walletConnectAvailable: boolean;
   isConnecting: boolean;
   ensProfile: EnsRecord | null;
@@ -68,7 +70,7 @@ interface IdentityCtx {
   setHandle: (h: string) => Promise<void>;
   resetHandle: () => Promise<void>;
   reset: () => void;
-  connectWallet: () => Promise<void>;
+  connectWallet: (walletId?: string) => Promise<void>;
   connectWalletConnect: () => Promise<void>;
   disconnectWallet: () => Promise<void>;
 }
@@ -76,6 +78,7 @@ const IdentityContext = createContext<IdentityCtx | null>(null);
 const IDENTITY_KEY = "chat:identity:v1";
 const WALLET_CONNECTED_KEY = "chat:walletConnected:v1";
 const WALLET_PROVIDER_KIND_KEY = "chat:walletProviderKind:v1";
+const BROWSER_WALLET_KEY = "chat:browserWallet:v1";
 
 const normalizeAddress = (address: string) => address.trim();
 const identityFromWallet = (address: string, profile?: EnsRecord | null): Identity => ({
@@ -88,7 +91,10 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     LS.get<Identity>(IDENTITY_KEY, { address: randAddr(), handle: "you" }));
   const [walletIdentity, setWalletIdentity] = useState<Identity | null>(null);
   const [mode, setMode] = useState<IdentityMode>("stub");
-  const [hasInjectedWallet, setHasInjectedWallet] = useState(false);
+  const [browserWallets, setBrowserWallets] = useState<BrowserWallet[]>([]);
+  const hasInjectedWallet = browserWallets.length > 0;
+  const browserDiscoveryRef = useRef<ReturnType<typeof discoverBrowserWallets> | null>(null);
+  const connectionGenerationRef = useRef(0);
   const [isConnecting, setIsConnecting] = useState(false);
   const [ensProfile, setEnsProfile] = useState<EnsRecord | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
@@ -104,6 +110,8 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     setWalletIdentity(identityFromWallet(normalized));
     setMode("wallet");
     LS.set(WALLET_CONNECTED_KEY, true);
+    const selected = LS.get<{ rdns: string | null; address: string } | null>(BROWSER_WALLET_KEY, null);
+    if (selected && getActiveKind() === 'injected') LS.set(BROWSER_WALLET_KEY, { ...selected, address: normalized });
     let profile: EnsRecord | null = null;
     try {
       profile = await resolveEns(normalized);
@@ -118,7 +126,9 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetWalletState = useCallback(() => {
+    connectionGenerationRef.current++;
     accountGenerationRef.current++;
+    LS.remove(BROWSER_WALLET_KEY);
     walletAddressRef.current = null;
     LS.remove(WALLET_CONNECTED_KEY);
     LS.remove(WALLET_PROVIDER_KIND_KEY);
@@ -128,12 +138,14 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     setWalletIdentity(null);
     setEnsProfile(null);
     setMode("stub");
+    setIsConnecting(false);
     setWalletError(null);
   }, []);
 
   const attachProviderEvents = useCallback((provider: WalletEventProvider) => {
     walletProviderCleanupRef.current?.();
     const onAccountsChanged = (accounts: string[]) => {
+      if (getActiveKind() === null || getActiveProvider() !== provider) return;
       const address = accountFromResponse(accounts);
       if (address) {
         setWalletError(null);
@@ -142,7 +154,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       }
       resetWalletState();
     };
-    const onDisconnect = () => resetWalletState();
+    const onDisconnect = () => { if (getActiveKind() !== null && getActiveProvider() === provider) resetWalletState(); };
     provider.on?.("accountsChanged", onAccountsChanged);
     provider.on?.("disconnect", onDisconnect);
     provider.on?.("session_delete", onDisconnect);
@@ -155,47 +167,54 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { LS.set(IDENTITY_KEY, stubIdentity); }, [stubIdentity]);
   useEffect(() => {
-    const ethereum = getInjectedEthereum();
-    setHasInjectedWallet(Boolean(ethereum));
-    if (!ethereum) return undefined;
-
+    const discovery = discoverBrowserWallets();
+    browserDiscoveryRef.current = discovery;
     let cancelled = false;
-    if (
-      LS.get<boolean>(WALLET_CONNECTED_KEY, false) &&
-      LS.get<string | null>(WALLET_PROVIDER_KIND_KEY, null) !== "walletconnect"
-    ) {
-      ethereum.request({ method: "eth_accounts" })
-        .then((accounts) => {
-          if (cancelled) return;
-          const address = accountFromResponse(accounts);
-          if (address) {
-            setActiveProvider(ethereum, "injected");
-            LS.set(WALLET_PROVIDER_KIND_KEY, "injected");
-            void applyWalletAccount(address);
-          }
-          else LS.remove(WALLET_CONNECTED_KEY);
-        })
-        .catch(() => {
-          if (!cancelled) LS.remove(WALLET_CONNECTED_KEY);
-        });
-    }
-
-    const onAccountsChanged = (accounts: string[]) => {
-      if (getActiveKind() && getActiveKind() !== "injected") return;
-      const address = accountFromResponse(accounts);
-      if (address) {
-        setWalletError(null);
+    let restored = false;
+    const generation = connectionGenerationRef.current;
+    const attempted = new Set<WalletEventProvider>();
+    const saved = LS.get<{ rdns: string | null; address: string } | null>(BROWSER_WALLET_KEY, null);
+    const canRestore = LS.get<boolean>(WALLET_CONNECTED_KEY, false) &&
+      LS.get<string | null>(WALLET_PROVIDER_KIND_KEY, null) !== 'walletconnect';
+    const candidates = () => saved
+      ? discovery.snapshot().filter(wallet => wallet.rdns === saved.rdns)
+      : discovery.snapshot().filter(wallet => wallet.provider === getInjectedEthereum());
+    const refresh = () => {
+      setBrowserWallets(discovery.snapshot());
+      if (!canRestore || restored || connectionGenerationRef.current !== generation) return;
+      const matches = candidates();
+      if (matches.length !== 1 || attempted.has(matches[0].provider)) return;
+      const wallet = matches[0];
+      attempted.add(wallet.provider);
+      void Promise.resolve().then(() => wallet.provider.request({ method: 'eth_accounts' })).then(accounts => {
+        if (cancelled || restored || connectionGenerationRef.current !== generation) return;
+        const current = candidates();
+        if (current.length !== 1 || current[0].provider !== wallet.provider) return;
+        const address = accountFromResponse(accounts);
+        // RDNS and eth_accounts are routing hints, not authenticated identity.
+        // Matching the prior address prevents an accidental account switch;
+        // protected operations still require their own verified signatures.
+        if (!address || (saved && (typeof saved.address !== 'string' || address.toLowerCase() !== saved.address.toLowerCase()))) return;
+        restored = true;
+        setActiveProvider(wallet.provider, 'injected');
+        LS.set(WALLET_PROVIDER_KIND_KEY, 'injected');
+        LS.set(BROWSER_WALLET_KEY, { rdns: wallet.rdns, address });
+        attachProviderEvents(wallet.provider);
         void applyWalletAccount(address);
-        return;
-      }
-      resetWalletState();
+      }).catch(() => { /* Keep the saved choice and offer explicit reconnect. */ });
     };
-    ethereum.on?.("accountsChanged", onAccountsChanged);
+    const unsubscribe = discovery.subscribe(refresh);
+    refresh();
     return () => {
       cancelled = true;
-      ethereum.removeListener?.("accountsChanged", onAccountsChanged);
+      unsubscribe();
+      discovery.destroy();
+      browserDiscoveryRef.current = null;
+      walletProviderCleanupRef.current?.();
+      walletProviderCleanupRef.current = null;
+      clearActiveProvider();
     };
-  }, [applyWalletAccount, resetWalletState]);
+  }, [applyWalletAccount, attachProviderEvents]);
 
   useEffect(() => {
     if (LS.get<string | null>(WALLET_PROVIDER_KIND_KEY, null) !== "walletconnect") return undefined;
@@ -205,20 +224,22 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       return undefined;
     }
     let cancelled = false;
+    const generation = connectionGenerationRef.current;
     restoreWalletConnect()
       .then((restored) => {
-        if (cancelled || !restored) {
-          if (!cancelled) {
+        if (cancelled || generation !== connectionGenerationRef.current || !restored) {
+          if (!cancelled && generation === connectionGenerationRef.current) {
             LS.remove(WALLET_CONNECTED_KEY);
             LS.remove(WALLET_PROVIDER_KIND_KEY);
           }
           return;
         }
+        setActiveProvider(restored.provider, "walletconnect");
         attachProviderEvents(restored.provider);
         void applyWalletAccount(restored.address);
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && generation === connectionGenerationRef.current) {
           LS.remove(WALLET_CONNECTED_KEY);
           LS.remove(WALLET_PROVIDER_KIND_KEY);
         }
@@ -227,7 +248,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
   }, [applyWalletAccount, attachProviderEvents]);
 
   const identity = walletIdentity ?? stubIdentity;
-  useEffect(() => () => { accountGenerationRef.current++; walletAddressRef.current = null; }, []);
+  useEffect(() => () => { connectionGenerationRef.current++; accountGenerationRef.current++; walletAddressRef.current = null; }, []);
   useEffect(() => {
     if (mode !== 'wallet') return;
     const refresh = (event: Event) => {
@@ -243,6 +264,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
     identity,
     mode,
     hasInjectedWallet,
+    browserWallets,
     walletConnectAvailable: walletConnectAvailable(),
     isConnecting,
     ensProfile,
@@ -269,43 +291,52 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
       } catch (error) { if (isCurrent()) setWalletError((error as Error).message); }
     },
     reset: () => setStubIdentity({ address: randAddr(), handle: "you" }),
-    connectWallet: async () => {
-      const ethereum = getInjectedEthereum();
+    connectWallet: async (walletId) => {
+      const choices = browserDiscoveryRef.current?.snapshot() ?? [];
+      const selected = walletId ? choices.find(wallet => wallet.id === walletId) : choices.length === 1 ? choices[0] : undefined;
+      const ethereum = selected?.provider;
       if (!ethereum) {
-        setHasInjectedWallet(false);
-        setWalletError("No injected wallet was found. Local identity mode is still available.");
+        setWalletError(choices.length > 1 ? "Choose a browser wallet before connecting." : "No injected wallet was found. Local identity mode is still available.");
         return;
       }
+      const generation = ++connectionGenerationRef.current;
       setIsConnecting(true);
       setWalletError(null);
       try {
         const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+        if (generation !== connectionGenerationRef.current) return;
         const address = accountFromResponse(accounts);
         if (!address) throw new Error("Wallet did not return an account.");
         setActiveProvider(ethereum, "injected");
         LS.set(WALLET_PROVIDER_KIND_KEY, "injected");
+        LS.set(BROWSER_WALLET_KEY, { rdns: selected!.rdns, address });
+        attachProviderEvents(ethereum);
         await applyWalletAccount(address);
       } catch (err) {
         const message = err instanceof Error && err.message ? err.message : "Wallet connection was rejected or unavailable.";
-        setWalletError(message);
+        if (generation === connectionGenerationRef.current) setWalletError(message);
       } finally {
-        setIsConnecting(false);
+        if (generation === connectionGenerationRef.current) setIsConnecting(false);
       }
     },
     connectWalletConnect: async () => {
       if (!walletConnectAvailable()) return;
+      const generation = ++connectionGenerationRef.current;
       setIsConnecting(true);
       setWalletError(null);
       try {
         const { provider, address } = await connectWalletConnectProvider();
+        if (generation !== connectionGenerationRef.current) return;
+        setActiveProvider(provider, "walletconnect");
         LS.set(WALLET_PROVIDER_KIND_KEY, "walletconnect");
+        LS.remove(BROWSER_WALLET_KEY);
         attachProviderEvents(provider);
         await applyWalletAccount(address);
       } catch (err) {
         const message = err instanceof Error && err.message ? err.message : "WalletConnect connection was rejected or unavailable.";
-        setWalletError(message);
+        if (generation === connectionGenerationRef.current) setWalletError(message);
       } finally {
-        setIsConnecting(false);
+        if (generation === connectionGenerationRef.current) setIsConnecting(false);
       }
     },
     disconnectWallet: async () => {
@@ -316,7 +347,7 @@ export function IdentityProvider({ children }: { children: React.ReactNode }) {
         await provider?.disconnect?.().catch(() => undefined);
       }
     },
-  }), [applyWalletAccount, attachProviderEvents, ensProfile, hasInjectedWallet, identity, isConnecting, mode, resetWalletState, walletError]);
+  }), [applyWalletAccount, attachProviderEvents, ensProfile, hasInjectedWallet, browserWallets, identity, isConnecting, mode, resetWalletState, walletError]);
   return <IdentityContext.Provider value={value}>{children}</IdentityContext.Provider>;
 }
 export const useIdentity = () => {

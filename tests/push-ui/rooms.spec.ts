@@ -193,8 +193,16 @@ test('reconnects the same wallet without accepting history from its disposed ses
   await expect.poll(() => page.evaluate(() => (window as any).__pushFixture.pending.history?.length ?? 0)).toBe(1);
   await page.evaluate(() => { const s = (window as any).__pushFixture; s.emit('disconnect', {}); s.hold.history = false; s.pages.latest[0].messageContent = 'After reconnect'; });
   await expect(page.locator('.thread-title')).toHaveCount(0);
-  // An injected provider can reconnect with the same authorized accounts.
-  // The old Push session must still require a fresh explicit enable/signature.
+  // Disconnect clears Chat's wallet connection as well as the Push session.
+  // An unsolicited accounts event must not reconnect either one.
+  await page.evaluate(() => { const s = (window as any).__pushFixture; s.emit('accountsChanged', [s.address]); });
+  await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await expect(page.getByRole('textbox', { name: 'Address', exact: true })).not.toHaveValue(owner);
+  await page.getByRole('button', { name: 'Connect wallet', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Address', exact: true })).toHaveValue(owner);
+  await page.locator('.nav-item', { hasText: 'Rooms' }).click();
+  await page.getByLabel('Include existing rooms').selectOption('governance');
+  // Reconnecting the wallet must still require a fresh Push enable/signature.
   await expect(page.getByText('Push is not connected', { exact: true })).toBeVisible();
   await page.locator('.list-item', { hasText: 'shareholders' }).click(); await enable(page);
   await expect(page.getByText('After reconnect', { exact: true })).toBeVisible();
