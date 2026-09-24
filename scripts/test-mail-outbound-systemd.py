@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -32,6 +33,22 @@ def check(condition, message):
 def main():
     check(os.geteuid() == 0 and os.environ.get('GITHUB_ACTIONS') == 'true' and
           len(sys.argv) == 3, 'Only a disposable privileged GitHub runner is supported')
+    # Hosted runners intentionally make /opt writable for tool installation. The
+    # production installer correctly refuses that parent. Prepare the required
+    # protected parent only in this disposable fixture, restoring it afterwards.
+    parent = installer.TARGET.parent
+    info = parent.lstat()
+    check(stat.S_ISDIR(info.st_mode), 'Expected a real fixture parent directory')
+    try:
+        os.chown(parent, 0, info.st_gid)
+        parent.chmod(stat.S_IMODE(info.st_mode) & ~0o022)
+        acceptance()
+    finally:
+        os.chown(parent, info.st_uid, info.st_gid)
+        parent.chmod(stat.S_IMODE(info.st_mode))
+
+
+def acceptance():
     installer.preflight()  # Refuse all existing installations before any cleanup can run.
     release, node = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
     check(release.is_dir() and node.is_file(), 'Prepared runtime required')
