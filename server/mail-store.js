@@ -11,7 +11,9 @@ local raw=redis.call('GET',KEYS[3]); if not raw then return {'denied'} end
 local b=cjson.decode(raw)
 if b.version~=ARGV[3] or b.revoked or tonumber(b.expiresAt)<=now then return {'denied'} end
 if tonumber(redis.call('GET',KEYS[4]) or '0')>=20 or tonumber(redis.call('GET',KEYS[5]) or '0')>=50 then return {'limited'} end
-local j=cjson.decode(ARGV[2]); j.createdAt=now; j.updatedAt=now; j.deadline=now+82800000; j.status='queued'; j.attempts=0
+local j=cjson.decode(ARGV[2])
+if type(j.deliveryProvider)~='string' or string.len(j.deliveryProvider)~=74 or not string.match(j.deliveryProvider,'^resend%-v1:[a-f0-9]+$') then return {'provider-mismatch'} end
+j.createdAt=now; j.updatedAt=now; j.deadline=now+82800000; j.status='queued'; j.attempts=0
 redis.call('SET',KEYS[1],cjson.encode(j),'PX',2592000000)
 redis.call('SET',KEYS[6],ARGV[4],'PX',86400000)
 -- Keep only hashes so delivered links survive payload deletion and key rotation.
@@ -59,6 +61,8 @@ local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(ton
 local raw=redis.call('GET',KEYS[1]); if not raw then redis.call('ZREM',KEYS[2],KEYS[1]); return nil end
 local j=cjson.decode(raw)
 if j.status~='queued' and j.status~='sending' then redis.call('ZREM',KEYS[2],KEYS[1]); return nil end
+-- Check before lease, expiry, consent or payload processing: preserve foreign/legacy evidence.
+if not ARGV[2] or string.len(ARGV[2])~=74 or not string.match(ARGV[2],'^resend%-v1:[a-f0-9]+$') or j.deliveryProvider~=ARGV[2] then return {'provider-mismatch'} end
 if j.status=='sending' and tonumber(j.lockedUntil or 0)>now then return nil end
 local score=redis.call('ZSCORE',KEYS[2],KEYS[1]); if score and tonumber(score)>now then return nil end
 local br=redis.call('GET',KEYS[3]); local b=br and cjson.decode(br) or {}
@@ -92,7 +96,12 @@ local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(ton
 local first=redis.call('ZRANGE',KEYS[1],0,0,'WITHSCORES')
 local age=0
 if #first>0 then age=math.max(0,now-tonumber(first[2])) end
-return {now,redis.call('ZCARD',KEYS[1]),redis.call('ZCOUNT',KEYS[1],'-inf',now),age,tonumber(redis.call('GET',KEYS[2])) or 0}
+local blocked=0
+if #first>0 then
+ local raw=redis.call('GET',first[1]); local j=raw and cjson.decode(raw) or nil
+ if j and (j.status=='queued' or j.status=='sending') and j.deliveryProvider~=ARGV[1] then blocked=1 end
+end
+return {now,redis.call('ZCARD',KEYS[1]),redis.call('ZCOUNT',KEYS[1],'-inf',now),age,tonumber(redis.call('GET',KEYS[2])) or 0,blocked}
 `;
 export const MAIL_WORKER_HEARTBEAT = `
 local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
