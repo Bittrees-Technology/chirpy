@@ -57,7 +57,7 @@ def acceptance():
         bundle = root / 'bundle.tar.gz'
         metadata = root / 'bundle.json'
         metadata.write_text(json.dumps({'version': 1, 'commit': 'a' * 40, 'tree': 'b' * 40}))
-        with tarfile.open(bundle, 'w:gz') as archive:
+        with tarfile.open(bundle, 'w:gz', compresslevel=1) as archive:
             archive.add(metadata, arcname='bundle.json')
             archive.add(node, arcname='runtime/bin/node')
             for path in sorted(release.rglob('*')):

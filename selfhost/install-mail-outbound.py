@@ -35,7 +35,8 @@ REQUIRED = {
     'release/selfhost/mail-outbound-worker.mjs',
     'release/selfhost/mail-smtp-transport.mjs', 'release/selfhost/mail-smtp-journal.mjs',
     'release/server/mail-service.js', 'release/server/mail-store.js',
-    'release/node_modules/nodemailer/lib/smtp-connection/index.js',
+    'release/node_modules/nodemailer/package.json',
+    'release/node_modules/nodemailer/dist/esm/smtp-connection/index.js',
     'release/node_modules/viem/package.json', 'release/node_modules/svix/package.json',
     'release/selfhost/systemd/chat-mail-outbound.service',
     'release/selfhost/systemd/chat-mail-outbound.timer',
@@ -67,9 +68,13 @@ CHAT_SMTP_PROFILE=
 '''
 
 
+class InstallationError(ValueError):
+    """A fixed diagnostic safe to show without archive data or secrets."""
+
+
 def require(condition, message):
     if not condition:
-        raise ValueError(message)
+        raise InstallationError(message)
 
 
 def snapshot(source, target, expected):
@@ -175,7 +180,7 @@ def preflight():
             lookup(ACCOUNT)
         except KeyError:
             continue
-        raise ValueError('Service account/group already exists')
+        raise InstallationError('Service account/group already exists')
     for unit in UNIT_NAMES:
         result = subprocess.run(['/usr/bin/systemctl', 'show', unit, '-p', 'LoadState', '--value'],
                                 check=True, capture_output=True, text=True, env=COMMAND_ENV)
@@ -249,6 +254,9 @@ def main():
 if __name__ == '__main__':
     try:
         main()
+    except InstallationError as error:
+        raise SystemExit(str(error) + '. Preserve any partial installation and review before retrying. '
+                         'No worker or timer was started.')
     except (OSError, ValueError, KeyError, tarfile.TarError, subprocess.SubprocessError):
         # Avoid printing paths/content from a malformed archive or configuration.
         raise SystemExit('Installation/verification stopped. Preserve any partial installation; '
