@@ -1,0 +1,12 @@
+[Unit]
+Description=Chat Resend API schedule (install disabled)
+
+[Timer]
+OnActiveSec=60
+OnUnitInactiveSec=60
+AccuracySec=1
+Persistent=false
+Unit=chat-mail-api-scheduler.service
+
+[Install]
+WantedBy=timers.target

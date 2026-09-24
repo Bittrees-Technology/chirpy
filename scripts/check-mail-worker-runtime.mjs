@@ -48,10 +48,16 @@ try{
       cwd:app,env:{...env,CHAT_MAIL_OUTBOUND_WORKER_ENABLED:'0'},encoding:'utf8',timeout:10000});
     if(result.error||result.status!==(mode==='--once'?0:2)||JSON.parse(result.stdout).enabled!==false)throw Error('Disabled outbound worker contract failed');
   }
+  for(const mode of ['--once','--status']){
+    const result=spawnSync(process.execPath,[resolve(app,'selfhost/mail-api-scheduler.mjs'),mode],{
+      cwd:app,env:{...env,CHAT_MAIL_API_SCHEDULER_ENABLED:'0'},encoding:'utf8',timeout:10000});
+    if(result.error||result.status!==(mode==='--once'?0:2)||JSON.parse(result.stdout).enabled!==false)throw Error('Disabled API scheduler contract failed');
+  }
   console.log('Isolated worker dependency and disabled command checks passed.');
   if(process.env.CHAT_TEST_SYSTEMD_INSTALL==='1'){
     if(process.env.GITHUB_ACTIONS!=='true')throw Error('Administrator acceptance is for disposable CI only');
     run('sudo',['-n','env','GITHUB_ACTIONS=true','/usr/bin/python3','-I',join(repo,'scripts/test-mail-outbound-systemd.py'),app,process.execPath]);
+    run('sudo',['-n','env','GITHUB_ACTIONS=true','/usr/bin/python3','-I',join(repo,'scripts/test-mail-api-scheduler-systemd.py'),process.execPath]);
   }
   if(process.env.XMTP_MAIL_PROVISION_DRILL==='1')run(process.execPath,[join(repo,'scripts/test-mail-provisioning.mjs'),'--register-dev',app]);
 }finally{
