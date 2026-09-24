@@ -81,7 +81,7 @@ export async function createSmtpAdapter(env,config){
   const journal=openSmtpJournal(settings.journal);
   return {
     profile:settings.profile,
-    check:()=>journal.check(),reference:command=>journal.reference(command),recover:reference=>journal.recover(reference),
+    check:()=>journal.check(),summary:()=>journal.summary(),pending:options=>journal.pending(options),reference:command=>journal.reference(command),recover:reference=>journal.recover(reference),
     async submit(command,authorize){
       if(command.payload?.from!==config.from)invalid();
       const known=journal.inspect(command);

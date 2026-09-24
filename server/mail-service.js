@@ -1,3 +1,4 @@
+import {reconcileSmtpReceipts,indexSmtpHolds} from './mail-smtp-reconciliation.js';
 import {mailDeliveryKey} from './mail-delivery.js';
 import { mailIdentityConfig, mailIdentityScope, resolveMailIdentity } from './mail-identity.js';
 import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
@@ -87,11 +88,24 @@ export function createMailService(config, kv = mailKv(config), request = fetch, 
   const heartbeat = `${routing.prefix}worker:last-success`;
   return {
     async workerStatus() {
-      const [now,queued,due,oldestDueAgeMs,lastSuccessfulTickAt,blocked] = await kv(['EVAL',MAIL_WORKER_STATUS,'2',queue,heartbeat,deliveryProvider]);
-      if(blocked!==0&&blocked!==1)throw Error('Invalid worker status');
+      const [now,queued,due,oldestDueAgeMs,lastSuccessfulTickAt,blocked,uncertainCount] = await kv(['EVAL',MAIL_WORKER_STATUS,'3',queue,heartbeat,`${queue}:uncertain`,deliveryProvider]);
+      if(!Number.isSafeInteger(now)||now<=0||![queued,due,oldestDueAgeMs,lastSuccessfulTickAt,uncertainCount].every(v=>Number.isSafeInteger(v)&&v>=0)||due>queued||blocked!==0&&blocked!==1)throw Error('Invalid worker status');
       const providerBlocked=blocked===1;
-      const workerHealthy = !providerBlocked && lastSuccessfulTickAt>0 && lastSuccessfulTickAt<=now && now-lastSuccessfulTickAt<=300000 && oldestDueAgeMs<=300000;
-      return {status:workerHealthy?'ok':'degraded',workerHealthy,providerBlocked,checkedAt:now,queued,due,oldestDueAgeMs,lastSuccessfulTickAt:lastSuccessfulTickAt||null};
+      const journal=smtp?smtp.summary():null;
+      const journalUncertainCount=journal?.uncertainCount??null;
+      const journalStaleUncertainCount=journal?.staleUncertainCount??null;
+      const workerHealthy = !providerBlocked && uncertainCount===0 && (!smtp||journalStaleUncertainCount===0) && lastSuccessfulTickAt>0 && lastSuccessfulTickAt<=now && now-lastSuccessfulTickAt<=300000 && oldestDueAgeMs<=300000;
+      return {status:workerHealthy?'ok':'degraded',workerHealthy,providerBlocked,uncertainCount,...(smtp?{journalUncertainCount,journalStaleUncertainCount}:{}),checkedAt:now,queued,due,oldestDueAgeMs,lastSuccessfulTickAt:lastSuccessfulTickAt||null};
+    },
+    async indexHolds(options={}) {
+      if(routing.provider!=='smtp'||!smtp)throw Error('Private SMTP worker required');
+      smtp.check();
+      return indexSmtpHolds({routing,deliveryProvider,kv},options);
+    },
+    async reconcile(options={}) {
+      if(routing.provider!=='smtp'||!smtp)throw Error('Private SMTP worker required');
+      smtp.check();
+      return reconcileSmtpReceipts({routing,deliveryProvider,smtp,kv},options);
     },
     async execute(c) {
       const key=jobKey(c);
@@ -156,12 +170,15 @@ export function createMailService(config, kv = mailKv(config), request = fetch, 
       for (const key of keys) {
         if (typeof key!=='string' || !key.startsWith(`${routing.prefix}job:`)) throw Error('invalid job');
         const raw=await kv(['GET',key]); if (!raw) { await kv(['ZREM',queue,key]); continue; }
-        const known=JSON.parse(raw); const lease=randomBytes(16).toString('hex');
-        const claimed=await kv(['EVAL',CLAIM_MAIL,'5',key,queue,known.bindingKey,`${key}:payload`,known.suppressionKey||`${routing.prefix}legacy-suppression-placeholder`,lease,deliveryProvider]);
+        const known=JSON.parse(raw);
+        if(!address(known.wallet)||!id(known.id)||jobKey(known)!==key)throw Error('Invalid queued delivery owner');
+        const lease=randomBytes(16).toString('hex');
+        const claimed=await kv(['EVAL',CLAIM_MAIL,'5',key,queue,known.bindingKey,`${key}:payload`,known.suppressionKey||`${routing.prefix}legacy-suppression-placeholder`,lease,deliveryProvider,known.wallet,known.id]);
         if (!claimed) continue;
         if(claimed.length===1&&claimed[0]==='provider-mismatch')throw Error('Delivery provider does not match the queued request');
         if(claimed.length!==2)throw Error('Invalid delivery claim');
         const [record,encrypted]=claimed; const job=JSON.parse(record);
+        if(!address(job.wallet)||!id(job.id)||jobKey(job)!==key)throw Error('Invalid claimed delivery owner');
         if(job.deliveryProvider!==deliveryProvider)throw Error('Delivery provider does not match the queued request');
         if(routing.provider==='smtp'){
           const requestId=`chirpy-mail/${hash(routing.service)}/${job.wallet}/${job.id}`;
@@ -189,7 +206,7 @@ export function createMailService(config, kv = mailKv(config), request = fetch, 
           const outcomes={accepted:'accepted',uncertain:'uncertain',rejected:'stopped',denied:'stopped',expired:'stopped',retryable:'queued'};
           if(!Object.hasOwn(outcomes,result.status))throw Error('Invalid SMTP outcome');
           // Adapter/journal/storage errors deliberately leave the claim for recovery.
-          if(await kv(['EVAL',FINISH_MAIL,'3',key,queue,`${key}:payload`,lease,outcomes[result.status],result.id||''])!==1)throw Error('SMTP completion lease changed');
+          if(await kv(['EVAL',FINISH_MAIL,'4',key,queue,`${key}:payload`,`${queue}:uncertain`,lease,outcomes[result.status],result.id||''])!==1)throw Error('SMTP completion lease changed');
           processed++;if(result.status==='uncertain')uncertain++;continue;
         }
         let outcome='queued'; let providerId='';
@@ -211,7 +228,7 @@ export function createMailService(config, kv = mailKv(config), request = fetch, 
             }
           }
         } catch { /* Keep the immutable payload and idempotency key for bounded retries. */ }
-        await kv(['EVAL',FINISH_MAIL,'3',key,queue,`${key}:payload`,lease,outcome,providerId]); processed++;
+        await kv(['EVAL',FINISH_MAIL,'4',key,queue,`${key}:payload`,`${queue}:uncertain`,lease,outcome,providerId]); processed++;
       }
       await kv(['EVAL',MAIL_WORKER_HEARTBEAT,'1',heartbeat]);
       return routing.provider==='smtp'?{processed,uncertain}:{processed};

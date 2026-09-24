@@ -43,7 +43,11 @@ receives the snapshot and a stable Message-ID. A parallel worker, process crash,
 timeout or lost acknowledgement cannot automatically repeat that submission.
 An existing accepted, rejected or uncertain result is returned without a new
 authorization request because no new message is sent. `inspect(command)` reads
-the same scoped outcome; an absent record returns `unknown`.
+the same scoped outcome; an absent record returns `unknown`. `summary()` exposes
+aggregate unresolved/stale counts and `pending({after, limit})` provides bounded
+receipt-only operator inspection. Neither API reads or returns message content.
+An in-flight reservation counts as stale only after 60 seconds; a terminal Redis
+hold degrades queue health immediately and persists across idle ticks/restarts.
 
 The trusted SMTP adapter must return exactly one of:
 
@@ -65,7 +69,10 @@ Message-ID alone does not provide recipient-side deduplication.
 
 Never clear an uncertain record to retry a message. Reconcile it against
 authoritative MTA evidence before any future operator recovery workflow; this
-module intentionally provides no automatic reconciliation/reset API. If journal
+module intentionally provides no reset or manual success API. The private worker
+can reconcile a retained uncertain Redis receipt against a later definite journal
+result, with exact-scope and atomic-record comparison; see
+[the maintenance commands](MAIL-OUTBOUND-DEPLOYMENT.md#persistent-holds-and-bounded-reconciliation). If journal
 state is lost, corrupt, or restored from an older backup, stop outbound delivery
 and quarantine the queue. The pinned ID and key cannot detect rollback to an
 older valid copy of the same journal. A coordinated queue/journal/MTA recovery

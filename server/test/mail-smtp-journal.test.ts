@@ -135,4 +135,24 @@ describe('durable SMTP submission boundary',()=>{
    f.journal=openSmtpJournal(f.config);const c=callbacks();expect(await f.journal.submit(f.command,c)).toMatchObject({status:'uncertain'});expect(c.send).not.toHaveBeenCalled();
   }finally{if(child.exitCode===null&&child.signalCode===null){const exited=once(child,'exit');child.kill('SIGKILL');await exited;}}
  });
+ it('keeps private unresolved counts and bounded receipt-only inspection across restart',async()=>{
+  const f=fixture(),c=callbacks();c.send.mockResolvedValue({status:'uncertain'});
+  expect(f.journal.summary()).toEqual({uncertainCount:0,staleUncertainCount:0,oldestUncertainAt:null});
+  const receipts=[];for(let i=0;i<3;i++){const command={...f.command,requestId:f.command.requestId.slice(0,-32)+i.toString(16).padStart(32,'0')};receipts.push((await f.journal.submit(command,c)).id);}
+  expect(f.journal.summary()).toMatchObject({uncertainCount:3,staleUncertainCount:0});
+  f.time.value+=60001;expect(f.journal.summary()).toMatchObject({uncertainCount:3,staleUncertainCount:3});
+  f.journal.close();f.journal=openSmtpJournal(f.config);
+  const page=f.journal.pending({limit:2});expect(page.items).toHaveLength(2);expect(page.nextCursor).toBe(page.items[1].id);
+  const last=f.journal.pending({after:page.nextCursor,limit:2});expect(last.items).toHaveLength(1);expect(last.nextCursor).toBeNull();
+  expect([...page.items,...last.items].map(r=>r.id).sort()).toEqual(receipts.sort());
+  const output=JSON.stringify({summary:f.journal.summary(),page,last});for(const privateValue of [f.command.requestId,f.command.payload.to[0],f.command.payload.text,f.command.payload.subject,f.command.payload.from,f.config.key])expect(output).not.toContain(privateValue);
+  expect(Object.keys(page.items[0]).sort()).toEqual(['attempts','createdAt','id','status','updatedAt']);
+  for(const options of [{limit:0},{limit:51},{after:'bad'},{limit:1.5}])expect(()=>f.journal.pending(options)).toThrow();
+ });
+ it('shows an in-flight reservation but clears it only after the journal observes acceptance',async()=>{
+  const f=fixture(),c=callbacks();
+  c.send.mockImplementation(async()=>{expect(f.journal.summary()).toMatchObject({uncertainCount:1,staleUncertainCount:0});return {status:'accepted'};});
+  await f.journal.submit(f.command,c);expect(f.journal.summary().uncertainCount).toBe(0);expect(f.journal.pending()).toEqual({items:[],nextCursor:null});
+ });
+
 });

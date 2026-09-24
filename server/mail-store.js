@@ -63,6 +63,7 @@ local j=cjson.decode(raw)
 if j.status~='queued' and j.status~='sending' then redis.call('ZREM',KEYS[2],KEYS[1]); return nil end
 -- Check before lease, expiry, consent or payload processing: preserve foreign/legacy evidence.
 if not ARGV[2] or not ((string.len(ARGV[2])==74 and string.match(ARGV[2],'^resend%-v1:[a-f0-9]+$')) or (string.len(ARGV[2])==72 and string.match(ARGV[2],'^smtp%-v1:[a-f0-9]+$'))) or j.deliveryProvider~=ARGV[2] then return {'provider-mismatch'} end
+if ARGV[3] and (j.wallet~=ARGV[3] or j.id~=ARGV[4]) then return {'scope-mismatch'} end
 if j.status=='sending' and tonumber(j.lockedUntil or 0)>now then return nil end
 local score=redis.call('ZSCORE',KEYS[2],KEYS[1]); if score and tonumber(score)>now then return nil end
 -- SMTP must recover durable results before expiration, revocation or payload removal.
@@ -88,6 +89,8 @@ return {cjson.encode(j),payload}
 export const FINISH_MAIL = `
 local raw=redis.call('GET',KEYS[1]); if not raw then return 0 end
 local j=cjson.decode(raw); if j.lease~=ARGV[1] or j.status~='sending' then return 0 end
+-- A terminal SMTP hold must never disappear from operational monitoring.
+if string.sub(j.deliveryProvider or '',1,8)=='smtp-v1:' and KEYS[4]~=KEYS[2]..':uncertain' then return 0 end
 local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
 j.providerId=ARGV[3]; j.lockedUntil=0; j.updatedAt=now
 -- An uncertain submission is terminal for automatic delivery even after expiry.
@@ -96,6 +99,7 @@ if ARGV[2]=='uncertain' then j.status='uncertain'
 elseif ARGV[2]=='accepted' then j.status='accepted'
 elseif ARGV[2]=='stopped' or j.attempts>=5 or now>=j.deadline then j.status='stopped'
 else j.status='queued' end
+if j.status=='uncertain' and KEYS[4] then redis.call('ZADD',KEYS[4],0,KEYS[1]) end
 if j.status=='queued' then redis.call('ZADD',KEYS[2],now+math.min(900000,60000*2^(j.attempts-1)),KEYS[1])
 else redis.call('ZREM',KEYS[2],KEYS[1]); redis.call('DEL',KEYS[3]) end
 redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); return 1
@@ -112,7 +116,7 @@ if #first>0 then
  local raw=redis.call('GET',first[1]); local j=raw and cjson.decode(raw) or nil
  if j and (j.status=='queued' or j.status=='sending') and j.deliveryProvider~=ARGV[1] then blocked=1 end
 end
-return {now,redis.call('ZCARD',KEYS[1]),redis.call('ZCOUNT',KEYS[1],'-inf',now),age,tonumber(redis.call('GET',KEYS[2])) or 0,blocked}
+return {now,redis.call('ZCARD',KEYS[1]),redis.call('ZCOUNT',KEYS[1],'-inf',now),age,tonumber(redis.call('GET',KEYS[2])) or 0,blocked,redis.call('ZCARD',KEYS[3])}
 `;
 export const MAIL_WORKER_HEARTBEAT = `
 local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
@@ -146,4 +150,30 @@ if redis.call('EXISTS',KEYS[3])==1 or redis.call('EXISTS',KEYS[4])~=1 then retur
 local br=redis.call('GET',KEYS[2]); local b=br and cjson.decode(br) or {}
 if b.version~=j.bindingVersion or b.revoked or tonumber(b.expiresAt or 0)<=now then return 0 end
 return 1
+`;
+
+// Only the private worker can supply validated journal facts. Compare the exact
+// retained record before changing an uncertain receipt; never requeue or extend TTL.
+export const RECONCILE_SMTP_RECEIPT = `
+local raw=redis.call('GET',KEYS[1]); if not raw or raw~=ARGV[1] then return 0 end
+local j=cjson.decode(raw)
+if j.status~='uncertain' or redis.call('ZSCORE',KEYS[2],KEYS[1])==false then return 0 end
+if j.deliveryProvider~=ARGV[2] or not string.match(ARGV[2],'^smtp%-v1:[a-f0-9]+$') or string.len(ARGV[2])~=72 then return 0 end
+if ARGV[3]~='accepted' and ARGV[3]~='rejected' and ARGV[3]~='retryable' then return 0 end
+if not string.match(ARGV[4],'^smtp_[a-f0-9]+$') or string.len(ARGV[4])~=37 or (j.providerId~='' and j.providerId~=ARGV[4]) then return 0 end
+local attempts=tonumber(ARGV[5]); if not attempts or attempts<1 or attempts>j.attempts or attempts~=math.floor(attempts) then return 0 end
+if redis.call('PTTL',KEYS[1])<=0 then return 0 end
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
+if j.updatedAt>now then return 0 end
+j.status=ARGV[3]=='accepted' and 'accepted' or 'stopped';j.updatedAt=now;j.providerId=ARGV[4]
+j.smtpReconciliation={version=1,source='smtp-journal',previousStatus='uncertain',journalStatus=ARGV[3],receiptId=ARGV[4],attempts=attempts,at=now}
+redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL');redis.call('ZREM',KEYS[2],KEYS[1]);return 1
+`;
+
+// Explicit legacy-hold indexing never changes the retained receipt or its TTL.
+export const INDEX_SMTP_HOLD = `
+local raw=redis.call('GET',KEYS[1]);if not raw or raw~=ARGV[1] then return 0 end
+local j=cjson.decode(raw)
+if j.status~='uncertain' or j.deliveryProvider~=ARGV[2] or string.sub(ARGV[2],1,8)~='smtp-v1:' or redis.call('PTTL',KEYS[1])<=0 then return 0 end
+return redis.call('ZADD',KEYS[2],'NX',0,KEYS[1])
 `;

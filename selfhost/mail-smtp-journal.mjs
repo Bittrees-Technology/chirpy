@@ -28,6 +28,7 @@ export function initializeSmtpJournal({filename,key:rawKey}){
  try{
   configure(db);
   db.exec('BEGIN IMMEDIATE; CREATE TABLE metadata(version INTEGER NOT NULL,journal_id TEXT NOT NULL,key_check TEXT NOT NULL); CREATE TABLE submissions(request_key TEXT PRIMARY KEY,digest TEXT NOT NULL,deadline INTEGER NOT NULL,receipt_id TEXT UNIQUE NOT NULL,state TEXT NOT NULL CHECK(state IN (\'uncertain\',\'accepted\',\'rejected\',\'retryable\')),attempt TEXT NOT NULL,attempts INTEGER NOT NULL,created INTEGER NOT NULL,updated INTEGER NOT NULL)');
+  db.exec('CREATE INDEX smtp_pending ON submissions(state,receipt_id)');
   db.prepare('INSERT INTO metadata VALUES(1,?,?)').run(journalId,mac(key,'key-check',journalId));db.exec('COMMIT');
   return {version:1,journalId};
  }finally{db.close();key.fill(0);}
@@ -59,6 +60,18 @@ export function openSmtpJournal({filename,key:rawKey,journalId,now=Date.now}){
  function read(s){live();const row=db.prepare('SELECT * FROM submissions WHERE request_key=?').get(s.requestKey);if(row&&(row.digest!==s.digest||row.deadline!==s.deadline))throw Error('SMTP request conflicts with its original scope');if(row)projection(row);return row;}
  return {
   check(){live();},
+  summary(){
+   live();const time=now();
+   const row=db.prepare("SELECT COUNT(*) AS count,MIN(updated) AS oldest,MAX(updated) AS latest,SUM(CASE WHEN updated<=? THEN 1 ELSE 0 END) AS stale,MIN(attempts) AS firstAttempt,MAX(attempts) AS lastAttempt,MIN(updated-created) AS elapsed FROM submissions WHERE state='uncertain'").get(time-60000);
+   if(!Number.isSafeInteger(time)||time<=0||!Number.isSafeInteger(row.count)||row.count<0||row.count>0&&(!Number.isSafeInteger(row.oldest)||row.oldest<=0||!Number.isSafeInteger(row.latest)||row.latest>time||!Number.isSafeInteger(row.firstAttempt)||!Number.isSafeInteger(row.lastAttempt)||row.firstAttempt<1||row.lastAttempt>5||row.elapsed<0))fail();
+   return {uncertainCount:row.count,staleUncertainCount:row.stale||0,oldestUncertainAt:row.count?row.oldest:null};
+  },
+  pending({after=null,limit=25}={}){
+   live();if(after!==null&&(typeof after!=='string'||!/^smtp_[a-f0-9]{32}$/.test(after))||!Number.isSafeInteger(limit)||limit<1||limit>50)fail();
+   const rows=db.prepare("SELECT * FROM submissions WHERE state='uncertain' AND receipt_id>? ORDER BY receipt_id LIMIT ?").all(after||'',limit+1);
+   const page=rows.slice(0,limit).map(row=>{const p=projection(row);if(!Number.isSafeInteger(row.created)||row.created<=0||!Number.isSafeInteger(row.updated)||row.updated<row.created)fail();return {...p,createdAt:row.created,updatedAt:row.updated};});
+   return {items:page,nextCursor:rows.length>limit?page.at(-1).id:null};
+  },
   reference(command){live();const s=scope(key,command);return {requestId:command.requestId,deadline:s.deadline,digest:s.digest};},
   recover(reference){
    if(!reference||Object.keys(reference).sort().join(',')!=='deadline,digest,requestId'||typeof reference.requestId!=='string'||!/^chirpy-mail\/[a-f0-9]{64}\/0x[a-f0-9]{40}\/[a-f0-9]{32}$/.test(reference.requestId)||!Number.isSafeInteger(reference.deadline)||reference.deadline<=0||typeof reference.digest!=='string'||!/^[a-f0-9]{64}$/.test(reference.digest))fail();
