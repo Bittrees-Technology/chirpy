@@ -81,6 +81,13 @@ describe('Resend API scheduler',()=>{
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it('releases rejected HTTP streams without reading or reporting their contents',async()=>{
+    const cancel=vi.fn();
+    const body=new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode('private upstream error'));},cancel});
+    await expect(mailWorkerRequest('tick',env,vi.fn().mockResolvedValue(new Response(body,{status:503})))).rejects.toThrow('Worker response rejected');
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it('rejects invalid UTF-8, malformed JSON and wrong result shapes',async()=>{
     for(const body of [new Uint8Array([255]),'{',JSON.stringify(null),JSON.stringify([]),JSON.stringify({processed:-1}),JSON.stringify({processed:2}),JSON.stringify({processed:0,uncertain:0})]){
       const response=new Response(body,{headers:{'content-type':'application/json'}});

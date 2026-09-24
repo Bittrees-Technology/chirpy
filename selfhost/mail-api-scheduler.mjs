@@ -15,7 +15,10 @@ export async function mailWorkerRequest(action, env=process.env, request=fetch) 
     body:JSON.stringify({action}),headers:{'Content-Type':'application/json',Authorization:`Bearer ${secret}`},
     signal:AbortSignal.timeout(60000),
   });
-  if(response.status!==200||response.redirected||!/^application\/json(?:;|$)/i.test(response.headers.get('content-type')||''))throw Error('Worker response rejected');
+  if(response.status!==200||response.redirected||!/^application\/json(?:;|$)/i.test(response.headers.get('content-type')||'')){
+    await response.body?.cancel().catch(()=>{});
+    throw Error('Worker response rejected');
+  }
   const reader=response.body?.getReader();
   if(!reader)throw Error('Missing worker response');
   const chunks=[];let size=0;
