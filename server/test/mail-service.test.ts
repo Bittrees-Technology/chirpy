@@ -30,6 +30,14 @@ describe('wallet email authorization',()=>{
     // Suppression and opt-out must work even when forwarding configuration is broken.
     expect(mailConfig(partial,{deliveryIdentity:false})).not.toBeNull();
   });
+  it('accepts the existing provider by default and rejects unsupported choices without fallback',async()=>{
+    expect(mailConfig(env)?.provider).toBe('resend');
+    expect(mailConfig({...env,CHIRPY_MAIL_PROVIDER:'resend'})?.provider).toBe('resend');
+    for(const value of ['','smtp','Resend','unknown'])expect(mailConfig({...env,CHIRPY_MAIL_PROVIDER:value})).toBeNull();
+    const kv=vi.fn(),request=vi.fn();
+    expect(()=>createMailService({...mailConfig(env),provider:'smtp'},kv,request)).toThrow();
+    expect(kv).not.toHaveBeenCalled();expect(request).not.toHaveBeenCalled();
+  });
   it('binds the wallet signature to service, recipient, content, ID and expiry',async()=>{
     const c=command();const sig=await wallet.signMessage({message:mailSignMessage(c)});
     expect(await verifyMailCommand(c,sig,c.service)).toBe(true);
@@ -51,7 +59,7 @@ describe('wallet email authorization',()=>{
       const response=res();await worker({method:'POST',headers:{authorization:`Bearer ${env.CHIRPY_MAIL_WORKER_SECRET}`},body},response);expect(response.code).toBe(400);
     }
     const denied=res();await worker({method:'POST',headers:{},body:{action:'status'}},denied);expect(denied.code).toBe(401);expect(fetcher).not.toHaveBeenCalled();
-    fetcher.mockResolvedValue({ok:true,json:async()=>({result:[1000000,2,1,42,999999]})});
+    fetcher.mockResolvedValue({ok:true,json:async()=>({result:[1000000,2,1,42,999999,0]})});
     const allowed=res();await worker({method:'POST',headers:{authorization:`Bearer ${env.CHIRPY_MAIL_WORKER_SECRET}`},body:{action:'status'}},allowed);
     expect(allowed.code).toBe(200);expect(allowed.body).toMatchObject({workerHealthy:true,queued:2,due:1});expect(fetcher).toHaveBeenCalledTimes(1);
   });

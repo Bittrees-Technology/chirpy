@@ -101,3 +101,46 @@ and the actual adapter remain required before activation. Reconciliation must
 use preserved immutable scope/receipt references and authoritative MTA evidence;
 it cannot depend on an expired or deleted message payload. The existing Resend
 worker does not emit this new outcome yet.
+
+## Provider binding before SMTP integration
+
+New outbound jobs carry a private `deliveryProvider` binding. The current
+`resend-v1` binding is an HMAC under the mail data key over the service, normalized
+sender and provider credential. Neither the raw credential nor this binding is
+included in browser receipts or worker status. The worker captures the original
+credential, sender, service and encryption key before asynchronous operations and checks the binding both in
+its atomic Redis claim and before provider handoff.
+
+Only `CHIRPY_MAIL_PROVIDER=resend` is implemented by the current HTTP worker;
+omitting the setting keeps that default. Empty, misspelled, SMTP or other values
+fail configuration rather than falling back to Resend. SMTP configuration is not
+ready for activation yet.
+
+A missing, malformed or different binding holds the queue without changing the
+job, payload, lease, attempts, timestamps or outcome, and without sending or
+refreshing the successful-worker heartbeat. Authenticated worker status reports
+`providerBlocked: true` and unhealthy when the head pending job has a different
+or absent binding. This also catches a mismatch immediately after a previous
+successful tick. The existing payload/receipt retention still applies; holding a
+job does not prolong retention or establish whether it was previously sent.
+
+Pause forwarding before deploying this migration if unpinned jobs exist. Do not
+stamp them with today's provider settings: those settings do not prove the
+original account, credential or delivery outcome. Reconcile against authoritative
+provider evidence and original configuration. Existing receipts remain readable;
+no migration tool automatically rewrites their routing or manufactures success.
+
+Review pending jobs before changing the provider credential, sender, service or
+data key. Even a credential rotation within the same account is conservatively
+held; restoring the exact original configuration allows a still-authorized,
+unexpired job to proceed through its original route. If the original credential
+was compromised or withdrawn, do not restore it just to drain the queue; keep
+sending paused and reconcile the held jobs. Opt-out and signed outcome queries
+retain their usual authority checks.
+
+This is currently one provider and one queue. A foreign/legacy head job blocks
+later automatic processing until reviewed; it must not be skipped, deleted or
+silently rebound to improve the health indicator. Separate provider scheduling,
+SMTP instance binding and journal-first recovery of interrupted claims are still
+required for the Acer worker. Do not turn on simultaneous Resend/SMTP workers
+against this queue or treat this guard as a completed SMTP migration.

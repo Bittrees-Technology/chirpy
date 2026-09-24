@@ -185,6 +185,56 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     expect((await service.execute({...c,id:'ef'.repeat(16)})).status).toBe('denied');
     await service.drain();expect((await status()).status).toBe('stopped');
   });
+  it.each(['credential','sender','data-key','unpinned','foreign','malformed'])('holds %s routing changes before claim without erasing queued evidence',async(kind)=>{
+    const provider=vi.fn(async()=>Response.json({id:'original-provider-acceptance'}));
+    const original=createMailService(config,redis,provider);await original.drain();await original.execute(c);
+    const initial=await status();expect(initial.deliveryProvider).toMatch(/^resend-v1:[a-f0-9]{64}$/);
+    expect(JSON.stringify(initial)).not.toContain(config.providerKey);
+    const changed={...config};
+    if(kind==='credential')changed.providerKey='different-provider-account-key';
+    if(kind==='sender')changed.from='different@example.com';
+    if(kind==='data-key')changed.key=Buffer.alloc(32,8);
+    if(kind==='unpinned')delete initial.deliveryProvider;
+    if(kind==='foreign')initial.deliveryProvider='smtp-v1:'+'1'.repeat(64);
+    if(kind==='malformed')initial.deliveryProvider={kind:'resend'};
+    await redis(['SET',key,JSON.stringify(initial),'KEEPTTL']);
+    const before=await redis(['GET',key]),payload=await redis(['GET',`${key}:payload`]),score=await redis(['ZSCORE',queue,key]),heartbeat=await redis(['GET',`${config.prefix}worker:last-success`]);
+    const worker=createMailService(changed,redis,provider);
+    const health=await worker.workerStatus();expect(health).toMatchObject({workerHealthy:false,providerBlocked:true});
+    if(typeof initial.deliveryProvider==='string')expect(JSON.stringify(health)).not.toContain(initial.deliveryProvider);expect(JSON.stringify(health)).not.toContain(c.to);
+    await expect(worker.drain()).rejects.toThrow('provider');
+    expect(provider).not.toHaveBeenCalled();expect(await redis(['GET',key])).toBe(before);expect(await redis(['GET',`${key}:payload`])).toBe(payload);
+    expect(await redis(['ZSCORE',queue,key])).toBe(score);expect(await redis(['GET',`${config.prefix}worker:last-success`])).toBe(heartbeat);
+    expect((await worker.execute(c)).status).toBe('queued');expect(await redis(['GET',`${config.prefix}quota:wallet:${wallet}`])).toBe('1');
+    if(['credential','sender','data-key'].includes(kind)){
+      expect((await original.workerStatus()).providerBlocked).toBe(false);
+      await original.drain();expect(provider).toHaveBeenCalledTimes(1);expect((await status()).status).toBe('accepted');
+    }
+  });
+  it('retains an attempted legacy job even after expiry/revocation instead of implying it never sent',async()=>{
+    const provider=vi.fn(async()=>Response.json({id:'possibly-accepted'}));let loseAck=true;
+    const flaky=async(args)=>{if(args[0]==='EVAL'&&args[1]===FINISH_MAIL&&loseAck){loseAck=false;throw Error('worker crash');}return redis(args);};
+    const original=createMailService(config,flaky,provider);await original.execute(c);await expect(original.drain()).rejects.toThrow('worker crash');
+    const job=await status();delete job.deliveryProvider;job.lockedUntil=0;job.createdAt=Date.now()-82801000;job.deadline=job.createdAt+82800000;
+    await redis(['SET',key,JSON.stringify(job),'KEEPTTL']);await redis(['ZADD',queue,'0',key]);await redis(['SET',bk,JSON.stringify({...binding,revoked:true})]);
+    const before=await redis(['GET',key]);await expect(original.drain()).rejects.toThrow('provider');
+    expect(provider).toHaveBeenCalledTimes(1);expect(await redis(['GET',key])).toBe(before);expect((await original.execute({...c,action:'status'})).status).toBe('sending');
+    expect(await redis(['GET',`${key}:payload`])).not.toBeNull();
+  });
+  it('checks binding atomically against a change between the worker read and claim',async()=>{
+    let changed=false;const provider=vi.fn();
+    const racing=async(args)=>{if(args[0]==='EVAL'&&args[1]===CLAIM_MAIL&&!changed){changed=true;const job=await status();job.deliveryProvider='smtp-v1:'+'2'.repeat(64);await redis(['SET',key,JSON.stringify(job),'KEEPTTL']);}return redis(args);};
+    const service=createMailService(config,racing,provider);await service.execute(c);
+    await expect(service.drain()).rejects.toThrow('provider');expect(provider).not.toHaveBeenCalled();expect((await status()).attempts).toBe(0);expect((await status()).status).toBe('queued');
+  });
+  it('captures provider credentials, sender, service and encryption key before asynchronous storage operations',async()=>{
+    const provider=vi.fn(async()=>Response.json({id:'provider-captured'}));const originalKey=config.providerKey,originalFrom=config.from;
+    let changed=false;const mutating=async(args)=>{if(!changed){changed=true;config.providerKey='replacement';config.from='replacement@example.com';config.provider='smtp';config.service='https://changed.example/api/mail';config.prefix='changed-private-prefix:';config.key=Buffer.alloc(32,9);}return redis(args);};
+    const service=createMailService(config,mutating,provider);await service.execute(c);await service.drain();
+    expect(provider).toHaveBeenCalledTimes(1);const options=provider.mock.calls[0][1];expect(options.headers.Authorization).toBe(`Bearer ${originalKey}`);expect(JSON.parse(options.body).from).toBe(originalFrom);expect(options.headers['Idempotency-Key']).toBe(`chirpy-mail/${hash(c.service)}/${wallet}/${c.id}`);expect(JSON.parse(options.body).text).toContain('https://chirpy.test/mail/optout/');
+    expect((await status()).status).toBe('accepted');
+  });
+
   it('one worker claims a job; acceptance purges content and preserves status',async()=>{
     const sent:any[]=[];const provider=async(_url,options)=>{sent.push(JSON.parse(options.body));await new Promise(r=>setTimeout(r,30));return {ok:true,json:async()=>({id:'provider-1'})};};
     const service=createMailService(config,redis,provider);await service.execute(c);
@@ -225,7 +275,7 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
     for(let i=0;i<5;i++){await readyAgain();await service.drain();}
     expect(calls).toBe(5);expect((await status()).status).toBe('stopped');expect(await redis(['GET',`${key}:payload`])).toBeNull();
     c.id=randomBytes(16).toString('hex');key=`${config.prefix}job:${hash(`${wallet}\n${c.id}`)}`;await service.execute(c);const j=await status();j.deadline=1;await redis(['SET',key,JSON.stringify(j),'KEEPTTL']);await service.drain();expect(calls).toBe(5);expect((await status()).status).toBe('stopped');
-    c.id=randomBytes(16).toString('hex');key=`${config.prefix}job:${hash(`${wallet}\n${c.id}`)}`;await service.execute(c);await createMailService({...config,key:Buffer.alloc(32)},redis,async()=>{calls++;throw Error('no');}).drain();expect(calls).toBe(5);
+    c.id=randomBytes(16).toString('hex');key=`${config.prefix}job:${hash(`${wallet}\n${c.id}`)}`;await service.execute(c);await expect(createMailService({...config,key:Buffer.alloc(32)},redis,async()=>{calls++;throw Error('no');}).drain()).rejects.toThrow('provider');expect(calls).toBe(5);expect((await status()).attempts).toBe(0);expect(await redis(['GET',`${key}:payload`])).not.toBeNull();
   });
   it('enforces distributed wallet and recipient quotas and removes expired jobs from the index',async()=>{
     const service=createMailService(config,redis);
@@ -238,7 +288,7 @@ describe.skipIf(!container)('real Redis email outbox',{timeout:30000},()=>{
   it.each(['normal','deadline','attempt-limit'])('preserves SMTP uncertainty through %s and never claims it again',async(kind)=>{
     const send=vi.fn(async()=>{throw Error('must not send');});
     const service=createMailService(config,redis,send);await service.execute(c);
-    const claim=await redis(['EVAL',CLAIM_MAIL,'5',key,queue,bk,`${key}:payload`,suppressionKey(config,c.to),'smtp-lease']);
+    const claim=await redis(['EVAL',CLAIM_MAIL,'5',key,queue,bk,`${key}:payload`,suppressionKey(config,c.to),'smtp-lease',(await status()).deliveryProvider]);
     expect(claim).not.toBeNull();
     const job=await status();
     if(kind==='deadline'){job.createdAt=Date.now()-82801000;job.deadline=job.createdAt+82800000;}
