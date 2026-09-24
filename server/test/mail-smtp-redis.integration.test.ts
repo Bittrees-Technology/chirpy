@@ -9,7 +9,7 @@ import {smtpFixture} from './helpers/smtp-fixture.js';
 import {initializeSmtpJournal} from '../../selfhost/mail-smtp-journal.mjs';
 import {readSmtpSettings,createSmtpAdapter} from '../../selfhost/mail-smtp-transport.mjs';
 import {mailConfig,createMailService,bindingKey,suppressionKey,hash} from '../mail-service.js';
-import {FINISH_MAIL,AUTHORIZE_SMTP,PIN_SMTP_REFERENCE,RECONCILE_SMTP_RECEIPT} from '../mail-store.js';
+import {CLAIM_MAIL,FINISH_MAIL,AUTHORIZE_SMTP,PIN_SMTP_REFERENCE,RECONCILE_SMTP_RECEIPT} from '../mail-store.js';
 const container=process.env.CHIRPY_TEST_REDIS_CONTAINER,exec=promisify(execFile),wallet=`0x${'3'.repeat(40)}`;
 describe.skipIf(!container)('SMTP queue, journal and TLS wire recovery',{timeout:30000},()=>{
  let wire:any,env:any,config:any,adapter:any,c:any,binding:any,key:string,queue:string,bk:string;
@@ -141,13 +141,16 @@ describe.skipIf(!container)('SMTP queue, journal and TLS wire recovery',{timeout
   expect(await racing.reconcile({apply:true})).toMatchObject({eligible:1,reconciled:0,conflicts:1});expect((await stored()).status).toBe('uncertain');expect(await redis(['ZCARD',queue+':uncertain'])).toBe(1);
   expect(await service().reconcile({apply:true})).toMatchObject({reconciled:1});expect((await stored()).operatorMarker).toBe('concurrent');
  });
- it.each(['provider','missing-reference','wrong-reference','wrong-receipt'])('preserves a hold with conflicting %s evidence',async kind=>{
+ it.each(['provider','missing-reference','wrong-reference','wrong-receipt','wallet-shape','id-shape'])('preserves a hold with conflicting %s evidence',async kind=>{
   await lateOutcome();const j=await stored();
+  if(kind==='wallet-shape')j.wallet=[j.wallet];
+  if(kind==='id-shape')j.id=[j.id];
   if(kind==='provider')j.deliveryProvider='smtp-v1:'+'00'.repeat(32);
   if(kind==='missing-reference')delete j.smtpReference;
   if(kind==='wrong-reference')j.smtpReference.digest='00'.repeat(32);
   if(kind==='wrong-receipt')j.providerId='smtp_'+'00'.repeat(16);
   await redis(['SET',key,JSON.stringify(j),'KEEPTTL']);const before=await redis(['GET',key]);
+  if(['wallet-shape','id-shape'].includes(kind))await expect(service().indexHolds({apply:true})).rejects.toThrow();
   if(['provider','missing-reference'].includes(kind))expect(await service().reconcile({apply:true})).toMatchObject({conflicts:1,reconciled:0});else await expect(service().reconcile({apply:true})).rejects.toThrow();
   expect(await redis(['GET',key])).toBe(before);expect(await redis(['ZCARD',queue+':uncertain'])).toBe(1);expect(wire.state.messages).toHaveLength(1);
  });
@@ -201,6 +204,19 @@ describe.skipIf(!container)('SMTP queue, journal and TLS wire recovery',{timeout
   let indexed=0;do{const page=await service().indexHolds({cursor,apply:true});indexed+=page.indexed;cursor=page.cursor;}while(cursor!=='0');
   expect(indexed).toBe(1);expect(await redis(['GET',key])).toBe(before);expect(await redis(['PTTL',key])).toBeLessThanOrEqual(ttl);expect((await service().workerStatus()).workerHealthy).toBe(false);expect(wire.state.messages).toHaveLength(1);
   do{const page=await service().indexHolds({cursor,apply:true});expect(page.indexed).toBe(0);cursor=page.cursor;}while(cursor!=='0');
+ });
+
+ it.each(['wallet-shape','id-shape','key-mismatch'])('rejects corrupt %s before claiming or submitting a queued job',async kind=>{
+  await service().execute(c);const j=await stored();if(kind==='wallet-shape')j.wallet=[j.wallet];if(kind==='id-shape')j.id=[j.id];if(kind==='key-mismatch')j.id='ff'.repeat(16);
+  await redis(['SET',key,JSON.stringify(j),'KEEPTTL']);const before=await redis(['GET',key]);
+  await expect(service().drain()).rejects.toThrow('owner');expect(await redis(['GET',key])).toBe(before);expect(wire.state.connections).toBe(0);
+ });
+ it('atomically rejects an owner change between reading and claiming the same provider job',async()=>{
+  await service().execute(c);const racing=service(async args=>{
+   if(args[0]==='EVAL'&&args[1]===CLAIM_MAIL){const j=await stored();j.id='ff'.repeat(16);await redis(['SET',key,JSON.stringify(j),'KEEPTTL']);}
+   return redis(args);
+  });
+  await expect(racing.drain()).rejects.toThrow('claim');expect(await stored()).toMatchObject({status:'queued',attempts:0});expect(wire.state.connections).toBe(0);
  });
 
 });

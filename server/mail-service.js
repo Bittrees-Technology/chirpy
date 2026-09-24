@@ -170,12 +170,15 @@ export function createMailService(config, kv = mailKv(config), request = fetch, 
       for (const key of keys) {
         if (typeof key!=='string' || !key.startsWith(`${routing.prefix}job:`)) throw Error('invalid job');
         const raw=await kv(['GET',key]); if (!raw) { await kv(['ZREM',queue,key]); continue; }
-        const known=JSON.parse(raw); const lease=randomBytes(16).toString('hex');
-        const claimed=await kv(['EVAL',CLAIM_MAIL,'5',key,queue,known.bindingKey,`${key}:payload`,known.suppressionKey||`${routing.prefix}legacy-suppression-placeholder`,lease,deliveryProvider]);
+        const known=JSON.parse(raw);
+        if(!address(known.wallet)||!id(known.id)||jobKey(known)!==key)throw Error('Invalid queued delivery owner');
+        const lease=randomBytes(16).toString('hex');
+        const claimed=await kv(['EVAL',CLAIM_MAIL,'5',key,queue,known.bindingKey,`${key}:payload`,known.suppressionKey||`${routing.prefix}legacy-suppression-placeholder`,lease,deliveryProvider,known.wallet,known.id]);
         if (!claimed) continue;
         if(claimed.length===1&&claimed[0]==='provider-mismatch')throw Error('Delivery provider does not match the queued request');
         if(claimed.length!==2)throw Error('Invalid delivery claim');
         const [record,encrypted]=claimed; const job=JSON.parse(record);
+        if(!address(job.wallet)||!id(job.id)||jobKey(job)!==key)throw Error('Invalid claimed delivery owner');
         if(job.deliveryProvider!==deliveryProvider)throw Error('Delivery provider does not match the queued request');
         if(routing.provider==='smtp'){
           const requestId=`chirpy-mail/${hash(routing.service)}/${job.wallet}/${job.id}`;

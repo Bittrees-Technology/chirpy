@@ -63,6 +63,7 @@ local j=cjson.decode(raw)
 if j.status~='queued' and j.status~='sending' then redis.call('ZREM',KEYS[2],KEYS[1]); return nil end
 -- Check before lease, expiry, consent or payload processing: preserve foreign/legacy evidence.
 if not ARGV[2] or not ((string.len(ARGV[2])==74 and string.match(ARGV[2],'^resend%-v1:[a-f0-9]+$')) or (string.len(ARGV[2])==72 and string.match(ARGV[2],'^smtp%-v1:[a-f0-9]+$'))) or j.deliveryProvider~=ARGV[2] then return {'provider-mismatch'} end
+if ARGV[3] and (j.wallet~=ARGV[3] or j.id~=ARGV[4]) then return {'scope-mismatch'} end
 if j.status=='sending' and tonumber(j.lockedUntil or 0)>now then return nil end
 local score=redis.call('ZSCORE',KEYS[2],KEYS[1]); if score and tonumber(score)>now then return nil end
 -- SMTP must recover durable results before expiration, revocation or payload removal.

@@ -16,7 +16,7 @@ export async function reconcileSmtpReceipts({routing,deliveryProvider,smtp,kv},{
   const raw=await kv(['GET',key]);if(raw===null){result.orphaned++;continue;}
   if(typeof raw!=='string'||Buffer.byteLength(raw)>16384)fail();
   const j=JSON.parse(raw);
-  if(!/^0x[a-f0-9]{40}$/.test(j.wallet)||!/^[a-f0-9]{32}$/.test(j.id)||key!==prefix+hash(`${j.wallet}\n${j.id}`))fail();
+  if(typeof j.wallet!=='string'||!/^0x[a-f0-9]{40}$/.test(j.wallet)||typeof j.id!=='string'||!/^[a-f0-9]{32}$/.test(j.id)||key!==prefix+hash(`${j.wallet}\n${j.id}`))fail();
   parseMailReceiptDetails({version:1,createdAt:j.createdAt,updatedAt:j.updatedAt??null,attempts:j.attempts,retryUntil:j.deadline},j.status);
   if(j.status!=='uncertain'||j.deliveryProvider!==deliveryProvider||!j.smtpReference){result.conflicts++;continue;}
   const requestId=`chirpy-mail/${hash(routing.service)}/${j.wallet}/${j.id}`;
@@ -46,7 +46,7 @@ export async function indexSmtpHolds({routing,deliveryProvider,kv},{apply=false,
  for(const key of keys){
   const raw=await kv(['GET',key]);if(raw===null)continue;
   if(typeof raw!=='string'||Buffer.byteLength(raw)>16384)fail();const j=JSON.parse(raw);
-  if(!/^0x[a-f0-9]{40}$/.test(j.wallet)||!/^[a-f0-9]{32}$/.test(j.id)||key!==prefix+hash(`${j.wallet}\n${j.id}`))fail();
+  if(typeof j.wallet!=='string'||!/^0x[a-f0-9]{40}$/.test(j.wallet)||typeof j.id!=='string'||!/^[a-f0-9]{32}$/.test(j.id)||key!==prefix+hash(`${j.wallet}\n${j.id}`))fail();
   parseMailReceiptDetails({version:1,createdAt:j.createdAt,updatedAt:j.updatedAt??null,attempts:j.attempts,retryUntil:j.deadline},j.status);
   if(j.status!=='uncertain')continue;
   if(j.deliveryProvider!==deliveryProvider){result.foreign++;continue;}
