@@ -46,7 +46,7 @@ test.beforeEach(async ({ page }) => {
 
 test('selects a wallet, isolates events, restores the same provider, and stays disconnected after disconnect', async ({ page }, testInfo) => {
   await page.goto('/');
-  await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: /Settings/ }).click();
   const connect = page.getByRole('button', { name: 'Connect wallet', exact: true });
   const address = page.getByRole('textbox', { name: 'Address', exact: true });
   await expect(connect).toBeDisabled();
@@ -65,25 +65,26 @@ test('selects a wallet, isolates events, restores the same provider, and stays d
   await connect.click();
   await expect(address).toHaveValue(b);
   await page.reload();
-  await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: /Settings/ }).click();
   await expect(address).toHaveValue(b);
   await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
   await page.reload();
-  await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: /Settings/ }).click();
   await expect(connect).toBeVisible();
   await expect(address).not.toHaveValue(b);
 });
 
-test('does not substitute the default wallet when the selected extension is absent; discovers it later', async ({ page }) => {
+test('does not substitute the default wallet when the selected extension is absent; discovers it later', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: /Settings/ }).click();
   await page.getByRole('combobox', { name: 'Browser wallet', exact: true }).selectOption({ label: 'Second wallet (org.second.wallet)' });
   await page.getByRole('button', { name: 'Connect wallet', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Address', exact: true })).toHaveValue(b);
+  await page.screenshot({ path: testInfo.outputPath('wallet-selected-mobile.png'), fullPage: true });
   await page.evaluate(() => sessionStorage.setItem('hideSecondWallet', 'true'));
   await page.reload();
-  await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: /Settings/ }).click();
   await expect(page.getByRole('button', { name: 'Connect wallet', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Address', exact: true })).not.toHaveValue(a);
   await page.evaluate(() => (window as any).__announceSecond());
