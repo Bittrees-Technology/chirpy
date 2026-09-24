@@ -3,7 +3,7 @@ import { mailIdentityConfig, mailIdentityScope, resolveMailIdentity } from './ma
 import { createHash, createHmac, randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { recoverMessageAddress } from 'viem';
 import { normalizeMailAddress, mailSignMessage, parseMailReceiptDetails, parseMailDeliveryDetails } from '../packages/core/src/mailAuth.js';
-import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_HEARTBEAT, APPLY_MAIL_OPTOUT, LIST_MAIL_HISTORY } from './mail-store.js';
+import { ENQUEUE_MAIL, CLAIM_MAIL, FINISH_MAIL, MAIL_WORKER_STATUS, MAIL_WORKER_HEARTBEAT, APPLY_MAIL_OPTOUT, LIST_MAIL_HISTORY, PIN_SMTP_REFERENCE, AUTHORIZE_SMTP } from './mail-store.js';
 export const hash = value => createHash('sha256').update(value).digest('hex');
 const address = value => typeof value === 'string' && /^0x[a-f0-9]{40}$/.test(value);
 const id = value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
@@ -14,10 +14,14 @@ export function mailConfig(env = process.env, { deliveryIdentity = true } = {}) 
     const kvUrl = new URL(env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL);
     const from = normalizeMailAddress(env.CHIRPY_MAIL_FROM);
     const provider = env.CHIRPY_MAIL_PROVIDER ?? 'resend';
-    if(provider!=='resend')return null; // Unsupported providers never fall back to Resend.
+    if(!['resend','smtp'].includes(provider))return null; // Never fall back across providers.
+    const smtpProfile=env.CHAT_SMTP_PROFILE;
+    if(provider==='smtp'&&!/^[a-f0-9]{64}$/.test(smtpProfile||''))return null;
+    const identity=deliveryIdentity?mailIdentityConfig(env):null;
+    if(provider==='smtp'&&deliveryIdentity&&!identity)return null;
     const senders = String(env.CHIRPY_MAIL_SENDERS || '').split(',').map(v => v.trim().toLowerCase());
-    if (service.protocol !== 'https:' || service.pathname !== '/api/mail' || service.search || service.hash || service.username || service.password || kvUrl.protocol !== 'https:' || kvUrl.username || kvUrl.password || !from || !senders.length || !senders.every(address) || !/^[a-f0-9]{64}$/.test(env.CHIRPY_MAIL_DATA_KEY || '') || (env.CHIRPY_MAIL_WORKER_SECRET || '').length < 32 || !env.RESEND_API_KEY || !(env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN)) return null;
-    return { provider, identity: deliveryIdentity ? mailIdentityConfig(env) : null, service: service.href, kvUrl: kvUrl.href, kvToken: env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN, from, senders, key: Buffer.from(env.CHIRPY_MAIL_DATA_KEY, 'hex'), providerKey: env.RESEND_API_KEY, workerSecret: env.CHIRPY_MAIL_WORKER_SECRET, prefix: `chirpy:mail:${hash(service.href)}:` };
+    if (service.protocol !== 'https:' || service.pathname !== '/api/mail' || service.search || service.hash || service.username || service.password || kvUrl.protocol !== 'https:' || kvUrl.username || kvUrl.password || !from || !senders.length || !senders.every(address) || !/^[a-f0-9]{64}$/.test(env.CHIRPY_MAIL_DATA_KEY || '') || (env.CHIRPY_MAIL_WORKER_SECRET || '').length < 32 || (provider==='resend'&&!env.RESEND_API_KEY) || !(env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN)) return null;
+    return { provider, smtpProfile, identity, service: service.href, kvUrl: kvUrl.href, kvToken: env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN, from, senders, key: Buffer.from(env.CHIRPY_MAIL_DATA_KEY, 'hex'), providerKey: env.RESEND_API_KEY, workerSecret: env.CHIRPY_MAIL_WORKER_SECRET, prefix: `chirpy:mail:${hash(service.href)}:` };
   } catch { return null; }
 }
 export function mailKv(config, request = fetch) {
@@ -70,13 +74,14 @@ function decrypt(config, raw, aad) {
   const e=JSON.parse(raw); const cipher=createDecipheriv('aes-256-gcm',config.key,Buffer.from(e.iv,'hex')); cipher.setAAD(Buffer.from(aad)); cipher.setAuthTag(Buffer.from(e.tag,'hex'));
   return JSON.parse(Buffer.concat([cipher.update(Buffer.from(e.data,'base64')),cipher.final()]).toString());
 }
-export function createMailService(config, kv = mailKv(config), request = fetch) {
+export function createMailService(config, kv = mailKv(config), request = fetch, smtp = null) {
   // Capture delivery routing before any asynchronous storage or authority call.
   // Credential rotation may change provider accounts, so it is not an implicit migration.
-  if(config.provider!=='resend'||typeof config.providerKey!=='string'||!config.providerKey||!Buffer.isBuffer(config.key)||config.key.length!==32)throw Error('Invalid delivery provider configuration');
+  if(!['resend','smtp'].includes(config.provider)||config.provider==='resend'&&(typeof config.providerKey!=='string'||!config.providerKey)||config.provider==='smtp'&&!/^[a-f0-9]{64}$/.test(config.smtpProfile||'')||!Buffer.isBuffer(config.key)||config.key.length!==32)throw Error('Invalid delivery provider configuration');
   const routing={...config,key:Buffer.from(config.key)};
   const providerKey=routing.providerKey,from=routing.from;
-  const deliveryProvider='resend-v1:'+createHmac('sha256',routing.key).update(JSON.stringify(['Chat mail provider v1',routing.service,from,providerKey])).digest('hex');
+  const deliveryProvider=routing.provider+'-v1:'+createHmac('sha256',routing.key).update(JSON.stringify(['Chat mail provider v1',routing.service,from,routing.provider==='smtp'?routing.smtpProfile:providerKey])).digest('hex');
+  if(smtp&&(routing.provider!=='smtp'||smtp.profile!==routing.smtpProfile))throw Error('SMTP transport profile mismatch');
   const queue = `${routing.prefix}queue`;
   const jobKey = c => `${routing.prefix}job:${hash(`${c.wallet}\n${c.id}`)}`;
   const heartbeat = `${routing.prefix}worker:last-success`;
@@ -143,9 +148,11 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
       return {status,id:c.id};
     },
     async drain() {
+      // Vercel can enqueue/read SMTP receipts, but only the private adapter may claim work.
+      if(routing.provider==='smtp'){if(!smtp)throw Error('Private SMTP worker required');smtp.check();}
       const clock=await kv(['TIME']); const now=Number(clock[0])*1000+Math.floor(Number(clock[1])/1000);
       const keys=await kv(['ZRANGEBYSCORE',queue,'-inf',String(now),'LIMIT','0','1']);
-      let processed=0;
+      let processed=0,uncertain=0;
       for (const key of keys) {
         if (typeof key!=='string' || !key.startsWith(`${routing.prefix}job:`)) throw Error('invalid job');
         const raw=await kv(['GET',key]); if (!raw) { await kv(['ZREM',queue,key]); continue; }
@@ -153,8 +160,38 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
         const claimed=await kv(['EVAL',CLAIM_MAIL,'5',key,queue,known.bindingKey,`${key}:payload`,known.suppressionKey||`${routing.prefix}legacy-suppression-placeholder`,lease,deliveryProvider]);
         if (!claimed) continue;
         if(claimed.length===1&&claimed[0]==='provider-mismatch')throw Error('Delivery provider does not match the queued request');
+        if(claimed.length!==2)throw Error('Invalid delivery claim');
         const [record,encrypted]=claimed; const job=JSON.parse(record);
         if(job.deliveryProvider!==deliveryProvider)throw Error('Delivery provider does not match the queued request');
+        if(routing.provider==='smtp'){
+          const requestId=`chirpy-mail/${hash(routing.service)}/${job.wallet}/${job.id}`;
+          let result={status:'unknown'};
+          if(job.smtpReference){
+            if(job.smtpReference.requestId!==requestId||job.smtpReference.deadline!==job.deadline)throw Error('Invalid SMTP recovery scope');
+            result=smtp.recover(job.smtpReference);
+          }
+          if(['unknown','retryable'].includes(result.status)){
+            // No previous potentially accepted submission, or definitive nonacceptance.
+            if(!encrypted||Date.now()>=job.deadline||!config.senders.includes(job.wallet))result={status:'denied'};
+            else {
+              const payload=decrypt(routing,encrypted,key);
+              const command={requestId,deadline:job.deadline,payload};
+              const reference=smtp.reference(command);
+              if(await kv(['EVAL',PIN_SMTP_REFERENCE,'1',key,lease,JSON.stringify(reference)])!==1)throw Error('SMTP reference or lease changed');
+              result=await smtp.submit(command,async()=>{
+                const identityAllowed=!!config.identity&&job.identityService===config.identity.url&&await resolveMailIdentity(config.identity,job.identityScope,payload.to[0],request);
+                const br=await kv(['GET',job.bindingKey]);const binding=br?JSON.parse(br):null;
+                if(!identityAllowed||!config.senders.includes(job.wallet)||!validMailBinding(binding,job.wallet,payload.to[0])||binding.version!==job.bindingVersion)return false;
+                return await kv(['EVAL',AUTHORIZE_SMTP,'4',key,job.bindingKey,suppressionKey(routing,payload.to[0]),`${key}:payload`,lease,reference.digest])===1;
+              });
+            }
+          }
+          const outcomes={accepted:'accepted',uncertain:'uncertain',rejected:'stopped',denied:'stopped',expired:'stopped',retryable:'queued'};
+          if(!Object.hasOwn(outcomes,result.status))throw Error('Invalid SMTP outcome');
+          // Adapter/journal/storage errors deliberately leave the claim for recovery.
+          if(await kv(['EVAL',FINISH_MAIL,'3',key,queue,`${key}:payload`,lease,outcomes[result.status],result.id||''])!==1)throw Error('SMTP completion lease changed');
+          processed++;if(result.status==='uncertain')uncertain++;continue;
+        }
         let outcome='queued'; let providerId='';
         try {
           if (!config.senders.includes(job.wallet)) outcome='stopped';
@@ -177,7 +214,7 @@ export function createMailService(config, kv = mailKv(config), request = fetch) 
         await kv(['EVAL',FINISH_MAIL,'3',key,queue,`${key}:payload`,lease,outcome,providerId]); processed++;
       }
       await kv(['EVAL',MAIL_WORKER_HEARTBEAT,'1',heartbeat]);
-      return {processed};
+      return routing.provider==='smtp'?{processed,uncertain}:{processed};
     },
   };
 }

@@ -38,6 +38,18 @@ describe('wallet email authorization',()=>{
     expect(()=>createMailService({...mailConfig(env),provider:'smtp'},kv,request)).toThrow();
     expect(kv).not.toHaveBeenCalled();expect(request).not.toHaveBeenCalled();
   });
+  it('requires a pinned SMTP profile and Wallet authority; HTTP drain cannot touch SMTP queue state',async()=>{
+    const smtp={...env,RESEND_API_KEY:'',CHIRPY_MAIL_PROVIDER:'smtp',CHAT_SMTP_PROFILE:'ef'.repeat(32),CHIRPY_MAIL_IDENTITY_URL:'https://wallet.example/api/service/delivery',CHIRPY_MAIL_IDENTITY_SECRET:'synthetic'.repeat(8)};
+    expect(mailConfig(smtp)?.provider).toBe('smtp');
+    expect(mailConfig({...smtp,CHIRPY_MAIL_IDENTITY_URL:'',CHIRPY_MAIL_IDENTITY_SECRET:''})).toBeNull();
+    expect(mailConfig({...smtp,CHAT_SMTP_PROFILE:''})).toBeNull();
+    for(const [key,value] of Object.entries(smtp))vi.stubEnv(key,value);
+    const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);const response=res();
+    await worker({method:'POST',headers:{authorization:'Bearer '+smtp.CHIRPY_MAIL_WORKER_SECRET},body:{action:'tick'}},response);
+    expect(response.code).toBe(503);expect(fetcher).not.toHaveBeenCalled();
+    // Existing withdrawal paths still work independently of a Wallet outage.
+    expect(mailConfig({...smtp,CHIRPY_MAIL_IDENTITY_URL:'broken'},{deliveryIdentity:false})).not.toBeNull();
+  });
   it('binds the wallet signature to service, recipient, content, ID and expiry',async()=>{
     const c=command();const sig=await wallet.signMessage({message:mailSignMessage(c)});
     expect(await verifyMailCommand(c,sig,c.service)).toBe(true);

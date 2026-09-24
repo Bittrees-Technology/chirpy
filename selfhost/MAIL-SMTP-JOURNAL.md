@@ -1,9 +1,9 @@
 # SMTP submission journal
 
-`mail-smtp-journal.mjs` is the durable submission boundary for the planned
-Mail-backed outbound worker. It requires Node 24 and local persistent storage.
-It is not wired into the production worker yet: the current provider remains
-Resend. This change does not enable forwarding or establish email acceptance.
+`mail-smtp-journal.mjs` is the durable submission boundary for the private
+Acer SMTP worker. It requires Node 24 and local persistent storage. The adapter,
+queue recovery and worker are implemented; deployment remains disabled until
+[operational and live acceptance](MAIL-OUTBOUND-DEPLOYMENT.md) is complete.
 
 ## Storage and provisioning
 
@@ -72,8 +72,7 @@ older valid copy of the same journal. A coordinated queue/journal/MTA recovery
 procedure must account for all submissions after the backup before resuming.
 Do not claim exactly-once delivery or restore safety from this journal alone.
 
-Remaining work includes the actual TLS SMTP adapter, per-job provider pinning,
-the isolated Acer outbound worker, recovery of interrupted queue claims,
+Remaining work includes isolated Acer activation,
 reconciliation/backup procedures, sender and bounce configuration,
 and authorized live delivery/withdrawal acceptance. Keep launch and forwarding
 gated until those checks pass.
@@ -94,15 +93,17 @@ resending this request, preserves its lookup ID, and keeps that protection after
 a later connection failure. A new composer requires an explicit action and
 retains the previous ID in recovery history.
 
-This contract does not yet connect the journal to a worker. An interrupted SMTP
-claim must be recovered against the journal before ordinary queue expiry or
-revocation can classify it. That provider-specific recovery, provider pinning
-and the actual adapter remain required before activation. Reconciliation must
+The private worker recovers interrupted SMTP claims against the journal before
+ordinary queue expiry or revocation can classify them. Before submission, Redis
+preserves `reference(command)`: the original request ID, deadline and journal-keyed
+scope digest. `recover(reference)` reads a known outcome without message content;
+a changed digest/deadline fails closed. A missing or unavailable journal is an
+error, never evidence of nonacceptance. Reconciliation must
 use preserved immutable scope/receipt references and authoritative MTA evidence;
 it cannot depend on an expired or deleted message payload. The existing Resend
 worker does not emit this new outcome yet.
 
-## Provider binding before SMTP integration
+## Provider binding
 
 New outbound jobs carry a private `deliveryProvider` binding. The current
 `resend-v1` binding is an HMAC under the mail data key over the service, normalized
@@ -111,10 +112,13 @@ included in browser receipts or worker status. The worker captures the original
 credential, sender, service and encryption key before asynchronous operations and checks the binding both in
 its atomic Redis claim and before provider handoff.
 
-Only `CHIRPY_MAIL_PROVIDER=resend` is implemented by the current HTTP worker;
-omitting the setting keeps that default. Empty, misspelled, SMTP or other values
-fail configuration rather than falling back to Resend. SMTP configuration is not
-ready for activation yet.
+`CHIRPY_MAIL_PROVIDER=resend` remains the default when omitted. Explicit `smtp`
+requires the pinned `CHAT_SMTP_PROFILE` and live Wallet identity configuration.
+The HTTP worker can inspect SMTP queue health but refuses to drain before any
+queue access; only the private adapter can claim SMTP work. Empty, misspelled or
+unknown choices fail closed. The SMTP profile binds relay, port, TLS identity and
+trust, credentials, journal ID/key, sender, service and data key without exposing
+SMTP credentials to Vercel.
 
 A missing, malformed or different binding holds the queue without changing the
 job, payload, lease, attempts, timestamps or outcome, and without sending or
@@ -140,7 +144,6 @@ retain their usual authority checks.
 
 This is currently one provider and one queue. A foreign/legacy head job blocks
 later automatic processing until reviewed; it must not be skipped, deleted or
-silently rebound to improve the health indicator. Separate provider scheduling,
-SMTP instance binding and journal-first recovery of interrupted claims are still
-required for the Acer worker. Do not turn on simultaneous Resend/SMTP workers
-against this queue or treat this guard as a completed SMTP migration.
+silently rebound to improve the health indicator. Use a paused, single-provider
+cutover after accounting for the old queue. Do not run simultaneous Resend/SMTP
+workers against this queue or treat implemented recovery as live acceptance.

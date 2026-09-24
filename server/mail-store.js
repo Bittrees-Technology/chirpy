@@ -12,7 +12,7 @@ local b=cjson.decode(raw)
 if b.version~=ARGV[3] or b.revoked or tonumber(b.expiresAt)<=now then return {'denied'} end
 if tonumber(redis.call('GET',KEYS[4]) or '0')>=20 or tonumber(redis.call('GET',KEYS[5]) or '0')>=50 then return {'limited'} end
 local j=cjson.decode(ARGV[2])
-if type(j.deliveryProvider)~='string' or string.len(j.deliveryProvider)~=74 or not string.match(j.deliveryProvider,'^resend%-v1:[a-f0-9]+$') then return {'provider-mismatch'} end
+if type(j.deliveryProvider)~='string' or not ((string.len(j.deliveryProvider)==74 and string.match(j.deliveryProvider,'^resend%-v1:[a-f0-9]+$')) or (string.len(j.deliveryProvider)==72 and string.match(j.deliveryProvider,'^smtp%-v1:[a-f0-9]+$'))) then return {'provider-mismatch'} end
 j.createdAt=now; j.updatedAt=now; j.deadline=now+82800000; j.status='queued'; j.attempts=0
 redis.call('SET',KEYS[1],cjson.encode(j),'PX',2592000000)
 redis.call('SET',KEYS[6],ARGV[4],'PX',86400000)
@@ -62,9 +62,20 @@ local raw=redis.call('GET',KEYS[1]); if not raw then redis.call('ZREM',KEYS[2],K
 local j=cjson.decode(raw)
 if j.status~='queued' and j.status~='sending' then redis.call('ZREM',KEYS[2],KEYS[1]); return nil end
 -- Check before lease, expiry, consent or payload processing: preserve foreign/legacy evidence.
-if not ARGV[2] or string.len(ARGV[2])~=74 or not string.match(ARGV[2],'^resend%-v1:[a-f0-9]+$') or j.deliveryProvider~=ARGV[2] then return {'provider-mismatch'} end
+if not ARGV[2] or not ((string.len(ARGV[2])==74 and string.match(ARGV[2],'^resend%-v1:[a-f0-9]+$')) or (string.len(ARGV[2])==72 and string.match(ARGV[2],'^smtp%-v1:[a-f0-9]+$'))) or j.deliveryProvider~=ARGV[2] then return {'provider-mismatch'} end
 if j.status=='sending' and tonumber(j.lockedUntil or 0)>now then return nil end
 local score=redis.call('ZSCORE',KEYS[2],KEYS[1]); if score and tonumber(score)>now then return nil end
+-- SMTP must recover durable results before expiration, revocation or payload removal.
+if string.sub(ARGV[2],1,8)=='smtp-v1:' then
+ if j.status=='queued' then
+  if j.attempts>=5 then return {'invalid-attempts'} end
+  j.attempts=j.attempts+1
+ end
+ if j.attempts<1 or j.attempts>5 then return {'invalid-attempts'} end
+ j.status='sending'; j.updatedAt=now; j.lease=ARGV[1]; j.lockedUntil=now+60000
+ redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); redis.call('ZADD',KEYS[2],j.lockedUntil,KEYS[1])
+ return {cjson.encode(j),redis.call('GET',KEYS[4]) or false}
+end
 local br=redis.call('GET',KEYS[3]); local b=br and cjson.decode(br) or {}
 local payload=redis.call('GET',KEYS[4])
 if redis.call('EXISTS',KEYS[5])==1 or j.deadline<=now or j.attempts>=5 or not payload or b.version~=j.bindingVersion or b.revoked or tonumber(b.expiresAt or 0)<=now then
@@ -113,4 +124,26 @@ export const APPLY_MAIL_OPTOUT = `
 if redis.call('GET',KEYS[1])~=KEYS[2] then return 'unknown' end
 redis.call('SET',KEYS[2],ARGV[1],'NX')
 return 'opted-out'
+`;
+
+// Persist the content-free recovery reference before the journal can begin a send.
+export const PIN_SMTP_REFERENCE = `
+local raw=redis.call('GET',KEYS[1]); if not raw then return 0 end
+local j=cjson.decode(raw)
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
+if j.status~='sending' or j.lease~=ARGV[1] or j.lockedUntil<=now then return 0 end
+local r=cjson.decode(ARGV[2])
+if j.smtpReference and (j.smtpReference.requestId~=r.requestId or j.smtpReference.deadline~=r.deadline or j.smtpReference.digest~=r.digest) then return 0 end
+j.smtpReference=r; redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); return 1
+`;
+// Final atomic local consent/lease check after the external Wallet authority call.
+export const AUTHORIZE_SMTP = `
+local raw=redis.call('GET',KEYS[1]); if not raw then return 0 end
+local j=cjson.decode(raw)
+local clock=redis.call('TIME'); local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
+if j.status~='sending' or j.lease~=ARGV[1] or j.lockedUntil<=now or j.deadline<=now or not j.smtpReference or j.smtpReference.digest~=ARGV[2] then return 0 end
+if redis.call('EXISTS',KEYS[3])==1 or redis.call('EXISTS',KEYS[4])~=1 then return 0 end
+local br=redis.call('GET',KEYS[2]); local b=br and cjson.decode(br) or {}
+if b.version~=j.bindingVersion or b.revoked or tonumber(b.expiresAt or 0)<=now then return 0 end
+return 1
 `;
