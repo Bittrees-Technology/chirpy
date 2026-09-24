@@ -58,6 +58,12 @@ export function openSmtpJournal({filename,key:rawKey,journalId,now=Date.now}){
  function live(){if(closed)fail();const file=privateFile(filename);if(file.dev!==identity.dev||file.ino!==identity.ino)fail();}
  function read(s){live();const row=db.prepare('SELECT * FROM submissions WHERE request_key=?').get(s.requestKey);if(row&&(row.digest!==s.digest||row.deadline!==s.deadline))throw Error('SMTP request conflicts with its original scope');if(row)projection(row);return row;}
  return {
+  check(){live();},
+  reference(command){live();const s=scope(key,command);return {requestId:command.requestId,deadline:s.deadline,digest:s.digest};},
+  recover(reference){
+   if(!reference||Object.keys(reference).sort().join(',')!=='deadline,digest,requestId'||typeof reference.requestId!=='string'||!/^chirpy-mail\/[a-f0-9]{64}\/0x[a-f0-9]{40}\/[a-f0-9]{32}$/.test(reference.requestId)||!Number.isSafeInteger(reference.deadline)||reference.deadline<=0||typeof reference.digest!=='string'||!/^[a-f0-9]{64}$/.test(reference.digest))fail();
+   const row=read({requestKey:mac(key,'request',reference.requestId),digest:reference.digest,deadline:reference.deadline});return row?projection(row):{status:'unknown'};
+  },
   inspect(command){const row=read(scope(key,command));return row?projection(row):{status:'unknown'};},
   async submit(command,{authorize,send,signal}={}){
    if(typeof authorize!=='function'||typeof send!=='function')fail();

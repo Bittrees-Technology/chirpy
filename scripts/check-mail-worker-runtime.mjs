@@ -43,6 +43,11 @@ try{
       cwd:app,env:{...env,CHAT_MAIL_INBOUND_WORKER_ENABLED:'0'},encoding:'utf8',timeout:10000});
     if(result.error||result.status!==(mode==='--once'?0:2)||JSON.parse(result.stdout).enabled!==false)throw Error('Disabled worker contract failed');
   }
+  for(const mode of ['--once','--status']){
+    const result=spawnSync(process.execPath,[resolve(app,'selfhost/mail-outbound-worker.mjs'),mode],{
+      cwd:app,env:{...env,CHAT_MAIL_OUTBOUND_WORKER_ENABLED:'0'},encoding:'utf8',timeout:10000});
+    if(result.error||result.status!==(mode==='--once'?0:2)||JSON.parse(result.stdout).enabled!==false)throw Error('Disabled outbound worker contract failed');
+  }
   console.log('Isolated worker dependency and disabled command checks passed.');
   if(process.env.XMTP_MAIL_PROVISION_DRILL==='1')run(process.execPath,[join(repo,'scripts/test-mail-provisioning.mjs'),'--register-dev',app]);
 }finally{
