@@ -1,3 +1,4 @@
+import {walletServiceHeaders} from './wallet-service-access.js';
 // Runs only inside the supervised sender child, never in an HTTP handler.
 import { createHash } from 'node:crypto';
 import { lstatSync } from 'node:fs';
@@ -19,6 +20,7 @@ export function inboundSenderIdentity(config) {
   try { endpoint = new URL(config.identity?.url); } catch { throw Error('Invalid Wallet service configuration'); }
   if (endpoint.protocol !== 'https:' || endpoint.pathname !== '/api/service/inbound' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash ||
     typeof config.identity?.credential !== 'string' || !/^[\x21-\x7e]{32,512}$/.test(config.identity.credential)) throw Error('Invalid Wallet service configuration');
+  walletServiceHeaders(config.identity,'/api/service/inbound');
   return hash(JSON.stringify(['chat-mail-sender-v1', config.network, config.address,
     config.inboxId, config.installationId, config.directory, hash(config.databaseKey), endpoint.href]));
 }
