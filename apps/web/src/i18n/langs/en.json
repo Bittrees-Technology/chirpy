@@ -854,5 +854,7 @@
   "inboundHistory.uncertain": "Publication is uncertain. Do not resend automatically; an operator must reconcile the existing attempt.",
   "inboundHistory.stopped": "Forwarding stopped. This does not prove that an earlier interrupted attempt never published.",
   "inboundHistory.attempts": "Processing claims (not messages sent)",
-  "inboundHistory.deadline": "Authorization deadline"
+  "inboundHistory.deadline": "Authorization deadline",
+  "settings.browserWallet": "Browser wallet",
+  "settings.chooseBrowserWallet": "Choose a wallet"
 }

@@ -19,7 +19,7 @@ export function Settings(
   { onCreateOrg, onImportOrg }: { onCreateOrg: () => void; onImportOrg: () => void },
 ) {
   const {
-    identity, mode, hasInjectedWallet, walletConnectAvailable, isConnecting, ensProfile, walletError,
+    identity, mode, hasInjectedWallet, browserWallets, walletConnectAvailable, isConnecting, ensProfile, walletError,
     setHandle, resetHandle, reset, connectWallet, connectWalletConnect, disconnectWallet,
   } = useIdentity();
   const { orgs, recoverySnapshots, organizationStorageError, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
@@ -27,6 +27,8 @@ export function Settings(
   const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging, requestHistorySync } = useChat();
   const { lang, setLang, t } = useI18n();
   const gateSummary = (rules: unknown[]) => rules.length === 0 ? t("settings.open") : rules.length === 1 ? t("settings.oneRule") : t("settings.rules", undefined, { count: rules.length });
+  const [selectedBrowserWallet, setSelectedBrowserWallet] = useState("");
+  const browserWalletChoice = browserWallets.length === 1 ? browserWallets[0].id : selectedBrowserWallet;
   const [profileEns, setProfileEns] = useState<EnsRecord | null>(null);
   const [resolverInput, setResolverInput] = useState("");
   const [resolverState, setResolverState] = useState<"idle" | "loading" | "success" | "neutral" | "error">("idle");
@@ -206,6 +208,14 @@ export function Settings(
         <p className="muted">{t("settings.localProfileHelp")}</p>
         {mode === "wallet" && <Button variant="ghost" onClick={resetHandle}>{t("settings.useEnsName")}</Button>}
         {walletError && <div className="muted status-line status-error">{translateStatus(t, walletError)}</div>}
+        {mode !== "wallet" && browserWallets.length > 1 && (
+          <Field label={t("settings.browserWallet")}>
+            <select className="input" value={browserWalletChoice} disabled={isConnecting} onChange={event => setSelectedBrowserWallet(event.target.value)}>
+              <option value="">{t("settings.chooseBrowserWallet")}</option>
+              {browserWallets.map(wallet => <option key={wallet.id} value={wallet.id}>{wallet.name}{wallet.rdns ? ` (${wallet.rdns})` : ''}</option>)}
+            </select>
+          </Field>
+        )}
         <div className="row-end">
           {mode === "wallet" ? (
             <Button variant="ghost" onClick={() => { void disconnectWallet(); }}>{t("settings.disconnect")}</Button>
@@ -217,7 +227,7 @@ export function Settings(
                 </Button>
               )}
               {hasInjectedWallet && (
-                <Button variant="primary" onClick={connectWallet} disabled={isConnecting}>
+                <Button variant="primary" onClick={() => { void connectWallet(browserWalletChoice); }} disabled={isConnecting || !browserWalletChoice}>
                   {isConnecting ? t("settings.connecting") : t("settings.connectWallet")}
                 </Button>
               )}

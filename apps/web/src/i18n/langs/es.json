@@ -854,5 +854,7 @@
   "inboundHistory.uncertain": "La publicación es incierta. No reenvíes automáticamente; un operador debe conciliar el intento existente.",
   "inboundHistory.stopped": "El reenvío se detuvo. Esto no demuestra que un intento anterior interrumpido no llegara a publicar.",
   "inboundHistory.attempts": "Intentos de procesamiento (no mensajes enviados)",
-  "inboundHistory.deadline": "Fecha límite de autorización"
+  "inboundHistory.deadline": "Fecha límite de autorización",
+  "settings.browserWallet": "Billetera del navegador",
+  "settings.chooseBrowserWallet": "Elige una billetera"
 }
