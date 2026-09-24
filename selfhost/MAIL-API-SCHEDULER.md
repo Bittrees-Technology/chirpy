@@ -19,7 +19,11 @@ The existing `scripts/mail-worker.mjs [tick|status]` remains a manual command an
 uses the same validation. A successful manual tick is not a delivery or health
 assertion; operators must also inspect status.
 
-The provided systemd service/timer are deployment templates, not an installer.
+Use `selfhost/install-mail-api-scheduler.py` for a first installation. It takes
+a separately reviewed archive SHA256, copies and verifies a private snapshot,
+checks every manifest file digest, and refuses existing accounts, installations,
+unit overrides and activation links. A protected exclusive lock prevents concurrent
+installation. It never runs the packaged runtime, starts a unit or enables the timer.
 Before installing, review and pin the complete package, including a verified
 Node24 runtime. Use the dedicated non-login `chat-mail-api-scheduler` account;
 root owns the code/runtime under `/opt/chat-mail-api-scheduler`, and the private
@@ -49,3 +53,41 @@ authority, approved live delivery/revocation/suppression, backup/recovery and
 operator acceptance before enabling a supervised pilot. Public launch retains
 the full Chat unification acceptance gates. Neither these templates nor passing
 synthetic tests activate email, install a unit or prove production readiness.
+
+## Reviewed installation package
+
+The archive contains exactly these regular files, plus optional canonical parent
+directories. Links, devices, extra files, duplicate paths and excessive sizes are
+rejected. No dependency installation or package hooks are needed.
+
+- `bundle.json`
+- `runtime/bin/node` (the independently verified Linux Node24 executable)
+- `selfhost/mail-api-scheduler.mjs`
+- `selfhost/mail-api-scheduler.env.example`
+- `selfhost/systemd/chat-mail-api-scheduler.service`
+- `selfhost/systemd/chat-mail-api-scheduler.timer`
+
+Use source bytes from one reviewed Git commit/tree. `bundle.json` has `version: 1`,
+`component: "chat-mail-api-scheduler"`, the full `commit` and `tree`, and a `files`
+object mapping each of the other five paths to its SHA256. These internal hashes
+check consistency; the independently recorded whole-archive SHA256 establishes
+the reviewed package. Record the installer SHA256 separately and invoke that
+reviewed installer, not code extracted from the archive.
+
+First run the installer with `--verify-only` and the reviewed `--sha256`; this
+requires no administrator privileges and changes no host configuration. For
+installation, invoke the same reviewed installer with Python isolated mode (`-I`)
+as administrator, supplying the archive and `--sha256` but omitting `--verify-only`.
+The source example must exactly match its disabled, empty-secret configuration.
+Installation leaves a private receipt containing source provenance and file hashes;
+code/runtime are root-owned and readable only by their dedicated service group.
+No writable application state or mailbox/provider credentials are provisioned.
+
+Do not retry a partial installation by removing its evidence. The installer refuses
+all existing target paths and accounts; review and reconcile the failure first.
+The lock file persists safely between runs. A successful install still requires
+independent receipt/content/ownership checks, effective unit-policy checks and a
+controlled disabled-service run on Acer before credential configuration or activation.
+The hosted Linux suite performs the actual installation and refusal of a repeat,
+then runs the disabled service and checks its kernel-enforced isolation. That is
+installer acceptance on a disposable runner, not proof of Acer installation.

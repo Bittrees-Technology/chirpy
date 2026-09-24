@@ -36,6 +36,8 @@ jobs:
         env:
           CHAT_TEST_SYSTEMD_INSTALL: '1'
         run: node scripts/check-mail-worker-runtime.mjs
+      - name: Resend scheduler installation boundary
+        run: python3 scripts/test-mail-api-scheduler-install.py
       - name: Outbound administrator installation boundary
         run: python3 scripts/test-mail-outbound-install.py
       - run: pnpm typecheck
