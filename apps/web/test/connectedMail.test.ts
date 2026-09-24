@@ -9,7 +9,7 @@ beforeEach(()=>{
  storage=new Map();vi.stubGlobal('localStorage',{getItem:(k:string)=>storage.get(k)??null,setItem:(k:string,v:string)=>storage.set(k,v),removeItem:(k:string)=>storage.delete(k)});requests=[];mocks.provider={request:vi.fn(async({method})=>method==='eth_accounts'?[wallet]:'0x'+'2'.repeat(130))};
  fetcher=vi.fn(async(url,init)=>{const action=String(url).split('/').at(-1);requests.push({action,body:init?.body?JSON.parse(init.body):undefined});
   if(action==='disconnect')return Response.json({ok:true,sourceRevoked:true});
-  if(action==='challenge')return Response.json({message:createSiweMessage({address:wallet as `0x${string}`,domain:'chat.bittrees.org',uri:'https://chat.bittrees.org/api/mail/verify',version:'1',chainId:1,nonce:'a'.repeat(64),issuedAt:new Date(),expirationTime:new Date(Date.now()+300000),statement:'Sign in to connect your mailbox to Chat. Mail will separately ask for read and send permission. No transaction is authorized.'})});
+  if(action==='challenge'){const now=Date.now();return Response.json({message:createSiweMessage({address:wallet as `0x${string}`,domain:'chat.bittrees.org',uri:'https://chat.bittrees.org/api/mail/verify',version:'1',chainId:1,nonce:'a'.repeat(64),issuedAt:new Date(now),expirationTime:new Date(now+300000),statement:'Sign in to connect your mailbox to Chat. Mail will separately ask for read and send permission. No transaction is authorized.'})});}
   if(action==='verify')return Response.json({wallet});
   if(action==='start')return Response.json({url:'https://mail.bittrees.org/connect/chat#challenge='+'x'.repeat(43)+'&state='+'b'.repeat(64)+'&wallet='+wallet});
   return Response.json({ok:true});
@@ -196,6 +196,8 @@ it('rejects an attachment if the connection changes during integrity verificatio
 });
 
 it('does not dispatch verification after a same-address provider object changes during signing',async()=>{
+ // Separate wall-clock reads can straddle a tick; the fixture must still reach signing.
+ vi.spyOn(Date,'now').mockReturnValue(Date.now()+1000);
  mocks.provider.request.mockImplementation(async({method})=>{if(method==='personal_sign'){mocks.provider={request:async()=>[wallet]};return '0x'+'2'.repeat(130);}return [wallet];});
  await expect(connectMail(wallet,false)).rejects.toMatchObject({code:'wallet'});expect(requests.some(r=>r.action==='verify')).toBe(false);
 });
