@@ -6,6 +6,72 @@ have separate authority; do not borrow a member's mailbox/session credentials.
 
 ## Private deployment
 
+### First administrator installation
+
+`install-mail-outbound.py` installs a reviewed, complete Linux bundle without
+starting any process or schedule. Use Python 3.12 on Acer. It requires a dedicated
+new `chat-mail-outbound` account; it refuses existing accounts, paths, units,
+drop-ins or enablement links. It is not an upgrade or journal-reset tool. Do not
+delete an existing installation to make it pass. A partially failed installation
+stays disabled and requires inspection before retrying.
+
+Prepare the bundle as an unprivileged user from the exact reviewed source,
+frozen/audited worker dependencies and verified Node 24 Linux binary. Its tar
+layout is `release/` (the source and installed runtime dependencies),
+`runtime/bin/node`, and `bundle.json` containing `version: 1`, the full Git `commit`
+and full source `tree`. The release must retain `server`, `packages/core` and
+`selfhost` paths and the systemd files in `selfhost/systemd`. Copy the worker
+manifests to release `package.json` and `package-lock.json`; they must match exactly.
+Exclude credentials, journals, local environment files and unrelated application
+data. Only regular files/directories are allowed; no symbolic/hard links or device
+entries. Run the existing disabled-worker and private synthetic TLS acceptance on
+that exact package before recording its SHA256 in the trusted deployment record.
+
+The SHA256 is supplied independently of the package. The installer copies and
+hashes the bundle into private temporary storage, then extracts that immutable
+snapshot, with bounded file/count/expanded-size limits. It rejects digest changes,
+traversal, ambiguous/duplicate paths, links/devices, missing files and changed
+runtime manifests. Archive permissions/ownership are discarded. A package's own
+metadata or a neighboring checksum file alone is not proof of review or provenance.
+
+First run the reviewed installer with `--verify-only` and the recorded digest;
+this needs no administrator rights and performs no installation:
+
+```sh
+/usr/bin/python3 -I /path/to/reviewed/install-mail-outbound.py /path/to/bundle.tar.gz \
+  --sha256 REVIEWED_SHA256 --verify-only
+```
+
+For installation, use the same invocation with `sudo` and omit `--verify-only`.
+The resulting code/runtime is root-owned under `/opt/chat-mail-outbound`, the
+root-only configuration is `/etc/chat-mail-outbound/worker.env`, and the dedicated
+account owns only `/var/lib/chat-mail-outbound` (0700). The installation receipt
+records the bundle digest, source commit/tree and disabled state. No dependency
+installation, package code or Node binary is run as root. It performs systemd
+syntax validation and reloads unit definitions, but never enables/starts a unit.
+Initial configuration has both admission and worker flags set to zero, blank
+sender/credentials/trust/profile settings, and no delivery journal or keys.
+
+Check root ownership, group read/execute only for code, state ownership/mode,
+`systemctl is-enabled chat-mail-outbound.timer` (disabled), and `systemctl is-active`
+for both units (inactive) after installation. Then verify the actual sandbox with
+the disabled worker before configuring live secrets; syntax checks alone do not
+prove effective OS isolation. That privileged acceptance is separate from the
+unprivileged archive and synthetic runtime checks.
+
+The installed oneshot service allows 90 seconds plus a 10-second termination
+grace, kills its whole process group on timeout, and reports nonzero exit status
+to systemd. The timer waits 60 seconds after activation and after each completed
+invocation, so normal scheduled runs do not overlap or replay missed ticks.
+See the [systemd timer contract](https://www.freedesktop.org/software/systemd/man/systemd.timer.html).
+Directly launching other workers is outside that schedule; queue/journal lease
+guards still apply. A kill after SMTP acceptance can leave an uncertain receipt;
+never treat a systemd failure as permission to resend. Journald retains the
+worker's content-free result/errors; external operator alerts are not configured
+by this installer and remain required before activation.
+
+### Worker configuration
+
 Use Node 24 on Linux, a dedicated non-login service account, root-owned immutable
 code/runtime, a root-owned protected environment file and a worker-owned 0700
 local state directory. Install the exact `mail-worker.package.json` and lockfile

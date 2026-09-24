@@ -33,7 +33,11 @@ jobs:
       - name: Dependency security audit
         run: pnpm audit --audit-level=moderate
       - name: Isolated inbound worker runtime
+        env:
+          CHAT_TEST_SYSTEMD_INSTALL: '1'
         run: node scripts/check-mail-worker-runtime.mjs
+      - name: Outbound administrator installation boundary
+        run: python3 scripts/test-mail-outbound-install.py
       - run: pnpm typecheck
       - run: pnpm typecheck:api
       - name: Unit and hardening regression suite

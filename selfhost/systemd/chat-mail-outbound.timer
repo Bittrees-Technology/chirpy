@@ -1,0 +1,12 @@
+[Unit]
+Description=Chat private outbound mail schedule (install disabled)
+
+[Timer]
+OnActiveSec=60
+OnUnitInactiveSec=60
+AccuracySec=1
+Persistent=false
+Unit=chat-mail-outbound.service
+
+[Install]
+WantedBy=timers.target
