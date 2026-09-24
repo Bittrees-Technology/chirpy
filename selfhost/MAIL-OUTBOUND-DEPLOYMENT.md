@@ -20,8 +20,12 @@ restricted home access and memory/process limits. Deployment tooling must not
 implicitly start a timer. Use `--status` for a content-free health check (exit 2
 when disabled or unhealthy). A completed uncertain send also returns exit 2;
 route nonzero exits to the chosen operator alert channel without logging payloads,
-SMTP replies, credentials or wallet addresses. Health heartbeat alone does not
-prove all historical uncertain submissions have been reconciled.
+SMTP replies, credentials or wallet addresses. The persistent uncertain-receipt index keeps status degraded even after an idle
+tick or restart. Private status also checks journal reservations older than the
+60-second lease window; a current in-flight send is not immediately treated as a
+stale hold. Failed or unhealthy scheduled ticks clear the healthy heartbeat, so
+remote status cannot keep reporting that worker as healthy. Read-only status and
+maintenance do not alter liveness. None of these checks proves inbox delivery.
 
 Start from `mail.env.example` and `mail-outbound.env.example`. SMTP requires
 `CHIRPY_MAIL_IDENTITY_URL/SECRET` and current correspondent-specific Wallet scopes.
@@ -50,9 +54,9 @@ console.log(result.journalId); // Pin in protected configuration; never print th
 Never rerun initialization to fix missing/corrupt state. Pin the returned ID in
 `CHAT_SMTP_JOURNAL_ID`. With complete mail configuration and explicit provider
 `smtp`, run `--profile` offline. This prints only the opaque transport binding;
-it does not connect, send, claim queue work or provision journal state. Local
-`CHIRPY_MAIL_ENABLED=1` is needed to validate this complete configuration; keep
-Vercel admission and `CHAT_MAIL_OUTBOUND_WORKER_ENABLED=0` during preparation.
+it does not connect, send, claim queue work or provision journal state. The offline profile command validates the complete configuration independently
+of the local admission flag; keep Vercel admission disabled and
+`CHAT_MAIL_OUTBOUND_WORKER_ENABLED=0` during preparation.
 Copy the profile to both protected Acer and Vercel mail configuration. Keep SMTP
 credentials and journal secrets exclusively on Acer. All effective transport,
 trust, authentication, sender, service and journal changes require review of the
@@ -90,9 +94,9 @@ TLS/auth preflight has no MAIL/RCPT/DATA and can be retried within queue bounds.
 After the durable boundary, only explicit negative SMTP transaction replies
 permit retry (4xx) or definite stop (5xx); generic socket/timeouts remain uncertain.
 A lost final acknowledgement is never an automatic retry. A stable Message-ID is
-for correlation, not recipient-side deduplication. Manual reconciliation and any
-future receipt correction require authoritative MTA evidence; no reset/correction
-API is supplied by this increment.
+for correlation, not recipient-side deduplication. A lost acknowledgement with no later definite journal result still requires
+authoritative MTA evidence and an operator-approved recovery procedure. No reset,
+manual success assertion or force-retry API is supplied.
 
 ## Acceptance coverage
 
@@ -104,3 +108,56 @@ provider mismatch, stable MIME scope and content-free recovery. The journal suit
 also kills a real child process after its durable boundary. No fixture sends an
 external email. The isolated Linux runtime check verifies pinned dependencies and
 disabled CLI behavior. Live sender, operational and public-launch gates remain open.
+
+
+## Persistent holds and bounded reconciliation
+
+`--status` exposes counts only. Newly finished uncertain receipts enter a private
+persistent index atomically with their terminal outcome. Index pointers do not
+expire with the user receipt and are not removed simply because the queue is
+empty. The SQLite journal independently retains uncertain reservations. An orphaned
+pointer remains an alert requiring retention/recovery review; missing content or
+an absent journal row cannot prove nonacceptance. Do not delete an index or journal
+to silence monitoring. Monitor the private worker as well as the authenticated
+HTTP status; remote status cannot directly inspect Acer's filesystem.
+
+Explicit maintenance commands work with forwarding and the supervisor disabled,
+and do not require an available Wallet authority. They still require the original
+service/data key/sender/profile, private journal and Redis configuration. They
+never connect to SMTP, read message bodies, authorize new sends or refresh health.
+
+- `--inspect [receipt-cursor]`: read up to 25 unresolved journal receipts. Output is
+  only receipt IDs, attempt counts and timestamps; this is private operator output,
+  not a public endpoint or a routine log. A non-null next cursor continues the page.
+- `--review [cursor]`: read up to 25 indexed receipt pointers and report aggregate
+  eligible/unresolved/orphaned/conflicting counts. It writes nothing.
+- `--reconcile [cursor]`: apply the same bounded review, correcting a retained
+  uncertain receipt only when the pinned journal has a definite accepted,
+  rejected or retryable result for its exact original scope. A retryable journal
+  result proves refusal of that submission; reconciliation marks the terminal
+  receipt stopped and does not requeue it or recreate its deleted payload.
+- `--review-index [scan-cursor]` / `--index [scan-cursor]`: dry-run/apply one bounded
+  Redis SCAN page of retained receipts. Use these during a paused upgrade from a
+  pre-index worker. Repeat using the returned cursor until `complete: true`;
+  scans may repeat entries, and applying twice is safe. These commands only add
+  monitoring pointers for this profile's uncertain receipts. Foreign profiles
+  require their original configuration and an explicit cutover review.
+
+Reconciliation handles a real lease-recovery race: a second worker can record
+uncertainty while the first is awaiting SMTP, then the first can observe a definite
+reply and persist it in the journal after losing its Redis completion lease.
+The reviewed journal result is evidence for a receipt correction, not permission
+to resend. Each correction atomically compares the exact old receipt, preserves
+its original expiry/attempt count/history, appends a private source/outcome/time
+record and removes only that hold pointer. Races leave the pointer for review;
+a second successful apply is a no-op. Signed user status then reflects the corrected
+accepted/stopped fact without exposing private journal identifiers or audit fields.
+
+Uncertain/unknown journal results, corrupt/conflicting scopes, missing receipts
+and unavailable journals remain held. These commands do not reconcile a rolled-back
+backup, invent absent evidence, or supply SMTP bounce/complaint processing. Complete
+the coordinated backup/MTA recovery and retention policy before activation. Pause
+old schedulers during upgrade, account for all retained/expired and foreign-profile
+holds, and verify both journal and queue monitoring; completing a scan alone is not
+a complete historical-delivery audit. Pages are live views: restart inspection if
+concurrent changes require a fresh inventory.

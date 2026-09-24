@@ -10,7 +10,7 @@ export async function smtpFixture(){
  const directory=mkdtempSync(join(tmpdir(),'chat-smtp-wire-')),cert=join(directory,'ca.pem'),key=join(directory,'key.pem');
  execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-days','1','-subj','/CN=smtp.test','-addext','subjectAltName=DNS:smtp.test'],{stdio:'ignore'});
  const context=createSecureContext({cert:readFileSync(cert),key:readFileSync(key)}),sockets=new Set<any>();
- const state={mode:'accept',connections:0,envelopes:0,auth:0,plaintextAuth:0,messages:[] as string[],rcpt:[] as string[]};
+ const state={mode:'accept',connections:0,envelopes:0,auth:0,plaintextAuth:0,messages:[] as string[],rcpt:[] as string[],ack:null as null|((reply:string)=>void)};
  function attach(socket:any,secure=false){
   sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});
   let buffer='',data=false,body='';
@@ -23,6 +23,7 @@ export async function smtpFixture(){
       state.messages.push(body);body='';data=false;
       if(state.mode==='drop-ack'){socket.destroy();return;}
       if(state.mode==='hang-ack')return;
+      if(state.mode==='hold-ack'){state.ack=reply=>socket.write(reply+'\r\n');return;}
       socket.write(state.mode==='data450'?'450 4.3.0 Try later\r\n':state.mode==='data550'?'550 5.7.0 Rejected\r\n':'250 2.0.0 Queued synthetic\r\n');
      }else body+=(line.startsWith('..')?line.slice(1):line)+'\r\n';
     }else if(line.startsWith('EHLO'))socket.write(secure?'250-smtp.test\r\n250 AUTH PLAIN\r\n':state.mode==='no-tls'?'250 smtp.test\r\n':'250-smtp.test\r\n250 STARTTLS\r\n');
