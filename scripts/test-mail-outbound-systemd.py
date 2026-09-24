@@ -68,6 +68,7 @@ def acceptance():
                 check(not path.is_symlink(), 'Unexpected runtime link')
                 archive.add(path, arcname='release/' + str(relative), recursive=False)
         digest = hashlib.file_digest(bundle.open('rb'), 'sha256').hexdigest()
+        owned_fixtures = []
         try:
             command('/usr/bin/python3', '-I', str(SOURCE / 'selfhost/install-mail-outbound.py'),
                     str(bundle), '--sha256', digest)
@@ -97,15 +98,23 @@ def acceptance():
             hidden = Path('/home/chat-mail-ci-secret')
             check(not hidden.exists(), 'Unexpected fixture path')
             hidden.write_text('synthetic home fixture')
+            owned_fixtures.append(hidden)
             hidden.chmod(0o644)  # World-readable outside ProtectHome, deliberately.
+            readonly = Path('/opt/chat-mail-ci-writable')
+            check(not readonly.exists(), 'Unexpected writable fixture path')
+            readonly.write_text('synthetic writable fixture')
+            owned_fixtures.append(readonly)
+            readonly.chmod(0o666)  # DAC permits writes; ProtectSystem must reject them.
             probe = installer.TARGET / 'probe.mjs'
             probe.write_text('''import {readFileSync,writeFileSync,unlinkSync} from 'node:fs';
 if(process.getuid()===0)throw Error('Root service');
+if(!/^NoNewPrivs:\\s+1$/m.test(readFileSync('/proc/self/status','utf8')))throw Error('Privilege restriction missing');
 function denied(action){let blocked=false;try{action();}catch(e){if(['EACCES','EPERM','EROFS'].includes(e.code))blocked=true;else throw e;}if(!blocked)throw Error('Isolation missing');}
 denied(()=>readFileSync('/home/chat-mail-ci-secret'));
 denied(()=>readFileSync('/etc/chat-mail-outbound/worker.env'));
 denied(()=>writeFileSync('/opt/chat-mail-outbound/release/forbidden','x'));
 denied(()=>writeFileSync('/etc/chat-mail-ci-forbidden','x'));
+denied(()=>writeFileSync('/opt/chat-mail-ci-writable','changed'));
 writeFileSync('/var/lib/chat-mail-outbound/probe','fixture',{mode:0o600});
 unlinkSync('/var/lib/chat-mail-outbound/probe');
 console.log('Dedicated user, protected home/config/code and writable state accepted');
@@ -120,7 +129,7 @@ console.log('Dedicated user, protected home/config/code and writable state accep
                           '-p', 'Result', '--value') == 'success', 'Sandbox probe failed')
             check(command('/usr/bin/systemctl', 'show', 'chat-mail-outbound.timer',
                           '-p', 'ActiveState', '--value') == 'inactive', 'Timer activated during acceptance')
-            hidden.unlink()
+            check(readonly.read_text() == 'synthetic writable fixture', 'Readonly mount changed')
             print('Actual administrator install, disabled runtime and systemd sandbox accepted; no sending enabled.')
         finally:
             # Only the fresh fixture allowed by the first preflight; this script never
@@ -134,6 +143,8 @@ console.log('Dedicated user, protected home/config/code and writable state accep
                 if path.exists():
                     shutil.rmtree(path)
             subprocess.run(['/usr/sbin/userdel', installer.ACCOUNT], check=False)
+            for fixture in owned_fixtures:
+                fixture.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':
