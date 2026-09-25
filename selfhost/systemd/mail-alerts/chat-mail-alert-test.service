@@ -1,0 +1,16 @@
+[Unit]
+Description=Synthetic Chat operator alert acceptance (manual only)
+OnFailure=chat-mail-alert@%n.service
+
+[Service]
+Type=oneshot
+User=chat-mail-alerts
+Group=chat-mail-alerts
+ExecStart=/usr/bin/false
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+CapabilityBoundingSet=
+AmbientCapabilities=
