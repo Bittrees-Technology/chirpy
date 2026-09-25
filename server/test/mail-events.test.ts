@@ -66,3 +66,22 @@ it.each([undefined,'invalid','2026-99-99T01:00:00Z',new Date(Date.now()+600000).
 it.each(['email.opened','email.clicked'])('ignores tracking reports rather than claiming read receipts: %s',async type=>{
  const kv=vi.fn();expect(await (await handleMailEvent(request(JSON.stringify({...event(),type})),env,kv)).json()).toEqual({status:'ignored'});expect(kv).not.toHaveBeenCalled();
 });
+
+// Named senders from other Resend applications must not cause repeated delivery.
+it.each(['Bittrees News <main@example.com>', '"Bittrees, News" <main@example.com>', 'service@example.com <main@example.com>'])('ignores a signed unrelated sender %s without touching Chat storage',async from=>{
+ const kv=vi.fn();const body={...event(),data:{from}};
+ const result=await handleMailEvent(request(JSON.stringify(body)),env,kv);
+ expect(result.status).toBe(200);expect(await result.json()).toEqual({status:'ignored'});expect(kv).not.toHaveBeenCalled();
+ expect((await handleMailEvent(request(JSON.stringify(body),Date.now(),{'svix-signature':'v1,forged'}),env,kv)).status).toBe(401);
+});
+it('tracks the exact Chat sender with a provider display name identically to a plain sender',async()=>{
+ const plain=vi.fn().mockResolvedValue('applied'),named=vi.fn().mockResolvedValue('applied');
+ await handleMailEvent(request(),env,plain);
+ const body={...event(),data:{...event().data,from:`Chat <${env.CHIRPY_MAIL_FROM}>`}};
+ expect((await handleMailEvent(request(JSON.stringify(body)),env,named)).status).toBe(200);
+ expect(named.mock.calls).toEqual(plain.mock.calls);
+});
+it.each(['Chat <service@example.com>, News <other@example.com>', 'Chat <service@example.com> extra', 'Chat <service@example.com>\r\nX: value', 'Chat <bad>', '<service@example.com>', 'News <other@example.com><service@example.com>'])('rejects malformed or ambiguous provider sender %s',async from=>{
+ const kv=vi.fn();const body={...event(),data:{...event().data,from}};
+ expect((await handleMailEvent(request(JSON.stringify(body)),env,kv)).status).toBe(400);expect(kv).not.toHaveBeenCalled();
+});

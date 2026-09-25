@@ -37,6 +37,14 @@ export async function readMailEventBody(request,limit=65536) {
     return Buffer.concat(chunks);
   } finally {clearTimeout(timer);reader.releaseLock();}
 }
+// Provider senders may include a display name; application addresses remain strict.
+function providerSender(value) {
+  const plain=normalizeMailAddress(value);
+  if(plain)return plain;
+  if(typeof value!=='string'||value.length>512||/[\x00-\x1f\x7f]/.test(value))return null;
+  const named=value.match(/^(?:[^<>"\\,]+|"(?:[^"\\]|\\["\\])*") <([^<>]+)>$/);
+  return named ? normalizeMailAddress(named[1]) : null;
+}
 export async function handleMailEvent(request,env=process.env,storage) {
   if(request.method!=='POST')return reply(405,{error:'Use POST.'});
   const config=mailEventConfig(env);if(!config)return reply(503,{error:'Mail events are not configured.'});
@@ -51,11 +59,11 @@ export async function handleMailEvent(request,env=process.env,storage) {
   if(typeof event?.type!=='string'||!event.type.startsWith('email.')||!MAIL_DELIVERY_EVENTS.includes(event.type.slice(6)))return reply(200,{status:'ignored'});
   const data=event.data;
   // Chat sends one plain-address recipient per email. Ignore other applications.
-  const from=normalizeMailAddress(data?.from);
+  const from=providerSender(data?.from);
   if(!from)return reply(400,{error:'Invalid event scope.'});
   if(from!==config.from)return reply(200,{status:'ignored'});
   const email=Array.isArray(data?.to) && data.to.length===1 ? normalizeMailAddress(data.to[0]):null;
-  if(!email || normalizeMailAddress(data?.from)!==config.from || typeof data.email_id!=='string' || !data.email_id || data.email_id.length>200)return reply(400,{error:'Invalid event scope.'});
+  if(!email || typeof data.email_id!=='string' || !data.email_id || data.email_id.length>200)return reply(400,{error:'Invalid event scope.'});
   const reason=event.type==='email.bounced'?'bounce':event.type==='email.complained'?'complaint':null;
   const at=typeof event.created_at==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(event.created_at)?Date.parse(event.created_at):NaN;
   const timed=Number.isSafeInteger(at)&&at>0&&at<=Date.now()+300000;
