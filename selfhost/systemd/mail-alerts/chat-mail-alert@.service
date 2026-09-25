@@ -1,0 +1,42 @@
+[Unit]
+Description=Chat operator alert for %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=chat-mail-alerts
+Group=chat-mail-alerts
+EnvironmentFile=/etc/chat-mail-alerts/alerts.env
+WorkingDirectory=/opt/chat-mail-alerts
+ExecStart=/usr/bin/flock --exclusive --wait 5 /var/lib/chat-mail-alerts/%i.lock /opt/chat-mail-alerts/runtime/bin/node /opt/chat-mail-alerts/mail-operator-alert.mjs --failure %i
+Restart=on-failure
+RestartPreventExitStatus=2
+RestartSec=60
+TimeoutStartSec=75
+TimeoutStopSec=5
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/chat-mail-alerts
+MemoryMax=128M
+TasksMax=32
+LimitCORE=0
