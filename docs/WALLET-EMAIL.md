@@ -350,6 +350,41 @@ Chat derives an opaque delivery ID from the existing service-scoped job key and 
 The response must match binding/version, sender, delivery ID, content hash and exact recipient, with an unexpired bounded deadline. Responses are capped at4KiB and redirects are rejected. Wallet resolution grants no inbound bridge identity, mailbox access, room membership, key custody, or assurance that a provider delivered/read a message. Live consumer credentials, mapping enrollment and self-addressed bridge acceptance remain separate deployment work.
 
 
+### Protected Wallet deployment access
+
+For a Wallet entry behind Vercel Deployment Protection, configure the additional
+paired server settings `CHIRPY_MAIL_IDENTITY_ACCESS_ORIGIN` (for example,
+`https://wallet.bittrees.org`) and `CHIRPY_MAIL_IDENTITY_ACCESS_SECRET` with a
+dedicated automation secret from the **Wallet** project. For inbound authorization,
+use `CHAT_MAIL_INBOUND_IDENTITY_ACCESS_ORIGIN` and
+`CHAT_MAIL_INBOUND_IDENTITY_ACCESS_SECRET`. Omit both values for an unprotected
+entry; an incomplete or mismatched pair disables that configuration.
+
+The access origin must exactly match the configured Wallet endpoint’s HTTPS origin,
+with no path, credentials, query, fragment or custom port. The deployment token is
+independent of the scoped Wallet service credential. Both credentials travel only
+in headers, with redirects rejected and cookies omitted. No cookie is requested,
+no token enters a URL, and no fallback drops either credential after refusal.
+The caller’s `VERCEL_AUTOMATION_BYPASS_SECRET` is deliberately ignored: that value
+belongs to the calling project and does not establish access to Wallet.
+
+This supports the [Vercel automation access header](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
+It grants access through the deployment entry only; Wallet still independently
+checks service scope, binding version, direction, sender/recipient and current
+consent for each operation. No protected deployment is made public by this code.
+Provisioning the dedicated token is a separate administrator action; do not
+activate sending or claim live acceptance from a synthetically tested header.
+
+The private inbound sender JSON also needs `identity.access: { origin, secret }`
+when its endpoint is protected. Keep it in the same private credential custody as
+`identity.credential`; never include it in browser configuration. Provisioning and
+sender startup validate the optional access before registering or claiming a send.
+Rotating access credentials at the same endpoint preserves the sender journal
+identity and must not reset publication receipts or uncertain attempts. Configure
+and verify access for both the queue worker and isolated sender before enabling
+intake. Existing source, recipient, provider, scheduler and recovery gates remain.
+
+
 ## Signed outbound receipt history
 
 Signed status queries now return a bounded `receipt` projection for the wallet's exact request ID: version 1, queue creation time, latest recorded state-change time, processing attempt count and the original 23-hour retry deadline. Redis time records enqueue, claim, stop and finish transitions. A read neither requeues work nor extends the record's existing 30-day retention. Provider acceptance still does not confirm delivery or reading; processing attempts can include authority checks that stop before provider dispatch.

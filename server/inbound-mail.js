@@ -1,3 +1,4 @@
+import {walletAccessConfig,walletServiceHeaders} from './wallet-service-access.js';
 import {inboundHistoryOwner,inboundHistoryKey} from './inbound-history.js';
 import { createCipheriv,createDecipheriv,randomBytes } from 'node:crypto';
 import { normalizeMailAddress } from '../packages/core/src/mailAuth.js';
@@ -13,7 +14,10 @@ export function inboundMailConfig(env=process.env){
     const sourceSecret=env.CHAT_MAIL_INBOUND_SOURCE_SECRET,key=env.CHAT_MAIL_INBOUND_DATA_KEY,credential=env.CHAT_MAIL_INBOUND_IDENTITY_SECRET;
     const mailboxes=String(env.CHAT_MAIL_INBOUND_MAILBOXES||'').split(',').map(s=>s.trim());
     if(identity.protocol!=='https:'||identity.pathname!=='/api/service/inbound'||identity.username||identity.password||identity.search||identity.hash||kv.protocol!=='https:'||kv.username||kv.password||!mailboxes.length||mailboxes.length>20||mailboxes.some(m=>!m||normalizeMailAddress(m)!==m)||!/^([a-f0-9]{64})$/.test(sourceSecret||'')||!/^([a-f0-9]{64})$/.test(key||'')||sourceSecret===key||credential===key||credential===sourceSecret||typeof credential!=='string'||credential.length<32||credential.length>512||!/^[\x21-\x7e]+$/.test(credential)||!(env.KV_REST_API_TOKEN||env.UPSTASH_REDIS_REST_TOKEN))return null;
-    return {sourceSecret,key:Buffer.from(key,'hex'),identity:{url:identity.href,credential},mailboxes,kvUrl:kv.href,kvToken:env.KV_REST_API_TOKEN||env.UPSTASH_REDIS_REST_TOKEN,prefix:`chat:mail-inbound:${hash(INBOUND_MAIL_SERVICE)}:`};
+    const access=walletAccessConfig(identity.href,credential,env.CHAT_MAIL_INBOUND_IDENTITY_ACCESS_ORIGIN,env.CHAT_MAIL_INBOUND_IDENTITY_ACCESS_SECRET);
+    const authority={url:identity.href,credential,...(access?{access}:{})};
+    walletServiceHeaders(authority,'/api/service/inbound');
+    return {sourceSecret,key:Buffer.from(key,'hex'),identity:authority,mailboxes,kvUrl:kv.href,kvToken:env.KV_REST_API_TOKEN||env.UPSTASH_REDIS_REST_TOKEN,prefix:`chat:mail-inbound:${hash(INBOUND_MAIL_SERVICE)}:`};
   }catch{return null;}
 }
 export const ENQUEUE_INBOUND_MAIL=`
@@ -34,7 +38,7 @@ return 'queued'
 function encode(config,value,aad){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',config.key,iv);cipher.setAAD(Buffer.from(aad));const data=Buffer.concat([cipher.update(JSON.stringify(value)),cipher.final()]);return JSON.stringify({iv:iv.toString('hex'),tag:cipher.getAuthTag().toString('hex'),data:data.toString('base64')});}
 export function decodeInboundMail(config,raw,aad){const e=JSON.parse(raw),cipher=createDecipheriv('aes-256-gcm',config.key,Buffer.from(e.iv,'hex'));cipher.setAAD(Buffer.from(aad));cipher.setAuthTag(Buffer.from(e.tag,'hex'));return JSON.parse(Buffer.concat([cipher.update(Buffer.from(e.data,'base64')),cipher.final()]).toString('utf8'));}
 export async function resolveInboundMail(config,scope,request=fetch){
-  const response=await request(config.identity.url,{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${config.identity.credential}`,'Content-Type':'application/json'},body:JSON.stringify(scope),signal:AbortSignal.timeout(5000)});
+  const response=await request(config.identity.url,{method:'POST',redirect:'error',credentials:'omit',headers:walletServiceHeaders(config.identity,'/api/service/inbound'),body:JSON.stringify(scope),signal:AbortSignal.timeout(5000)});
   if(!response.ok){if([400,401,403,404,409,410].includes(response.status))return null;throw Error('Inbound authority unavailable');}
   const raw=await readMailEventBody(response,4096);if(raw.length>4096)throw Error('Inbound authority response too large');
   const result=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));
