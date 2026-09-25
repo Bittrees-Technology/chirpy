@@ -16,7 +16,7 @@ beforeEach(()=>{
  setActiveProvider(provider,'injected');
  fetcher=vi.fn(async()=>Response.json({id:command().id,status:'queued'}));vi.stubGlobal('fetch',fetcher);
 });
-afterEach(()=>{clearActiveProvider();vi.unstubAllGlobals();vi.restoreAllMocks();});
+afterEach(()=>{clearActiveProvider();vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 it('checks the same wallet around signing and response and removes listeners',async()=>{
  expect(await submitWalletEmail(command())).toEqual({id:command().id,status:'queued'});
  expect(request.mock.calls.map(([r])=>r.method)).toEqual(['eth_accounts','personal_sign','eth_accounts','eth_accounts']);
@@ -106,4 +106,30 @@ it('accepts a server-held uncertain receipt without treating it as delivery evid
  await expect(submitWalletEmail(command())).rejects.toThrow();
  fetcher.mockResolvedValue(Response.json({id:command().id,status:'uncertain',delivery:{version:1,events:[]}}));
  await expect(submitWalletEmail(command())).rejects.toThrow();
+});
+
+
+it.each(['eth_accounts','personal_sign'])('bounds a stalled %s and never submits its late result',async method=>{
+ vi.useFakeTimers();
+ let finish!:(value:any)=>void;
+ request.mockImplementation(({method:called})=>called===method?new Promise(resolve=>{finish=resolve;}):Promise.resolve([wallet]));
+ const result=submitWalletEmail(command());
+ const rejected=expect(result).rejects.toThrow('timed out');
+ await vi.advanceTimersByTimeAsync(method==='eth_accounts'?15000:120000);
+ await rejected;
+ expect([...listeners.values()].every(v=>v.size===0)).toBe(true);
+ finish(method==='eth_accounts'?[wallet]:'0x'+'2'.repeat(130));
+ await vi.advanceTimersByTimeAsync(1);
+ expect(fetcher).not.toHaveBeenCalled();
+ expect(request.mock.calls.filter(([r])=>r.method==='personal_sign')).toHaveLength(method==='personal_sign'?1:0);
+ expect(vi.getTimerCount()).toBe(0);
+});
+it('cancels a wallet promise that never settles without waiting for its timeout',async()=>{
+ const controller=new AbortController();
+ request.mockImplementation(()=>new Promise(()=>{}));
+ const result=submitWalletEmail(command(),controller.signal);
+ const rejected=expect(result).rejects.toThrow();
+ await Promise.resolve();controller.abort();await rejected;
+ expect(fetcher).not.toHaveBeenCalled();
+ expect([...listeners.values()].every(v=>v.size===0)).toBe(true);
 });

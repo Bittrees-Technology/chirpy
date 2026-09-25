@@ -7,6 +7,19 @@ export function mailEndpoint() {
   return {requestUrl:endpoint.requestUrl.replace(/\/usersync$/, '/mail'),service:endpoint.service.replace(/\/usersync$/, '/mail')};
 }
 export type WalletEmailResult={status:string;id:string;receipt?:MailReceiptDetails;delivery?:MailDeliveryDetails};
+// Wallet RPC promises may never settle when an extension loses its connection.
+// Stop waiting locally and discard any late result; never dispatch a late signature.
+function waitForWallet<T>(start:()=>Promise<T>,signal:AbortSignal,timeoutMs:number):Promise<T>{
+ return new Promise((resolve,reject)=>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const cleanup=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);};
+  const abort=()=>{cleanup();reject(signal.reason??new Error('Wallet authorization cancelled.'));};
+  if(signal.aborted){abort();return;}
+  signal.addEventListener('abort',abort,{once:true});
+  timer=setTimeout(()=>{cleanup();reject(new Error('Wallet authorization timed out. Check the existing request before retrying.'));},timeoutMs);
+  Promise.resolve().then(()=>{signal.throwIfAborted();return start();}).then(value=>{cleanup();resolve(value);},error=>{cleanup();reject(error);});
+ });
+}
 async function requestWalletEmail<T>(command:MailCommand|MailHistoryCommand,parse:(response:Response,result:any)=>T,signal?:AbortSignal):Promise<T> {
   const endpoint=mailEndpoint();
   if(command.service!==endpoint.service) throw Error('Email service identity changed.');
@@ -22,7 +35,7 @@ async function requestWalletEmail<T>(command:MailCommand|MailHistoryCommand,pars
   };
   const check=async()=>{
     current();
-    const accounts=await provider.request({method:'eth_accounts'});
+    const accounts=await waitForWallet(()=>provider.request({method:'eth_accounts'}),scope,15000);
     current();
     if(!Array.isArray(accounts)||String(accounts[0]).toLowerCase()!==command.wallet) throw Error('Wallet account changed. Reconnect before continuing.');
   };
@@ -31,7 +44,7 @@ async function requestWalletEmail<T>(command:MailCommand|MailHistoryCommand,pars
   provider.on?.('disconnect',cancel);
   provider.on?.('session_delete',cancel);
   await check();
-  const signature=await provider.request({method:'personal_sign',params:[stringToHex(mailSignMessage(command)),command.wallet]});
+  const signature=await waitForWallet(()=>provider.request({method:'personal_sign',params:[stringToHex(mailSignMessage(command)),command.wallet]}),scope,120000);
   await check();
   const response=await fetch(endpoint.requestUrl,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json'},body:JSON.stringify({command,signature}),signal:AbortSignal.any([scope,AbortSignal.timeout(15000)])});
   const result=await response.json();
