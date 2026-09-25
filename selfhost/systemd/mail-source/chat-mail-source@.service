@@ -1,0 +1,28 @@
+[Unit]
+Description=Validate one Chat source scope against Mail
+
+[Service]
+Type=exec
+User=raging
+Group=raging
+Environment=HOME=/home/raging
+ExecStart=/usr/bin/python3 -B -E -s /opt/bittrees-mail-source/mail_chat_source_check.py --config /home/raging/.config/bittrees-mail/chat-inbound.json --state /home/raging/.local/state/bittrees-mail-chat-inbound/outbox.sqlite
+StandardInput=socket
+StandardOutput=inherit
+StandardError=null
+RuntimeMaxSec=20
+TimeoutStopSec=2
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=

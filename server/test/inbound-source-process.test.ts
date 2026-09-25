@@ -36,3 +36,27 @@ it('kills hung checker processes instead of treating a timeout as permission',as
 it('rejects malformed JSON and invalid UTF8 without exposing output',async()=>{
  for(const code of ["print('private invalid response')","import sys\nsys.stdout.buffer.write(bytes([255]))"])await expect(runSourceCheck(fixture(code),{})).rejects.toThrow('Invalid source authority response');
 });
+
+it('accepts one operator socket and rejects ambiguous transport configuration',()=>{
+ expect(inboundSourceConfig({CHAT_MAIL_SOURCE_SOCKET:'/run/chat-mail-source/check.sock'})).toEqual({socket:'/run/chat-mail-source/check.sock'});
+ expect(inboundSourceConfig({CHAT_MAIL_SOURCE_SOCKET:'/run/check.sock',CHAT_MAIL_SOURCE_PYTHON:'/usr/bin/python3'})).toBeNull();
+ for(const socket of ['relative','/bad\npath','/'+'a'.repeat(104)])expect(inboundSourceConfig({CHAT_MAIL_SOURCE_SOCKET:socket})).toBeNull();
+});
+it('uses a real local socket for exact scoped authority without exposing event text',async()=>{
+ const {createServer}=await import('node:net');const root=mkdtempSync('/tmp/chat-src-');roots.push(root);const path=join(root,'check.sock');
+ const event=inboundEvent();let received:any;
+ const server=createServer({allowHalfOpen:true},socket=>{let raw='';socket.on('data',c=>raw+=c);socket.on('end',()=>{received=JSON.parse(raw);socket.end(JSON.stringify({...received,authorized:true,checkedAt:Date.now(),sourceDeadline:event.receivedAt+23*3600000}));});});
+ await new Promise<void>(resolve=>server.listen(path,resolve));
+ try{expect(await checkInboundSource({socket:path},event)).toBe(true);expect(Object.keys(received).sort()).toEqual(['contentHash','eventId']);}
+ finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});
+it('fails closed for unavailable, oversized and stalled socket replies',async()=>{
+ const {createServer}=await import('node:net');const root=mkdtempSync('/tmp/chat-src-');roots.push(root);const path=join(root,'check.sock');
+ await expect(runSourceCheck({socket:path},{},{timeoutMs:100})).rejects.toThrow('Source authority unavailable');
+ for(const reply of ['x'.repeat(4097),null]){
+  const connections:any[]=[];const server=createServer({allowHalfOpen:true},socket=>{connections.push(socket);socket.on('error',()=>{});socket.on('data',()=>{});socket.on('end',()=>{if(reply!==null)socket.end(reply);});});
+  await new Promise<void>(resolve=>server.listen(path,resolve));
+  try{await expect(runSourceCheck({socket:path},{},{timeoutMs:100})).rejects.toThrow('Source authority unavailable');}
+  finally{connections.forEach(c=>c.destroy());await new Promise<void>(resolve=>server.close(()=>resolve()));}
+ }
+});
