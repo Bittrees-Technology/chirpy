@@ -35,7 +35,12 @@ def check(value, message):
 
 
 def run(*args):
-    return subprocess.check_output(args, text=True, env=ENV, timeout=45).strip()
+    try:
+        return subprocess.check_output(args, text=True, env=ENV, timeout=45).strip()
+    except subprocess.CalledProcessError:
+        if args[:2] == ('/usr/bin/systemctl', 'start'):
+            subprocess.run(['/usr/bin/journalctl', '-u', NAME + '.service', '-n', '35', '--no-pager'], env=ENV, timeout=10)
+        raise
 
 
 def acceptance(node, release):
@@ -121,6 +126,7 @@ denied(()=>readFileSync('/etc/chat-mail-inbound/source.json'));
 const source=process.env.CHAT_MAIL_SOURCE_CONFIG;
 if(source!==process.env.CREDENTIALS_DIRECTORY+'/source.json')throw Error('Source credential path mismatch');
 const meta=statSync(source);
+console.log(JSON.stringify({sourceMode:meta.mode&0o777,sourceUid:meta.uid,serviceUid:process.getuid()}));
 if(!meta.isFile()||(meta.mode&0o077)||meta.uid!==process.getuid())throw Error('Mail private-source policy failed');
 if(JSON.parse(readFileSync(source,'utf8')).enabled!==false)throw Error('Source enabled');
 denied(()=>writeFileSync(source,'changed'));
