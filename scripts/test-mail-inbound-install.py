@@ -164,7 +164,7 @@ class InstallationBoundary(unittest.TestCase):
         self.assertTrue((target / 'runtime/bin/node').exists())
         self.assertEqual((target / 'release/package.json').stat().st_mode & 0o777, 0o440)
         self.assertEqual(config.stat().st_mode & 0o777, 0o750)
-        self.assertEqual((config / "source.json").stat().st_mode & 0o777, 0o600)
+        self.assertEqual((config / "source.json").stat().st_mode & 0o777, 0o400)
         self.assertEqual(json.loads((config / "source.json").read_text()), {"enabled": False})
         self.assertEqual((config / 'worker.env').stat().st_mode & 0o777, 0o600)
         self.assertEqual(state.stat().st_mode & 0o777, 0o700)

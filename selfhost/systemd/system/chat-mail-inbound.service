@@ -9,7 +9,6 @@ Group=chat-mail-inbound
 Type=oneshot
 WorkingDirectory=/opt/chat-mail-inbound/release
 EnvironmentFile=/etc/chat-mail-inbound/worker.env
-LoadCredential=source.json:/etc/chat-mail-inbound/source.json
 ExecStart=/opt/chat-mail-inbound/runtime/bin/node /opt/chat-mail-inbound/release/selfhost/mail-inbound-worker.mjs --once
 TimeoutStartSec=110
 TimeoutStopSec=5

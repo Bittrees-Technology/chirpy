@@ -60,7 +60,7 @@ KV_REST_API_URL=
 KV_REST_API_TOKEN=
 CHAT_MAIL_SOURCE_PYTHON=/usr/bin/python3
 CHAT_MAIL_SOURCE_CHECK_SCRIPT=/opt/chat-mail-inbound/source/mail_chat_source_check.py
-CHAT_MAIL_SOURCE_CONFIG=/run/credentials/chat-mail-inbound.service/source.json
+CHAT_MAIL_SOURCE_CONFIG=/etc/chat-mail-inbound/source.json
 CHAT_MAIL_SOURCE_STATE=/var/lib/chat-mail-inbound/source/outbox.sqlite
 CHAT_MAIL_SENDER_CONFIG=/var/lib/chat-mail-inbound/sender/sender.json
 '''
@@ -226,8 +226,8 @@ def install(payload, metadata, digest):
     source = CONFIG / 'source.json'
     with source.open('x') as file:
         file.write('{"enabled":false}\n')
-    os.chown(source, 0, identity.pw_gid)
-    source.chmod(0o600)
+    os.chown(source, identity.pw_uid, identity.pw_gid)
+    source.chmod(0o400)
     environment = CONFIG / 'worker.env'
     with environment.open('x') as file:
         file.write(ENVIRONMENT)

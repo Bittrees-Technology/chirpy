@@ -97,8 +97,8 @@ def acceptance(node, release):
                 check(info.st_uid == 0 and not info.st_mode & 0o022, 'Unprotected code/runtime')
             check(CONFIG.stat().st_mode & 0o777 == 0o750 and
                   (CONFIG / 'worker.env').stat().st_mode & 0o777 == 0o600 and
-                  (CONFIG / 'source.json').stat().st_mode & 0o777 == 0o600 and
-                  (CONFIG / 'source.json').stat().st_uid == 0, 'Unprotected configuration')
+                  (CONFIG / 'source.json').stat().st_mode & 0o777 == 0o400 and
+                  (CONFIG / 'source.json').stat().st_uid == pwd.getpwnam(NAME).pw_uid, 'Unprotected configuration')
             check(run('/usr/bin/systemctl', 'show', NAMES[1], '-p', 'UnitFileState', '--value') == 'disabled', 'Schedule enabled')
             for name in NAMES:
                 check(run('/usr/bin/systemctl', 'show', name, '-p', 'ActiveState', '--value') == 'inactive', 'Installation started a unit')
@@ -114,7 +114,7 @@ def acceptance(node, release):
         HOME_FIXTURE.chmod(0o644)
         WRITE_FIXTURE.write_text('original')
         WRITE_FIXTURE.chmod(0o666)
-        (CODE / 'probe.mjs').write_text('''import {readFileSync,writeFileSync,statSync} from 'node:fs';
+        (CODE / 'probe.mjs').write_text('''import {readFileSync,writeFileSync,statSync,chmodSync} from 'node:fs';
 if(process.getuid()===0)throw Error('Root process');
 if(!/^NoNewPrivs:\\s+1$/m.test(readFileSync('/proc/self/status','utf8')))throw Error('Privilege restriction missing');
 function denied(fn){let rejected=false;try{fn();}catch(e){if(['EACCES','EPERM','EROFS'].includes(e.code))rejected=true;else throw e;}if(!rejected)throw Error('Isolation missing');}
@@ -122,14 +122,14 @@ denied(()=>readFileSync('/home/chat-mail-inbound-ci-secret'));
 denied(()=>readFileSync('/etc/chat-mail-inbound/worker.env'));
 denied(()=>writeFileSync('/opt/chat-mail-inbound-ci-writable','changed'));
 denied(()=>writeFileSync('/opt/chat-mail-inbound/forbidden','x'));
-denied(()=>readFileSync('/etc/chat-mail-inbound/source.json'));
 const source=process.env.CHAT_MAIL_SOURCE_CONFIG;
-if(source!==process.env.CREDENTIALS_DIRECTORY+'/source.json')throw Error('Source credential path mismatch');
+if(source!=='/etc/chat-mail-inbound/source.json')throw Error('Source path mismatch');
 const meta=statSync(source);
 console.log(JSON.stringify({sourceMode:meta.mode&0o777,sourceUid:meta.uid,serviceUid:process.getuid()}));
 if(!meta.isFile()||(meta.mode&0o077)||meta.uid!==process.getuid())throw Error('Mail private-source policy failed');
 if(JSON.parse(readFileSync(source,'utf8')).enabled!==false)throw Error('Source enabled');
 denied(()=>writeFileSync(source,'changed'));
+denied(()=>chmodSync(source,0o600));
 writeFileSync('/var/lib/chat-mail-inbound/synthetic-probe','fixture');
 console.log('inbound worker dedicated user and kernel restrictions passed');
 ''')
