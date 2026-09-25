@@ -1,0 +1,33 @@
+[Unit]
+Description=Check Chat inbound mail worker health
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=chat-mail-inbound
+Group=chat-mail-inbound
+Type=oneshot
+WorkingDirectory=/opt/chat-mail-inbound/release
+EnvironmentFile=/etc/chat-mail-inbound/worker.env
+ExecStart=/opt/chat-mail-inbound/runtime/bin/node /opt/chat-mail-inbound/release/selfhost/mail-inbound-worker.mjs --status
+TimeoutStartSec=20
+TimeoutStopSec=5
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/chat-mail-inbound
+# Exit 2 is degraded health; exit 1 is unavailable state/configuration.
+# Connect the approved alert handler before activating this monitor.
+
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=

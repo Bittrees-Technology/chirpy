@@ -1,0 +1,33 @@
+[Unit]
+Description=Chat inbound mail worker (one job)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=chat-mail-inbound
+Group=chat-mail-inbound
+Type=oneshot
+WorkingDirectory=/opt/chat-mail-inbound/release
+EnvironmentFile=/etc/chat-mail-inbound/worker.env
+ExecStart=/opt/chat-mail-inbound/runtime/bin/node /opt/chat-mail-inbound/release/selfhost/mail-inbound-worker.mjs --once
+TimeoutStartSec=110
+TimeoutStopSec=5
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/chat-mail-inbound
+# The configured sender directory must match this protected writable path.
+# Install/run only after source, identity, recovery and live acceptance checks.
+
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
