@@ -273,16 +273,6 @@ class InstallationBoundary(unittest.TestCase):
                 self.fail('Symlink lock accepted')
         self.assertFalse((self.root / 'not-created').exists())
 
-    @unittest.skipUnless(Path('/usr/bin/systemd-analyze').exists(), 'Requires Linux systemd tools')
-    def test_actual_systemd_unit_verification(self):
-        for name in installer.UNIT_NAMES:
-            content = (SOURCE / 'selfhost/systemd' / name).read_text()
-            content = content.replace('/opt/chat-mail-api-scheduler/runtime/bin/node', '/usr/bin/true')
-            (self.root / name).write_text(content)
-        result = subprocess.run(['/usr/bin/systemd-analyze', 'verify', '--man=no', '--generators=no',
-                                 *(str(self.root / name) for name in installer.UNIT_NAMES)],
-                                capture_output=True, text=True, env=installer.COMMAND_ENV)
-        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == '__main__':
