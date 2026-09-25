@@ -148,6 +148,8 @@ class InstallationBoundary(unittest.TestCase):
             self.verify()
 
     def test_installed_files_remain_disabled_without_secrets_or_journal(self):
+        previous_umask = os.umask(0o077)
+        self.addCleanup(os.umask, previous_umask)
         self.verify()
         target, config, state, units = [self.root / name for name in ('opt', 'etc', 'state', 'units')]
         units.mkdir()

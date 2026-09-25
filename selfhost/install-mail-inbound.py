@@ -221,6 +221,7 @@ def install(payload, metadata, digest):
     # Rename the verified root-private snapshot atomically on the /opt filesystem.
     payload.rename(TARGET)
     CONFIG.mkdir(mode=0o750)
+    CONFIG.chmod(0o750)  # Restore service-group traversal after the private 0077 umask.
     os.chown(CONFIG, 0, identity.pw_gid)
     source = CONFIG / 'source.json'
     with source.open('x') as file:
