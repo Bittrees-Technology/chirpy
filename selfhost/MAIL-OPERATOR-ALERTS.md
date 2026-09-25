@@ -2,7 +2,7 @@
 
 `mail-operator-alert.mjs` sends content-free failure notices independently to the
 configured operator addresses. It accepts only the inbound worker, inbound health
-check and Resend API scheduler service names. It never reads their journals,
+check and Resend API scheduler service names, plus the explicit synthetic test unit. It never reads their journals,
 message stores, wallet keys or worker credentials. It does not retry user messages.
 
 The first deployment selects `admin@bittrees.io` and `raging@bittrees.org`, from
@@ -55,7 +55,7 @@ trigger another same-state retry within the allowed window.
 
 ## Remaining operational acceptance
 
-Exercise the real failure hook without disrupting a production worker, verify both
+After explicitly enabling the notifier for acceptance, start the supplied test unit once. Its intentional failure exercises the real hook with a `[Test]` subject and synthetic wording, without running a production worker. Verify both
 inboxes and repeated-trigger suppression, then restore the test state deliberately.
 Preserve the production alert state across upgrades; sender/recipient/template
 changes need reconciliation for pending alerts. Backups must not be restored into

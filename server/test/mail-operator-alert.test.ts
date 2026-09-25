@@ -65,3 +65,8 @@ describe('private operator alert delivery',()=>{
   await expect(runOperatorAlert(args,env,{request})).rejects.toThrow('incomplete');expect(JSON.parse(readFileSync(file(env),'utf8')).accepted).toEqual([false,false]);
  });
 });
+
+it('labels a synthetic failure-hook test without claiming a real worker failed',async()=>{
+ const request=vi.fn().mockImplementation(ok);await runOperatorAlert(['--failure','chat-mail-alert-test.service'],fixture(),{request});
+ for(const [,options] of request.mock.calls){const body=JSON.parse(options.body);expect(body.subject).toBe('[Test] Chat operator alert');expect(body.text).toContain('no delivery worker failure is asserted');}
+});

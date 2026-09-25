@@ -3,7 +3,7 @@ import {constants,openSync,closeSync,readFileSync,writeFileSync,fsyncSync,rename
 import {join,isAbsolute,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
-const UNITS=['chat-mail-inbound.service','chat-mail-inbound-health.service','chat-mail-api-scheduler.service'];
+const UNITS=['chat-mail-inbound.service','chat-mail-inbound-health.service','chat-mail-api-scheduler.service','chat-mail-alert-test.service'];
 const HOUR=3600000,RETRY_WINDOW=23*HOUR;
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const address=value=>typeof value==='string'&&value.length<=254&&/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}$/.test(value);
@@ -44,8 +44,8 @@ function validState(state,scope,unit,now,count){
  Array.isArray(state.payloadHashes)&&state.payloadHashes.length===count&&state.payloadHashes.every(x=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x));
 }
 export function operatorAlertPayload(config,unit,state,index){
- return {from:config.from,to:[config.to[index]],subject:'Chat delivery service needs attention',
- text:`Chat operator alert\n\nService: ${unit}\nFirst observed: ${new Date(state.createdAt).toISOString()}\nReference: ${state.id}\n\nThe delivery worker or its health check reported a failure. Inspect the private service status on Acer. This alert does not prove that a user message failed or succeeded. Do not resend a user message until its delivery status is reconciled.\n\nThis alert contains no user message, wallet address, mailbox contents or credentials.`};
+ return {from:config.from,to:[config.to[index]],subject:unit==='chat-mail-alert-test.service'?'[Test] Chat operator alert':'Chat delivery service needs attention',
+ text:`Chat operator alert\n\nService: ${unit}\nFirst observed: ${new Date(state.createdAt).toISOString()}\nReference: ${state.id}\n\n${unit==='chat-mail-alert-test.service'?'This is an operator-approved synthetic alert test; no delivery worker failure is asserted.':'The delivery worker or its health check reported a failure.'} Inspect the private service status on Acer. This alert does not prove that a user message failed or succeeded. Do not resend a user message until its delivery status is reconciled.\n\nThis alert contains no user message, wallet address, mailbox contents or credentials.`};
 }
 async function acceptedResponse(response){
  if(response.status!==200||response.redirected||!/^application\/json(?:;|$)/i.test(response.headers.get('content-type')||'')){
