@@ -7,7 +7,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {InboundSendJournal} from './inbound-send-journal.js';
 import {inboundSenderIdentity} from './inbound-xmtp-sender.js';
-import {inboundSourceConfig} from './inbound-source-process.js';
+import {validInboundSourceConfig} from './inbound-source-process.js';
 
 export function syncPrivateDirectory(path){
  const stat=lstatSync(path);
@@ -26,7 +26,7 @@ function requestConfig(request){
   !isAbsolute(config.directory)||config.directory!==join(realpathSync(dirname(config.directory)),basename(config.directory)))throw Error('Canonical new sender directory required');
  syncPrivateDirectory(dirname(config.directory));
  const s=config.source;
- if(!s||Object.keys(s).length!==4||!inboundSourceConfig({CHAT_MAIL_SOURCE_PYTHON:s.python,CHAT_MAIL_SOURCE_CHECK_SCRIPT:s.script,CHAT_MAIL_SOURCE_CONFIG:s.config,CHAT_MAIL_SOURCE_STATE:s.state}))throw Error('Source checker configuration required');
+ if(!validInboundSourceConfig(s))throw Error('Source checker configuration required');
  // Validate network/endpoint before generating or registering an identity.
  inboundSenderIdentity({...config,address:'0x'+'11'.repeat(20),inboxId:'22'.repeat(32),installationId:'33'.repeat(32),databaseKey:'44'.repeat(32)});
  return config;

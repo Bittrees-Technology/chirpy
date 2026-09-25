@@ -99,3 +99,7 @@ sends a message or uses a member wallet, mailbox or production credential.
 Successful disposable fixtures are removed; failures retain their private state
 for investigation. This proves registration and database handoff, not production
 custody, backup recovery, live authorization or delivery acceptance.
+
+## Isolated Mail account
+
+When Mail owns private mailbox files under a different account, configure `source` as exactly `{"socket":"/run/chat-mail-source/check.sock"}` instead of the four local-process paths. The operator must install a trusted local source checker behind that Unix socket, with a root-owned parent and socket access limited to Mail and the dedicated Chat account. The socket must accept one bounded JSON scope and return the existing source-authority response after rechecking Mail ownership, original Wallet consent and immutable event content. Chat never supplies file paths or receives mailbox contents through this interface. Do not activate until the actual Mail socket and permission/revocation checks pass.

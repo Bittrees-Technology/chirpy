@@ -94,3 +94,8 @@ it('refuses mismatched registration or pre-existing conversations without claimi
  loadAccounts:async()=>({privateKeyToAccount:()=>({address:receipt.address})}),loadSdk:async()=>({IdentifierKind:{Ethereum:0},LogLevel:{Off:0},Client:{create:async()=>({isRegistered:mode!=='unregistered',...receipt,fetchInboxIdByIdentifier:async()=>mode==='inbox'?'ff'.repeat(32):receipt.inboxId,conversations:{list:async()=>mode==='history'?[{}]:[]}})}})
  })).rejects.toThrow();expect(existsSync(join(s.stage,'registration-started.json'))).toBe(true);}
 });
+it('preserves the isolated source socket in disabled sender configuration',async()=>{
+ const {config}=setup();const source={socket:'/run/chat-mail-source/check.sock'};
+ const result=await provisionInboundSender({...config,source},{register:async s=>database(s)});
+ expect(JSON.parse(readFileSync(result.config,'utf8')).source).toEqual(source);
+});
