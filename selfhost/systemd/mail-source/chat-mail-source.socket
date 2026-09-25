@@ -1,0 +1,16 @@
+[Unit]
+Description=Private Mail message authority for Chat
+
+[Socket]
+ListenStream=/run/chat-mail-source/check.sock
+SocketUser=raging
+SocketGroup=chat-mail-inbound
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+MaxConnections=4
+Backlog=8
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
