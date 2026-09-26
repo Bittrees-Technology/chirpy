@@ -36,6 +36,8 @@ jobs:
         env:
           CHAT_TEST_SYSTEMD_INSTALL: '1'
         run: node scripts/check-mail-worker-runtime.mjs
+      - name: Mail source SQLite sandbox
+        run: sudo python3 scripts/test-mail-source-sandbox.py
       - name: Resend scheduler installation boundary
         run: python3 scripts/test-mail-api-scheduler-install.py
       - name: Inbound administrator installation boundary
