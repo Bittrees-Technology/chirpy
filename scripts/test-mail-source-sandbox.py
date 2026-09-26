@@ -42,6 +42,7 @@ try:
  except sqlite3.OperationalError:pass
  else:raise AssertionError('Read-only database accepted update')
 except sqlite3.OperationalError as e:
+ print(json.dumps({'sqliteFailure':str(e)}),flush=True)
  assert 'readonly' in str(e).lower();readonly_failed=True
 finally:
  if db is not None:db.close()
@@ -54,7 +55,12 @@ print(json.dumps({'sandboxAccepted':True,'sidecarAccess':expected,'protectedFile
    if mode=='original':body=body.replace(allowed,'')
    body=body.replace('/home/raging',str(home)).replace('Type=exec','Type=oneshot').replace('StandardInput=socket','StandardInput=null').replace('StandardOutput=inherit','StandardOutput=journal').replace('StandardError=null','StandardError=journal')
    body='\n'.join(('ExecStart=/usr/bin/python3 -B -I '+str(script)+' '+mode) if line.startswith('ExecStart=') else line for line in body.splitlines())+'\n'
-   unit_path.write_text(body);run('systemctl','daemon-reload');run('systemctl','start',unit)
+   unit_path.write_text(body);run('systemctl','daemon-reload')
+   started=run('systemctl','start',unit,check=False)
+   if started.returncode:
+    print('Synthetic sandbox failure in '+mode,flush=True)
+    print(run('journalctl','-u',unit,'--no-pager','-o','cat').stdout,flush=True)
+    raise AssertionError('Sandbox fixture service failed')
    logs=run('journalctl','-u',unit,'--no-pager','-o','cat').stdout
    expected={'sandboxAccepted':True,'sidecarAccess':mode=='fixed','protectedFilesReadOnly':True}
    assert any(line==json.dumps(expected) for line in logs.splitlines()),'Missing actual service acceptance'
