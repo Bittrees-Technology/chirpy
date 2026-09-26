@@ -34,16 +34,17 @@ for p in [home/'.config/bittrees-mail/fixture.json',home/'Maildir/fixture.eml',h
   with p.open('a') as f:f.write('must not write')
  except OSError:pass
  else:raise AssertionError('Writable protected file')
+assert (state/'outbox.sqlite').read_bytes().startswith(b'SQLite format 3\x00')
 readonly_failed=False;db=None
 try:
  db=sqlite3.connect('file:'+str(state/'outbox.sqlite')+'?mode=ro',uri=True)
  assert db.execute('select value from fixture').fetchone()[0]==7
  try:db.execute('update fixture set value=8')
- except sqlite3.OperationalError:pass
+ except sqlite3.OperationalError as e:assert e.sqlite_errorcode&255==sqlite3.SQLITE_READONLY
  else:raise AssertionError('Read-only database accepted update')
 except sqlite3.OperationalError as e:
  print(json.dumps({'sqliteFailure':str(e)}),flush=True)
- assert 'readonly' in str(e).lower();readonly_failed=True
+ assert e.sqlite_errorcode&255 in (sqlite3.SQLITE_READONLY,sqlite3.SQLITE_CANTOPEN);readonly_failed=True
 finally:
  if db is not None:db.close()
 assert readonly_failed is not expected
