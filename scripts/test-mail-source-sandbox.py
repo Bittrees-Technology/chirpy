@@ -11,7 +11,7 @@ def main():
  name='chat-sqlite-'+uuid.uuid4().hex[:10];home=pathlib.Path('/home')/name
  unit='chat-source-sandbox-'+uuid.uuid4().hex[:10]+'.service';unit_path=pathlib.Path('/run/systemd/system')/unit
  template=(ROOT/'selfhost/systemd/mail-source/chat-mail-source@.service').read_text()
- allowed='ReadWritePaths=/home/raging/.local/state/bittrees-mail-chat-inbound\n'
+ allowed='ReadWritePaths=-/home/raging/.local/state/bittrees-mail-chat-inbound\n'
  assert template.count(allowed)==1
  try:
   # No account provisioning: use the disposable runner's existing unprivileged identity.
@@ -34,6 +34,10 @@ for p in [home/'.config/bittrees-mail/fixture.json',home/'Maildir/fixture.eml',h
   with p.open('a') as f:f.write('must not write')
  except OSError:pass
  else:raise AssertionError('Writable protected file')
+if sys.argv[1]=='absent':
+ assert not state.exists()
+ print(json.dumps({'sandboxAccepted':True,'sidecarAccess':False,'protectedFilesReadOnly':True,'disabledWithoutState':True}),flush=True)
+ sys.exit(0)
 assert (state/'outbox.sqlite').read_bytes().startswith(b'SQLite format 3\x00')
 readonly_failed=False;db=None
 try:
@@ -51,7 +55,8 @@ assert readonly_failed is not expected
 print(json.dumps({'sandboxAccepted':True,'sidecarAccess':expected,'protectedFilesReadOnly':True}),flush=True)
 '''
   script.write_text(code);script.chmod(0o444)
-  for mode in ['original','fixed']:
+  for mode in ['absent','original','fixed']:
+   if mode=='absent':state.rename(home/'state-held')
    body=template.replace('User=raging','User='+account.pw_name).replace('Group=raging','Group='+grp.getgrgid(account.pw_gid).gr_name)
    if mode=='original':body=body.replace(allowed,'')
    body=body.replace('/home/raging',str(home)).replace('Type=exec','Type=oneshot').replace('StandardInput=socket','StandardInput=null').replace('StandardOutput=inherit','StandardOutput=journal').replace('StandardError=null','StandardError=journal')
@@ -64,7 +69,9 @@ print(json.dumps({'sandboxAccepted':True,'sidecarAccess':expected,'protectedFile
     raise AssertionError('Sandbox fixture service failed')
    logs=run('journalctl','-u',unit,'--no-pager','-o','cat').stdout
    expected={'sandboxAccepted':True,'sidecarAccess':mode=='fixed','protectedFilesReadOnly':True}
+   if mode=='absent':expected['disabledWithoutState']=True
    assert any(line==json.dumps(expected) for line in logs.splitlines()),'Missing actual service acceptance'
+   if mode=='absent':(home/'state-held').rename(state)
   assert (config/'fixture.json').read_text()=='{"fixture":true}' and (mail/'fixture.eml').read_text()=='Synthetic message only'
   print('Actual systemd regression passed: original sandbox fails SQLite read; scoped state exception works; protected files and database writes remain denied.')
  finally:
