@@ -1,7 +1,7 @@
 """Real systemd regression: WAL sidecars work; mailbox and credentials stay read-only.
 Run as root only on a disposable Linux CI host. Never reads production data.
 """
-import json,os,pathlib,pwd,shutil,sqlite3,subprocess,uuid
+import grp,json,os,pathlib,pwd,shutil,sqlite3,subprocess,uuid
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 def run(*args,check=True):
  return subprocess.run(args,check=check,capture_output=True,text=True,timeout=45)
@@ -13,10 +13,11 @@ def main():
  template=(ROOT/'selfhost/systemd/mail-source/chat-mail-source@.service').read_text()
  allowed='ReadWritePaths=/home/raging/.local/state/bittrees-mail-chat-inbound\n'
  assert template.count(allowed)==1
- created=False
  try:
-  run('useradd','--system','--create-home','--home-dir',str(home),'--shell','/usr/sbin/nologin',name);created=True
-  account=pwd.getpwnam(name);state=home/'.local/state/bittrees-mail-chat-inbound';state.mkdir(parents=True,mode=0o700)
+  # No account provisioning: use the disposable runner's existing unprivileged identity.
+  account=pwd.getpwnam('nobody');assert account.pw_uid!=0
+  home.mkdir(mode=0o755)
+  state=home/'.local/state/bittrees-mail-chat-inbound';state.mkdir(parents=True,mode=0o700)
   config=home/'.config/bittrees-mail';config.mkdir(parents=True);(config/'fixture.json').write_text('{"fixture":true}')
   mail=home/'Maildir';mail.mkdir();(mail/'fixture.eml').write_text('Synthetic message only')
   dbpath=state/'outbox.sqlite';db=sqlite3.connect(dbpath);assert db.execute('pragma journal_mode=WAL').fetchone()[0]=='wal'
@@ -49,10 +50,7 @@ print(json.dumps({'sandboxAccepted':True,'sidecarAccess':expected,'protectedFile
 '''
   script.write_text(code);script.chmod(0o444)
   for mode in ['original','fixed']:
-   body=template.replace('User=raging','User='+name).replace('Group=raging','Group='+pwd.getpwuid(account.pw_uid).pw_name)
-   # System users may have an existing or separately named primary group.
-   import grp
-   body=body.replace('Group='+name,'Group='+grp.getgrgid(account.pw_gid).gr_name)
+   body=template.replace('User=raging','User='+account.pw_name).replace('Group=raging','Group='+grp.getgrgid(account.pw_gid).gr_name)
    if mode=='original':body=body.replace(allowed,'')
    body=body.replace('/home/raging',str(home)).replace('Type=exec','Type=oneshot').replace('StandardInput=socket','StandardInput=null').replace('StandardOutput=inherit','StandardOutput=journal').replace('StandardError=null','StandardError=journal')
    body='\n'.join(('ExecStart=/usr/bin/python3 -B -I '+str(script)+' '+mode) if line.startswith('ExecStart=') else line for line in body.splitlines())+'\n'
@@ -66,6 +64,5 @@ print(json.dumps({'sandboxAccepted':True,'sidecarAccess':expected,'protectedFile
   run('systemctl','stop',unit,check=False)
   if unit_path.exists():unit_path.unlink()
   run('systemctl','daemon-reload',check=False);run('systemctl','reset-failed',unit,check=False)
-  if created:run('userdel',name,check=False)
   if home.exists():shutil.rmtree(home)
 if __name__=='__main__':main()
