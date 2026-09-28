@@ -19,6 +19,7 @@ import {
 } from "@app/core";
 import type { DecodedMessage, EnrichedReply, Reaction } from "@xmtp/browser-sdk";
 import type {
+  MessagingDiagnostics,
   ChatMessage,
   Conversation,
   StartRoomInput,
@@ -319,6 +320,35 @@ export class XmtpTransport implements Transport {
     const inboxId = this.requireClient().inboxId;
     if (!inboxId) throw new Error("XMTP inbox is not ready yet.");
     return inboxId;
+  }
+
+  async inspectMessaging(conversationId?: string): Promise<MessagingDiagnostics> {
+    const client = this.requireClient();
+    const id = conversationId?.trim();
+    if (id && !/^[a-f0-9]{32,64}$/.test(id)) throw new Error('Invalid conversation identifier.');
+    const check = async () => {
+      const accounts = await this.provider?.request({ method: 'eth_accounts' });
+      if (!Array.isArray(accounts) || typeof accounts[0] !== 'string' || accounts[0].toLowerCase() !== this.myAddress ||
+        this.client !== client || this.status !== 'ready') throw new Error('Wallet changed.');
+    };
+    await check();
+    const sdk = await this.loadSdk();
+    // Only local database reads. Do not sync, publish, request archives, register or revoke here.
+    const listed = await client.conversations.list({ limit: 100n, consentStates: [sdk.ConsentState.Unknown, sdk.ConsentState.Allowed, sdk.ConsentState.Denied] });
+    const inboxId = client.inboxId, installationId = client.installationId;
+    if (!inboxId || !installationId) throw new Error("Messaging identity unavailable.");
+    const result: MessagingDiagnostics = { network: xmtpEnv(), inboxId,
+      installationId, listedConversations: listed.length, listLimit: 100,
+      cachedConversations: this.conversations.size };
+    if (id) {
+      const conversation = await client.conversations.getConversationById(id);
+      if (conversation && conversation.id !== id) throw new Error('Conversation identifier mismatch.');
+      result.conversation = { id, found: Boolean(conversation) };
+      if (conversation) Object.assign(result.conversation, { active: await conversation.isActive(),
+        consent: await conversation.consentState(), messageCount: String(await conversation.countMessages()) });
+    }
+    await check();
+    return result;
   }
 
   async requestHistorySync(): Promise<void> {

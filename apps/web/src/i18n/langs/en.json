@@ -861,5 +861,12 @@
   "list.empty.requests": "No message requests",
   "list.empty.blocked": "No blocked chats",
   "list.historyHelp": "Expecting older chats? Check Requests and Blocked above. A new browser may not have your earlier messages, even with the same wallet. Keep the browser or device that holds those messages open with messaging enabled, then request history in Settings. Do not clear its data or remove its messaging access until you have checked your older conversations here.",
-  "list.historySettings": "Open history recovery in Settings"
+  "list.historySettings": "Open history recovery in Settings",
+  "settings.messagingDiagnostics": "Messaging diagnostics",
+  "settings.messagingDiagnosticsHelp": "For troubleshooting missing conversations. Reads this session’s identifiers and local database counts only. Does not send messages, sync history, change access or include keys or message contents. Results stay on this page.",
+  "settings.diagnosticConversation": "Conversation ID (optional)",
+  "settings.diagnosticRead": "Read local session",
+  "settings.diagnosticReading": "Reading…",
+  "settings.diagnosticFailed": "Could not read this session. Check that the same wallet is connected and try again.",
+  "settings.diagnosticResult": "Local snapshot only; conversation counts are capped at 100. This does not confirm delivery or restored history."
 }
