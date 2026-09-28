@@ -32,6 +32,7 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
     try {
       await enable(first, wallet); await enable(second, peerWallet);
       const before = await identity(first);
+      writeFileSync(test.info().outputPath('upgrade-before.json'), JSON.stringify(before));
       await second.getByRole('button', { name: '+ Chat', exact: true }).click();
       await second.getByLabel('Recipient').fill(wallet);
       await second.getByRole('button', { name: 'Start chat', exact: true }).click();
@@ -43,13 +44,14 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
       await expect(first.locator('.msg-body', { hasText: 'Existing browser history before bridge repair' })).toBeVisible();
       upgraded = true;
       await first.reload();
+      const after = await identity(first);
+      writeFileSync(test.info().outputPath('upgrade-after.json'), JSON.stringify(after));
+      expect(after.inboxId).toBe(before.inboxId);
+      expect(after.installationId).toBe(before.installationId);
       await first.locator('.nav-item', { hasText: 'Chats' }).click();
       await first.getByRole('button', { name: 'Inbox', exact: true }).click();
       await first.locator('.list-item', { hasText: 'Existing browser history before bridge repair' }).click({ timeout: 120_000 });
       await expect(first.locator('.msg-body', { hasText: 'Existing browser history before bridge repair' })).toBeVisible();
-      const after = await identity(first);
-      expect(after.inboxId).toBe(before.inboxId);
-      expect(after.installationId).toBe(before.installationId);
       expect(after.env).toBe('dev');
       expect(before.libxmtpVersion).toBe('1.9.0');
       expect(after.libxmtpVersion).toBe('1.10.0');
@@ -63,7 +65,9 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
       await expect(first.locator('.msg-body').filter({ hasText: published.eventId })).toHaveText(published.text);
       console.info('Same dev installation retained its earlier history and received the actual native bridge publication after upgrade.');
     } finally {
-      writeFileSync(test.info().outputPath('upgrade-browser-state.json'), JSON.stringify({ identity: await identity(first).catch(() => null), ui: await first.locator('body').innerText().catch(() => 'Unavailable') }));
+      const ui = await first.locator('body').innerText().catch(() => 'Unavailable');
+      await first.locator('.nav-item', { hasText: 'Settings' }).click().catch(() => {});
+      writeFileSync(test.info().outputPath('upgrade-browser-state.json'), JSON.stringify({ identity: await identity(first).catch(() => null), ui, settings: await first.locator('body').innerText().catch(() => 'Unavailable'), errors: await first.evaluate(() => (window as any).__upgradeErrors).catch(() => []) }));
       await receiver.close(); await peer.close();
     }
   });
@@ -71,11 +75,17 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
 
 async function captureIdentity(context: BrowserContext) {
   await context.addInitScript(() => {
+    const errors: unknown[] = (window as any).__upgradeErrors = [];
     const OriginalWorker = Worker;
     (window as any).Worker = class extends OriginalWorker {
       constructor(url: string | URL, options?: WorkerOptions) {
         super(url, options);
         this.addEventListener('message', event => {
+          const { action, error } = event.data ?? {};
+          if (error && ['client.init', 'client.register', 'conversations.list', 'conversations.sync', 'conversations.syncAll'].includes(action)) {
+            errors.push({ action, message: String(error?.message ?? error).replace(/[a-f0-9]{64,}/gi, '[redacted]').slice(0, 1000) });
+            if (errors.length > 20) errors.shift();
+          }
           if (event.data?.action !== 'client.init' || !event.data?.result) return;
           const { inboxId, installationId, libxmtpVersion, env } = event.data.result;
           (window as any).__upgradeIdentity = { inboxId, installationId, libxmtpVersion, env };
