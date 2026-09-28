@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { expect, injectSyntheticWallet, test } from './fixtures/wallet';
@@ -12,7 +13,41 @@ test.describe('Mail bridge to browser @xmtp', () => {
     expect(process.env.VITE_TRANSPORT).toBe('xmtp');
     const context = await browser.newContext();
     const wallet = await injectSyntheticWallet(context);
+    // Inspect only this disposable dev client. Never enable logging in the
+    // shipped app or capture wallet signatures, SDK keys or message payloads.
+    await context.addInitScript(() => {
+      const events: unknown[] = (window as any).__bridgeDiagnostics = [];
+      const OriginalWorker = Worker;
+      (window as any).Worker = class extends OriginalWorker {
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super(url, options);
+          this.addEventListener('message', event => {
+            const { action, result, error } = event.data ?? {};
+            if (action === 'client.init') events.push({ action, env: result?.env, inboxId: result?.inboxId, installationId: result?.installationId, libxmtpVersion: result?.libxmtpVersion });
+            else if (action === 'conversations.list') events.push({ action, ids: Array.isArray(result) ? result.map(value => value.id) : [] });
+            else if (error && ['conversations.sync', 'conversations.syncAll'].includes(action)) events.push({ action, error: String(error).slice(0, 1000) });
+            if (events.length > 80) events.shift();
+          });
+        }
+        postMessage(...args: any[]) {
+          const request = args[0];
+          if (request?.action === 'client.init') {
+            if (request.data?.options?.env !== 'dev') throw Error('Disposable diagnostic requires dev');
+            request.data.options.loggingLevel = 2; // Pinned WASM LogLevel.Warn.
+          }
+          return (OriginalWorker.prototype.postMessage as any).apply(this, args);
+        }
+      };
+    });
     const page = await context.newPage();
+    const importErrors: string[] = [];
+    page.on('console', message => {
+      const text = message.text();
+      if (/failed.*welcome|welcome.*fail|sync_welcomes/i.test(text)) {
+        importErrors.push(text.slice(0, 2000));
+        if (importErrors.length > 30) importErrors.shift();
+      }
+    });
     try {
       await page.goto('/');
       await page.locator('.nav-item', { hasText: 'Settings' }).click();
@@ -23,7 +58,7 @@ test.describe('Mail bridge to browser @xmtp', () => {
       await page.locator('.nav-item', { hasText: 'Chats' }).click();
       const published = await send(runtime!, wallet.toLowerCase());
       expect(published.network).toBe('dev');
-      await test.info().attach('disposable-bridge-publication', { body: JSON.stringify(published), contentType: 'application/json' });
+      writeFileSync(test.info().outputPath('disposable-bridge-publication.json'), JSON.stringify(published));
       await page.getByRole('button', { name: 'Requests', exact: true }).click();
       await page.locator('.list-item', { hasText: 'Bridge browser acceptance' }).click({ timeout: 120_000 });
       const message = page.locator('.msg-body').filter({ hasText: published.eventId });
@@ -37,7 +72,13 @@ test.describe('Mail bridge to browser @xmtp', () => {
       await expect(message).toHaveCount(1);
       await expect(message).toHaveText(published.text);
       console.info('Actual dev Node bridge publication displayed once and survived browser reload.');
-    } finally { await context.close(); }
+    } finally {
+      const diagnostics = await page.evaluate(() => (window as any).__bridgeDiagnostics).catch(() => []);
+      const ui = await page.locator('body').innerText().catch(() => 'Unavailable');
+      writeFileSync(test.info().outputPath('disposable-browser-diagnostics.json'), JSON.stringify({ diagnostics, importErrors, ui }));
+      console.info('Disposable welcome errors:', JSON.stringify(importErrors));
+      await context.close();
+    }
   });
 });
 

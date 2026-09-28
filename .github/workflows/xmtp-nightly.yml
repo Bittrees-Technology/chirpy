@@ -26,11 +26,11 @@ jobs:
           XMTP_MAIL_PROVISION_DRILL: '1'
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm e2e:xmtp
-        env:
-          CHIRPY_TEST_NATIVE_CSP: "1"
       - name: Verify actual mail bridge delivery to the browser on XMTP dev
         run: node scripts/test-mail-browser-bridge.mjs --dev
+        env:
+          CHIRPY_TEST_NATIVE_CSP: "1"
+      - run: pnpm e2e:xmtp
         env:
           CHIRPY_TEST_NATIVE_CSP: "1"
       - name: Build the gate recovery test image
