@@ -39,7 +39,7 @@
       "baseline-browser-mapping@>=2.0.0 <2.11.0": "2.11.0",
       "@pushprotocol/restapi>axios": "0.33.0",
       "@pushprotocol/restapi>uuid": "11.1.1",
-      "@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings": "file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.2-ac69a5d4645b.tgz"
+      "@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings": "file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.3-5f1f08829b5e.tgz"
     },
     "patchedDependencies": {
       "@pushprotocol/restapi@1.7.32": "patches/@pushprotocol__restapi@1.7.32.patch"

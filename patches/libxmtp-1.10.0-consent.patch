@@ -390,7 +390,7 @@ index a0fbdcb..f65644e 100644
      fn find_consent_by_dm_id() {
          with_connection(|conn| {
 diff --git a/crates/xmtp_mls/src/groups/welcome_sync.rs b/crates/xmtp_mls/src/groups/welcome_sync.rs
-index a0d367d..3c56de8 100644
+index cc34bcb..1877d6a 100644
 --- a/crates/xmtp_mls/src/groups/welcome_sync.rs
 +++ b/crates/xmtp_mls/src/groups/welcome_sync.rs
 @@ -9,12 +9,13 @@ use crate::mls_store::MlsStore;
@@ -590,10 +590,10 @@ index a0d367d..3c56de8 100644
      fn make_cursor(originator_id: u32, sequence_id: u64) -> GlobalCursor {
          let mut map = GlobalCursor::default();
 diff --git a/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs b/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs
-index 68062a7..47c1e48 100644
+index 245546b..0e43663 100644
 --- a/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs
 +++ b/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs
-@@ -544,9 +544,13 @@ where
+@@ -543,9 +543,13 @@ where
              stored_group.created_at_ns,
          );
  

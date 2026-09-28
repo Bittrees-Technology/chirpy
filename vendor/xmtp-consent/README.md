@@ -4,7 +4,7 @@ Chat temporarily carries a narrow source patch to `@xmtp/wasm-bindings` 1.10.0,
 used only by the pinned `@xmtp/browser-sdk` 7.0.0. The npm archive is private and
 is installed from this repository. Its MIT license is retained in the archive.
 
-Upstream source: [libxmtp wasm-bindings-1.10.0](https://github.com/xmtp/libxmtp/tree/013c00da7b399f99d7d507953dad7a1f1d7ef01e).
+Upstream build baseline: [libxmtp release/1.10.0 at 5c42da5](https://github.com/xmtp/libxmtp/tree/5c42da539cb3bd0f090499d543621cba7f7d2a93).
 The reviewed changes and regression tests are in
 `patches/libxmtp-1.10.0-consent.patch`.
 
@@ -30,13 +30,37 @@ a fresh timestamp, which could promote a stale default over an explicit block.
 
 The second package revision also backports upstream [PR3931](https://github.com/xmtp/libxmtp/pull/3931), merged as `28e994ccf2a12a73f28d200f85700ced578de0b7`. Ordered welcome batches stop at a retryable failure after the normal retries, so a later welcome cannot advance the durable cursor past it. Non-retryable failures still allow later welcomes to proceed. The upstream regression uses two real MLS welcomes and asserts that the later one never advances the cursor after the earlier retryable failure. This prevents future skips; it does not recover previously skipped welcomes or prove the cause of a particular missing conversation.
 
-This does not change encryption, keys, network environment, group permissions,
-membership or storage schema. Consent is a per-inbox preference, not group
+The consent and welcome-ordering patches do not alter cryptographic code,
+network environment, group permissions, membership or migration SQL. Consent is a per-inbox preference, not group
 removal. Restoring blocked-room history can leave the new installation inactive;
 history availability and active membership must be handled separately in Chat.
 Unupdated installations retain their old SDK behavior. Old records with an
 incorrect timestamp cannot be reconstructed reliably from state alone; a new
 explicit choice receives the corrected timestamp handling.
+
+## Release baseline and interoperability
+
+Revision 3 corrects the source selection used for the earlier private builds.
+The npm `gitHead` and `wasm-bindings-1.10.0` tag identify the publishing workflow
+checkout, while that workflow downloads binaries built from a separately
+selected release branch. Rebuilding the publishing checkout changed the actual
+cryptographic dependencies: the official binary embeds OpenMLS `beb0884` and
+HPKE 0.4, whereas the earlier private binary embedded OpenMLS `42f1479` and
+HPKE 0.6. A real pinned Node bridge publication failed welcome decryption in
+that private browser build; the same acceptance passed with the official binary.
+Browser-to-browser tests alone did not expose this incompatibility.
+
+The selected release commit is the latest release-branch commit before the
+official publication run, and its dependency versions match the binary. The
+original build logs have expired, so this is a reviewed compatible release
+baseline, not a claim of byte-for-byte reproduction of that publication.
+Both existing fixes are retained. Required acceptance includes actual native
+bridge delivery and reopening a browser database created by the prior private
+package, preserving its installation and history. Do not reset user databases
+or treat a fresh-client success as existing-installation acceptance.
+
+Previously skipped welcomes and production pilot recovery remain separate from
+new-message interoperability; replacing the library does not prove recovery.
 
 ## Review and rebuild
 
@@ -44,8 +68,8 @@ Run `python3 scripts/verify-xmtp-consent.py` to verify the archive, source patch
 provenance hashes, supported consumer version and absence of personal builder
 paths. pnpm additionally verifies its locked archive integrity.
 
-Rebuild prerequisites are Rust **1.98.1** with `wasm32-unknown-unknown`,
-wasm-bindgen CLI **0.2.114**, Binaryen **125**, Git, Cargo, Python 3.9+ and a
+Rebuild prerequisites are Rust **1.94.0** with `wasm32-unknown-unknown`,
+wasm-bindgen CLI **0.2.108**, Binaryen **125**, Git, Cargo, Python 3.9+ and a
 WASM-capable Clang/LLVM toolchain. Set `CC_wasm32_unknown_unknown` and
 `AR_wasm32_unknown_unknown` to Clang and llvm-ar where needed.
 

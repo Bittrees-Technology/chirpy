@@ -22,8 +22,10 @@ try {
   cpSync('scripts/test-mail-browser-sender.mjs', join(root, 'sender.mjs'));
   const install = spawnSync('npm', ['ci', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund'], { cwd: root, env: cleanEnv, stdio: 'inherit', timeout: 180_000 });
   if (install.error || install.status !== 0) throw Error('Isolated sender runtime installation failed');
-  const test = spawnSync('pnpm', ['exec', 'playwright', 'test', 'tests/e2e/xmtp-mail-bridge.spec.ts', '--workers=1'], {
-    stdio: 'inherit', timeout: 480_000,
+  const specs = ['tests/e2e/xmtp-mail-bridge.spec.ts'];
+  if (process.env.CHAT_TEST_PREVIOUS_URL) specs.push('tests/e2e/xmtp-mail-upgrade.spec.ts');
+  const test = spawnSync('pnpm', ['exec', 'playwright', 'test', ...specs, '--workers=1'], {
+    stdio: 'inherit', timeout: 840_000,
     env: { ...process.env, XMTP_E2E: '1', VITE_TRANSPORT: 'xmtp', VITE_XMTP_ENV: 'dev', CHAT_TEST_BRIDGE_RUNTIME: root },
   });
   if (test.error || test.status !== 0) throw Error('Bridge-to-browser acceptance failed');

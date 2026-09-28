@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rebuild Chat's XMTP consent and welcome reliability patches from pinned upstream source.
 
-Requires Rust 1.98.1 (wasm32-unknown-unknown target), wasm-bindgen 0.2.114,
+Requires Rust 1.94.0 (wasm32-unknown-unknown target), wasm-bindgen 0.2.108,
 Binaryen 125, a WASM-capable C compiler, Git and Cargo. Never publishes.
 """
 import argparse
@@ -16,7 +16,7 @@ import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-COMMIT = "013c00da7b399f99d7d507953dad7a1f1d7ef01e"
+COMMIT = "5c42da539cb3bd0f090499d543621cba7f7d2a93"
 PATCH = ROOT / "patches/libxmtp-1.10.0-consent.patch"
 
 
@@ -33,14 +33,14 @@ def main():
     parser.add_argument("--source", type=Path, help="Reuse an exact already-patched checkout; its complete tracked diff is verified")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--tests-only", action="store_true", help="Verify the patch and run its consent and welcome regressions without packaging")
-    parser.add_argument("--toolchain", default="1.98.1", help="Installed rustup toolchain name; its version must be 1.98.1")
+    parser.add_argument("--toolchain", default="1.94.0", help="Installed rustup toolchain name; its version must be 1.94.0")
     args = parser.parse_args()
     if not args.tests_only and args.output is None:
         parser.error("--output is required unless --tests-only is selected")
     env = dict(os.environ, RUSTUP_TOOLCHAIN=args.toolchain, CARGO_BUILD_JOBS="4", CARGO_PROFILE_TEST_DEBUG="0", CARGO_PROFILE_DEV_DEBUG="0", BINARYEN_CORES="4")
-    versions = [(["rustc", "--version"], "rustc 1.98.1 ")]
+    versions = [(["rustc", "--version"], "rustc 1.94.0 ")]
     if not args.tests_only:
-        versions += [(["wasm-bindgen", "--version"], "wasm-bindgen 0.2.114"), (["wasm-opt", "--version"], "wasm-opt version 125 ")]
+        versions += [(["wasm-bindgen", "--version"], "wasm-bindgen 0.2.108"), (["wasm-opt", "--version"], "wasm-opt version 125 ")]
     for command, expected in versions:
         version = run(command, ROOT, env, True).strip()
         if not version.startswith(expected):
@@ -87,12 +87,12 @@ def main():
         run(["wasm-opt", str(wasm), "-O", "--strip-debug", "--enable-bulk-memory", "--enable-reference-types", "--enable-multivalue", "--enable-sign-ext", "--enable-nontrapping-float-to-int", "-o", str(optimized)], source, env)
         optimized.replace(wasm)
         metadata = json.loads((source / "bindings/wasm/package.json").read_text())
-        metadata.update(version="1.10.0-chat-consent.2", private=True)
+        metadata.update(version="1.10.0-chat-consent.3", private=True)
         for key in ("scripts", "devDependencies", "publishConfig"):
             metadata.pop(key, None)
         (package / "package.json").write_text(json.dumps(metadata, indent=2) + "\n")
         shutil.copyfile(source / "bindings/wasm/LICENSE", package / "LICENSE")
-        provenance = {"upstreamCommit": COMMIT, "patchSha256": digest(PATCH), "cargoLockSha256": digest(source / "Cargo.lock"), "rust": "1.98.1", "wasmBindgen": "0.2.114", "binaryen": "125", "files": {str(p.relative_to(package)): digest(p) for p in sorted(package.rglob("*")) if p.is_file()}}
+        provenance = {"upstreamCommit": COMMIT, "patchSha256": digest(PATCH), "cargoLockSha256": digest(source / "Cargo.lock"), "rust": "1.94.0", "wasmBindgen": "0.2.108", "binaryen": "125", "files": {str(p.relative_to(package)): digest(p) for p in sorted(package.rglob("*")) if p.is_file()}}
         (package / "PROVENANCE.json").write_text(json.dumps(provenance, indent=2) + "\n")
         output = args.output.resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
