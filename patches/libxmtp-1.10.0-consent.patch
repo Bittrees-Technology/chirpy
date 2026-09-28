@@ -1,3 +1,27 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 2dc0b22..9342efd 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -14861,6 +14861,7 @@ dependencies = [
+  "futures",
+  "gloo-timers 0.3.0",
+  "hpke-rs",
++ "hpke-rs-crypto",
+  "openmls",
+  "openmls_rust_crypto",
+  "openmls_traits",
+diff --git a/Cargo.toml b/Cargo.toml
+index a0c2ff4..a412152 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -66,6 +66,7 @@ getrandom = { version = "0.4", default-features = false }
+ gloo-timers = "0.3"
+ hex = { package = "const-hex", version = "1.14" }
+ hkdf = "0.12.3"
++hpke-rs-crypto = "=0.6.0"
+ hpke-rs = { version = "0.6", features = ["hazmat", "serialization", "libcrux"] }
+ http = "1.2"
+ hyper = { version = "1.7", default-features = false }
 diff --git a/crates/xmtp_db/src/encrypted_store/consent_record.rs b/crates/xmtp_db/src/encrypted_store/consent_record.rs
 index a0fbdcb..f65644e 100644
 --- a/crates/xmtp_db/src/encrypted_store/consent_record.rs
@@ -389,6 +413,224 @@ index a0fbdcb..f65644e 100644
      #[xmtp_common::test(unwrap_try = true)]
      fn find_consent_by_dm_id() {
          with_connection(|conn| {
+diff --git a/crates/xmtp_id/Cargo.toml b/crates/xmtp_id/Cargo.toml
+index 86e014d..104ee3d 100644
+--- a/crates/xmtp_id/Cargo.toml
++++ b/crates/xmtp_id/Cargo.toml
+@@ -26,6 +26,7 @@ ed25519-dalek = { workspace = true, features = ["digest"] }
+ futures.workspace = true
+ hex.workspace = true
+ hpke-rs.workspace = true
++hpke-rs-crypto.workspace = true
+ openmls.workspace = true
+ openmls_rust_crypto.workspace = true
+ openmls_traits.workspace = true
+diff --git a/crates/xmtp_id/src/key_package.rs b/crates/xmtp_id/src/key_package.rs
+index 653a8be..6107209 100644
+--- a/crates/xmtp_id/src/key_package.rs
++++ b/crates/xmtp_id/src/key_package.rs
+@@ -1,3 +1,5 @@
++mod welcome_hpke_compat;
++pub use welcome_hpke_compat::WelcomeCompat;
+ mod mls_ext_wrapper_encryption;
+ mod verified_key_package_v2;
+ 
+diff --git a/crates/xmtp_id/src/key_package/mls_ext_wrapper_encryption.rs b/crates/xmtp_id/src/key_package/mls_ext_wrapper_encryption.rs
+index 7be7c86..2cc2bfd 100644
+--- a/crates/xmtp_id/src/key_package/mls_ext_wrapper_encryption.rs
++++ b/crates/xmtp_id/src/key_package/mls_ext_wrapper_encryption.rs
+@@ -25,12 +25,20 @@ impl WrapperAlgorithm {
+     }
+     // hardcoded because the functions to do the translations are private
+     // and placed here so that any changes to the this algorithm will have to be handled
+-    pub fn to_hpke_config(self) -> hpke_rs::Hpke<hpke_rs::libcrux::HpkeLibcrux> {
++    pub fn to_hpke_config(self) -> hpke_rs::Hpke<super::WelcomeCompat> {
++        self.to_hpke_config_with_legacy_code(true)
++    }
++
++    // The earlier private browser used hpke-rs 0.6's reassigned X-Wing code.
++    // Read that authenticated format too, but send the deployed XMTP format.
++    #[allow(deprecated)]
++    pub fn to_hpke_config_with_legacy_code(self, legacy: bool) -> hpke_rs::Hpke<super::WelcomeCompat> {
+         let kem = match self {
+             Self::Curve25519 => hpke_rs::hpke_types::KemAlgorithm::DhKem25519,
++            Self::XWingMLKEM768Draft6 if legacy => hpke_rs::hpke_types::KemAlgorithm::XWingDraft06Obsolete,
+             Self::XWingMLKEM768Draft6 => hpke_rs::hpke_types::KemAlgorithm::XWingDraft06,
+         };
+-        hpke_rs::Hpke::<hpke_rs::libcrux::HpkeLibcrux>::new(
++        hpke_rs::Hpke::<super::WelcomeCompat>::new(
+             hpke_rs::Mode::Base,
+             kem,
+             hpke_rs::hpke_types::KdfAlgorithm::HkdfSha256,
+diff --git a/crates/xmtp_id/src/key_package/welcome_hpke_compat.rs b/crates/xmtp_id/src/key_package/welcome_hpke_compat.rs
+new file mode 100644
+index 0000000..fdbb154
+--- /dev/null
++++ b/crates/xmtp_id/src/key_package/welcome_hpke_compat.rs
+@@ -0,0 +1,29 @@
++// Compatibility adapter only: retain HPKE suite code 0x004d while delegating
++// unchanged X-Wing KEM operations to the upstream libcrux provider.
++use hpke_rs_crypto::{HpkeCrypto,error::Error,types::{KemAlgorithm,KdfAlgorithm,AeadAlgorithm}};
++use hpke_rs::libcrux::HpkeLibcrux;
++#[derive(Debug)]
++pub struct WelcomeCompat;
++#[allow(deprecated)]
++fn native_kem(alg: KemAlgorithm) -> KemAlgorithm {
++ match alg { KemAlgorithm::XWingDraft06Obsolete => KemAlgorithm::XWingDraft06, other => other }
++}
++impl HpkeCrypto for WelcomeCompat {
++ type HpkePrng = <HpkeLibcrux as HpkeCrypto>::HpkePrng;
++ fn name() -> String { HpkeLibcrux::name() }
++ fn supports_kdf(alg: KdfAlgorithm) -> Result<(), Error> { HpkeLibcrux::supports_kdf(alg) }
++ fn supports_kem(alg: KemAlgorithm) -> Result<(), Error> { HpkeLibcrux::supports_kem(native_kem(alg)) }
++ fn supports_aead(alg: AeadAlgorithm) -> Result<(), Error> { HpkeLibcrux::supports_aead(alg) }
++ fn prng() -> Self::HpkePrng { HpkeLibcrux::prng() }
++ fn kdf_extract(alg: KdfAlgorithm, salt: &[u8], ikm: &[u8]) -> Result<Vec<u8>, Error> { HpkeLibcrux::kdf_extract(alg, salt, ikm) }
++ fn kdf_expand(alg: KdfAlgorithm, prk: &[u8], info: &[u8], output_size: usize) -> Result<Vec<u8>, Error> { HpkeLibcrux::kdf_expand(alg, prk, info, output_size) }
++ fn dh(alg: KemAlgorithm, pk: &[u8], sk: &[u8]) -> Result<Vec<u8>, Error> { HpkeLibcrux::dh(native_kem(alg), pk, sk) }
++ fn secret_to_public(alg: KemAlgorithm, sk: &[u8]) -> Result<Vec<u8>, Error> { HpkeLibcrux::secret_to_public(native_kem(alg), sk) }
++ fn kem_key_gen(alg: KemAlgorithm, prng: &mut Self::HpkePrng) -> Result<(Vec<u8>, Vec<u8>), Error> { HpkeLibcrux::kem_key_gen(native_kem(alg), prng) }
++ fn kem_key_gen_derand(alg: KemAlgorithm, seed: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Error> { HpkeLibcrux::kem_key_gen_derand(native_kem(alg), seed) }
++ fn kem_encaps(alg: KemAlgorithm, pk_r: &[u8], prng: &mut Self::HpkePrng) -> Result<(Vec<u8>, Vec<u8>), Error> { HpkeLibcrux::kem_encaps(native_kem(alg), pk_r, prng) }
++ fn kem_decaps(alg: KemAlgorithm, ct: &[u8], sk_r: &[u8]) -> Result<Vec<u8>, Error> { HpkeLibcrux::kem_decaps(native_kem(alg), ct, sk_r) }
++ fn dh_validate_sk(alg: KemAlgorithm, sk: &[u8]) -> Result<Vec<u8>, Error> { HpkeLibcrux::dh_validate_sk(native_kem(alg), sk) }
++ fn aead_seal(alg: AeadAlgorithm, key: &[u8], nonce: &[u8], aad: &[u8], msg: &[u8]) -> Result<Vec<u8>, Error> { HpkeLibcrux::aead_seal(alg, key, nonce, aad, msg) }
++ fn aead_open(alg: AeadAlgorithm, key: &[u8], nonce: &[u8], aad: &[u8], msg: &[u8]) -> Result<Vec<u8>, Error> { HpkeLibcrux::aead_open(alg, key, nonce, aad, msg) }
++}
+diff --git a/crates/xmtp_mls/src/groups/mls_ext/welcome_wrapper.rs b/crates/xmtp_mls/src/groups/mls_ext/welcome_wrapper.rs
+index 2fa46c1..8aa781b 100644
+--- a/crates/xmtp_mls/src/groups/mls_ext/welcome_wrapper.rs
++++ b/crates/xmtp_mls/src/groups/mls_ext/welcome_wrapper.rs
+@@ -99,6 +99,20 @@ pub fn unwrap_welcome(
+     wrapped_welcome_metadata: &[u8],
+     private_key: &[u8],
+     wrapper_algorithm: WrapperAlgorithm,
++) -> Result<(Vec<u8>, Vec<u8>), UnwrapWelcomeError> {
++    let result = unwrap_welcome_with_code(wrapped_welcome, wrapped_welcome_metadata, private_key, wrapper_algorithm, true);
++    if result.is_err() && wrapper_algorithm == WrapperAlgorithm::XWingMLKEM768Draft6 {
++        return unwrap_welcome_with_code(wrapped_welcome, wrapped_welcome_metadata, private_key, wrapper_algorithm, false);
++    }
++    result
++}
++
++fn unwrap_welcome_with_code(
++    wrapped_welcome: &[u8],
++    wrapped_welcome_metadata: &[u8],
++    private_key: &[u8],
++    wrapper_algorithm: WrapperAlgorithm,
++    legacy: bool,
+ ) -> Result<(Vec<u8>, Vec<u8>), UnwrapWelcomeError> {
+     let ciphertext = HpkeCiphertext::tls_deserialize_exact(wrapped_welcome)?;
+ 
+@@ -110,7 +124,7 @@ pub fn unwrap_welcome(
+     let info = context.tls_serialize_detached()?;
+     let aad = &[];
+ 
+-    let config = wrapper_algorithm.to_hpke_config();
++    let config = wrapper_algorithm.to_hpke_config_with_legacy_code(legacy);
+ 
+     let sk_r = hpke_rs::HpkePrivateKey::new(private_key.to_vec());
+ 
+@@ -326,7 +340,7 @@ mod tests {
+         )?)
+     }
+     #[xmtp_common::test]
+-    async fn round_trip_xwing_mlkem512_current_to_previous_and_back() {
++    async fn previous_private_xwing_welcome_code_is_read_compatible() {
+         let client = ClientBuilder::new_test_client(&generate_local_wallet()).await;
+         let provider = client.context.mls_provider();
+ 
+@@ -344,7 +358,8 @@ mod tests {
+         let to_encrypt = xmtp_common::rand_vec::<1000>();
+         let to_encrypt_metadata = xmtp_common::rand_vec::<32>();
+ 
+-        // Test the current code to previous code round trip
++        // Outgoing welcomes use the deployed XMTP code. The earlier private
++        // browser used a reassigned code and must be upgraded to read these.
+         {
+             let wrapped = wrap_welcome(
+                 &to_encrypt,
+@@ -356,18 +371,17 @@ mod tests {
+ 
+             assert_ne!(to_encrypt_metadata, wrapped.1);
+ 
+-            let unwrapped = unwrap_welcome_inner(
++            let result = unwrap_welcome_inner(
+                 &openmls_libcrux_crypto::CryptoProvider::new().unwrap(),
+                 &HpkeCiphertext::tls_deserialize_exact(&wrapped.0).unwrap(),
+                 &private_key,
+                 WrapperAlgorithm::XWingMLKEM768Draft6.to_mls_ciphersuite(),
+-            )
+-            .unwrap();
++            );
+ 
+-            assert_eq!(unwrapped, to_encrypt);
++            assert!(result.is_err());
+         }
+ 
+-        // Test the previous code to current code round trip
++        // Previously published private-browser welcomes remain readable.
+         {
+             let wrapped = wrap_welcome_inner(
+                 &openmls_libcrux_crypto::CryptoProvider::new().unwrap(),
+@@ -463,3 +477,57 @@ mod tests {
+         }
+     }
+ }
++
++#[cfg(test)]
++mod welcome_compat_tests {
++    use super::*;
++    fn keys() -> hpke_rs::HpkeKeyPair {
++        WrapperAlgorithm::XWingMLKEM768Draft6.to_hpke_config().derive_key_pair(&[7u8; 32]).unwrap()
++    }
++    fn fixture() -> (Vec<u8>, Vec<u8>) {
++        // Generated independently by hpke-rs 0.4.0 using synthetic seed [7; 32].
++        let ciphertext = HpkeCiphertext {
++            kem_output: hex::decode("b0e07a9889e88ef9ebeb0f6166a17a47c80492ea79c9aa82642123f3ae2f9ba609c2cef27328739705825f6de145a3b8714ebab7345d5747a557fcf307804d1ded87e05e2ce83b3c37ffcdb63270f257c437817413d584c45482b0ac1d4ff167d68966b22efee9f5b4daf89a65ca94e4f4826c2ca50f0e383a58ed9b822255ecb44b91a1cbff0b8ca11692e55eae3d11f35d67baf5024a62f16fd6905e1a0c835bc96eaa9461a86343713c14691336c3f0249b681ef9c990705010021f6a7c11917de8fc0dd9097250a4931fb443f640d143096ddf1dee990fc02eeacad312f1253b2b94f0ff1689de78c77ca450145e84986ae72366246df8eae1ce000bbe197ed1f5297b468b25b6ed557e9e2b113d1b05fbbfe56a44a4f8256e3a5a31721474949c71a6b1b8b45825b7ffac5539af286ebc67d0ffe21443bb28d2e0ce2db3552115ff0a8a6904001e443c9accbcb94a2e9d89c12efdf081e0b50c6543e6f49d7564ea5224c4f4bf1eb89a0e3c73af68819bc56cd3ba7e46d9a5d105bab4dbab10ee7f2ae3f40f95e7192c84ea87956181dd569ef0bd012688fe49a15a6eb73fc81255238ed3b8a0deaf05877e1e2218e1c18d56c1d634d53f3159482de4d6d31c090a87c1d9b4a5a19e237dd83ca44e0adf525237a7e0b26aa497f880f902fe96c60ebb0f1b694c955b504f91c07165e77fc5acb49c724dd9c4c2977c49298e5b5e22df7c37c351d1ebbdd8b61f8915a2c98daf330842bbe77d40a62a8813a555b77e3b6595c97865142de97980fec8c11d99b9bba851c1c05f6f0e6441ff02d62ae28a99a0cca01b43b2664d308d1ca8e8a5c4660b9ec96f630994629d0c23d2c6a513df635911c7e2ab7390b5d1b49894e5498f3a2458a511afe43c39d45174afdf6ef76cc48ee1c48bbc54b327513bf7aa9207493fc6cbc479ce9cf321bb4717bf9a180ae7fb14190791a7ef3e066da293de5486dc95677273a2dd92ab2e7224c60e0fa6a1c7412f56f36553b057d85044ef63d51ae40c14b87d69d4fafacb2776240b7f453381627a0e1e285c7f335e11d2081f0ff451181ed34991e732d73067d5da534c1ef96b8baddec12904a81963ffca1a0e8ec4f55b178abff97ce6ce3e7ba25de7c84e86f0590924434fb4b8b5304fcdf1b9232921e0a929ed2ca2e12101979eeaeb187529f16923ff452a3071357dc03fda54c99758974a1260ca971dd52eba4a3ddb7beeb327cfea15a307c4a8d7ded0df8e9a090f57281df92804aa2f857216caf4ff914b872f2dcfcbba3ebd239fd4eecebf85e751f33f0b18ed899006741a1ad27f176b7e6aacd60d5f06ad2aa8dfd84b32dec878dfaba679562953e3b408ca5fa18edcdce187e0e195fbcbe48ddb72ace34f57792eb21f3e5cf1fea6c16674447dfb5357900d2b0b3aef4b36998d475934acaf30b2b3d6deba5dd364e93aa57ad58736ba84a0cb22e586a2025b9847a7b3ee43d836f542733c6cbabb647c827cb9fb41e661680c1200b4fee1c897288ac47e4eef7a4aaa11c239c30e2a0c22b6b9f4217e196c18c2f1529002c768d15441c9f364ea7a").unwrap().into(),
++            ciphertext: hex::decode("a6c9df321ae2229bf2ddf5194458924cee056e05921857c588917b261365ad8e3138fd670434383584").unwrap().into(),
++        };
++        (ciphertext.tls_serialize_detached().unwrap(), hex::decode("e21f2e66621d52fbb1fbfeb2ed71e80a7f2a774c33012329929f15721ec785adf49041bb08fb25ad5584").unwrap())
++    }
++    #[test]
++    fn welcome_compat_release_fixture_and_tampering() {
++        let key = keys();
++        let (body, metadata) = fixture();
++        let algorithm = WrapperAlgorithm::XWingMLKEM768Draft6;
++        let actual = unwrap_welcome(&body, &metadata, key.private_key().as_slice(), algorithm).unwrap();
++        assert_eq!(actual, (b"Synthetic release welcome".to_vec(), b"Synthetic release metadata".to_vec()));
++        let mut bad_body = body.clone();
++        *bad_body.last_mut().unwrap() ^= 1;
++        assert!(unwrap_welcome(&bad_body, &metadata, key.private_key().as_slice(), algorithm).is_err());
++        let mut bad_metadata = metadata.clone();
++        *bad_metadata.last_mut().unwrap() ^= 1;
++        assert!(unwrap_welcome(&body, &bad_metadata, key.private_key().as_slice(), algorithm).is_err());
++        assert!(unwrap_welcome(&body, &metadata, &[0u8; 32], algorithm).is_err());
++    }
++    #[test]
++    fn welcome_compat_reads_earlier_browser_and_sends_release_format() {
++        let key = keys();
++        let algorithm = WrapperAlgorithm::XWingMLKEM768Draft6;
++        let context = openmls::prelude::hpke::EncryptContext::from((WELCOME_HPKE_LABEL, [].as_slice()));
++        let info = context.tls_serialize_detached().unwrap();
++        let mut previous = algorithm.to_hpke_config_with_legacy_code(false);
++        let (enc, mut context) = previous.setup_sender(key.public_key(), &info, None, None, None).unwrap();
++        let body = HpkeCiphertext { kem_output: enc.into(), ciphertext: context.seal(&[], b"Earlier browser welcome").unwrap().into() }.tls_serialize_detached().unwrap();
++        let metadata = context.seal(&[], b"Earlier browser metadata").unwrap();
++        assert_eq!(unwrap_welcome(&body, &metadata, key.private_key().as_slice(), algorithm).unwrap(), (b"Earlier browser welcome".to_vec(), b"Earlier browser metadata".to_vec()));
++        let mut bad = metadata.clone(); *bad.last_mut().unwrap() ^= 1;
++        assert!(unwrap_welcome(&body, &bad, key.private_key().as_slice(), algorithm).is_err());
++        let wrapped = wrap_welcome(b"New welcome", b"New metadata", key.public_key().as_slice(), algorithm).unwrap();
++        let cipher = HpkeCiphertext::tls_deserialize_exact(&wrapped.0).unwrap();
++        let canonical = algorithm.to_hpke_config();
++        let mut receiver = canonical.setup_receiver(cipher.kem_output.as_slice(), key.private_key(), &info, None, None, None).unwrap();
++        assert_eq!(receiver.open(&[], cipher.ciphertext.as_slice()).unwrap(), b"New welcome");
++        assert_eq!(receiver.open(&[], &wrapped.1).unwrap(), b"New metadata");
++        // The reassigned identifier is intentionally not used for outgoing welcomes.
++        let mut previous_receiver = previous.setup_receiver(cipher.kem_output.as_slice(), key.private_key(), &info, None, None, None).unwrap();
++        assert!(previous_receiver.open(&[], cipher.ciphertext.as_slice()).is_err());
++    }
++}
 diff --git a/crates/xmtp_mls/src/groups/welcome_sync.rs b/crates/xmtp_mls/src/groups/welcome_sync.rs
 index a0d367d..3c56de8 100644
 --- a/crates/xmtp_mls/src/groups/welcome_sync.rs

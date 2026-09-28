@@ -4,7 +4,7 @@ Chat temporarily carries a narrow source patch to `@xmtp/wasm-bindings` 1.10.0,
 used only by the pinned `@xmtp/browser-sdk` 7.0.0. The npm archive is private and
 is installed from this repository. Its MIT license is retained in the archive.
 
-Upstream source: [libxmtp wasm-bindings-1.10.0](https://github.com/xmtp/libxmtp/tree/013c00da7b399f99d7d507953dad7a1f1d7ef01e).
+Storage-preserving source baseline: [libxmtp at 013c00d](https://github.com/xmtp/libxmtp/tree/013c00da7b399f99d7d507953dad7a1f1d7ef01e).
 The reviewed changes and regression tests are in
 `patches/libxmtp-1.10.0-consent.patch`.
 
@@ -30,13 +30,48 @@ a fresh timestamp, which could promote a stale default over an explicit block.
 
 The second package revision also backports upstream [PR3931](https://github.com/xmtp/libxmtp/pull/3931), merged as `28e994ccf2a12a73f28d200f85700ced578de0b7`. Ordered welcome batches stop at a retryable failure after the normal retries, so a later welcome cannot advance the durable cursor past it. Non-retryable failures still allow later welcomes to proceed. The upstream regression uses two real MLS welcomes and asserts that the later one never advances the cursor after the earlier retryable failure. This prevents future skips; it does not recover previously skipped welcomes or prove the cause of a particular missing conversation.
 
-This does not change encryption, keys, network environment, group permissions,
-membership or storage schema. Consent is a per-inbox preference, not group
+The consent and welcome-ordering patches do not alter cryptographic code,
+network environment, group permissions, membership or migration SQL. Consent is a per-inbox preference, not group
 removal. Restoring blocked-room history can leave the new installation inactive;
 history availability and active membership must be handled separately in Chat.
 Unupdated installations retain their old SDK behavior. Old records with an
 incorrect timestamp cannot be reconstructed reliably from state alone; a new
 explicit choice receives the corrected timestamp handling.
+
+## Release baseline and interoperability
+
+Revision 4 retains the source and OpenMLS storage format of the deployed private
+browser builds and corrects their welcome-wrapper interoperability. The npm
+publishing checkout used for earlier rebuilds was not the source of the official
+release binary. Moving back to the release branch made fresh native bridge
+messages readable but failed the existing-browser upgrade gate: OpenMLS storage
+includes incompatible serialized extension variants. That replacement (revision
+3) was never accepted for production.
+
+The precise wrapper mismatch is the X-Wing HPKE suite code: the deployed native
+release uses `0x004d`, while the earlier private browser uses hpke-rs 0.6's
+reassigned `0x647a` under the same XMTP wrapper descriptor. Synthetic cross-version
+probes derive identical public keys but fail authenticated decryption. Curve25519
+controls pass. The adapter preserves the requested HPKE suite code while mapping
+only the underlying KEM operation to the unchanged upstream libcrux provider.
+It does not implement cryptographic primitives or alter stored MLS state.
+
+Outgoing welcomes use the deployed release code. Incoming X-Wing welcomes try
+that code first and then the earlier private-browser code; both attempts require
+authenticated decryption of the welcome and supplied metadata. Malformed data,
+wrong keys, and modified ciphertext must still fail. Earlier unupdated private
+browsers cannot read new release-format welcomes and need this update; existing
+conversation state is retained. The source tests include an independently
+produced hpke-rs 0.4 release fixture and tamper rejection.
+
+Required acceptance includes the actual pinned native bridge, reopening a browser
+database from the prior deployed build with the same inbox and installation,
+earlier history, and replies in that existing conversation. Keep the candidate
+unmerged until all those checks pass. Do not reset user databases or treat a
+fresh-client success as existing-installation acceptance.
+
+Previously skipped welcomes and production pilot recovery remain separate from
+new-message interoperability; replacing the library does not prove recovery.
 
 ## Review and rebuild
 

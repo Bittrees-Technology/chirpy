@@ -56,7 +56,8 @@ def main():
         run(["git", "init", "--quiet", str(source)], ROOT, env)
         run(["git", "-C", str(source), "fetch", "--depth", "1", "https://github.com/xmtp/libxmtp.git", COMMIT], ROOT, env)
         run(["git", "checkout", "--detach", "FETCH_HEAD"], source, env)
-        run(["git", "apply", str(PATCH)], source, env)
+        # Include added files in the complete HEAD diff used for provenance.
+        run(["git", "apply", "--index", str(PATCH)], source, env)
     if run(["git", "rev-parse", "HEAD"], source, env, True).strip() != COMMIT:
         raise RuntimeError("Source is not the pinned upstream commit")
     actual = subprocess.check_output(["git", "diff", "--binary", "HEAD"], cwd=source, env=env)
@@ -70,6 +71,7 @@ def main():
     print("Building verified source in", source, flush=True)
     run(["cargo", "test", "--locked", "-p", "xmtp_db", "consent_record"], source, env)
     run(["cargo", "test", "--locked", "-p", "xmtp_mls", "--lib", "groups::welcome_sync::tests"], source, env)
+    run(["cargo", "test", "--locked", "-p", "xmtp_mls", "--lib", "welcome_compat_tests"], source, env)
     if args.tests_only:
         if own_source:
             shutil.rmtree(source)
@@ -87,7 +89,7 @@ def main():
         run(["wasm-opt", str(wasm), "-O", "--strip-debug", "--enable-bulk-memory", "--enable-reference-types", "--enable-multivalue", "--enable-sign-ext", "--enable-nontrapping-float-to-int", "-o", str(optimized)], source, env)
         optimized.replace(wasm)
         metadata = json.loads((source / "bindings/wasm/package.json").read_text())
-        metadata.update(version="1.10.0-chat-consent.2", private=True)
+        metadata.update(version="1.10.0-chat-consent.4", private=True)
         for key in ("scripts", "devDependencies", "publishConfig"):
             metadata.pop(key, None)
         (package / "package.json").write_text(json.dumps(metadata, indent=2) + "\n")

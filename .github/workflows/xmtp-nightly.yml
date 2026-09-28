@@ -26,6 +26,17 @@ jobs:
           XMTP_MAIL_PROVISION_DRILL: '1'
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Verify bridge delivery and existing browser storage on XMTP dev
+        run: node scripts/test-mail-browser-upgrade.mjs --dev
+        env:
+          CHIRPY_TEST_NATIVE_CSP: "1"
+      # The following Playwright suite clears test-results on startup.
+      - name: Preserve native bridge and existing-browser upgrade evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xmtp-bridge-upgrade-evidence
+          path: test-results/
       - run: pnpm e2e:xmtp
         env:
           CHIRPY_TEST_NATIVE_CSP: "1"
@@ -43,4 +54,40 @@ jobs:
         if: always()
         with:
           name: xmtp-acceptance-evidence
+          path: test-results/
+
+  bridge-upstream-comparison:
+    # Separate disposable checkout: compare interoperability with the official
+    # browser artifact. Never changes the shipped lockfile or patched acceptance.
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Select the official pinned browser artifact in this disposable job
+        run: |
+          node --input-type=module <<'JS'
+          import {readFileSync, writeFileSync} from 'node:fs';
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          const key = '@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings';
+          if (!pkg.pnpm.overrides[key]?.startsWith('file:vendor/xmtp-consent/')) throw Error('Unexpected comparison baseline');
+          pkg.pnpm.overrides[key] = '1.10.0';
+          writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          JS
+          pnpm install --no-frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Compare the same Node bridge against the official browser package
+        run: node scripts/test-mail-browser-bridge.mjs --dev
+        env:
+          CHIRPY_TEST_NATIVE_CSP: "1"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xmtp-upstream-bridge-evidence
           path: test-results/

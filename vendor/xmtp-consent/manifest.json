@@ -1,6 +1,6 @@
 {
-  "artifact": "xmtp-wasm-bindings-1.10.0-chat-consent.2-ac69a5d4645b.tgz",
-  "sha256": "ac69a5d4645b0a81e860814978e925fc36711fbaa730d456fa570594d14dbdc3",
-  "wasmSha256": "806091a666d2c01613ab98575e4baf803245241331bd2c2d90903b7e5d1f6473",
-  "cargoLockSha256": "3f24c1b20f38a25fd5601283e478fa9d752dffdd3a837b3086a0528c0fe141a0"
+  "artifact": "xmtp-wasm-bindings-1.10.0-chat-consent.4-1049a6f8c24f.tgz",
+  "sha256": "1049a6f8c24f68f44c0af374e1969de3cd521b3616de1ecc5d451fd8b694f27b",
+  "wasmSha256": "14cce61d3abc185e1b8e42c8746f65fa9b9b8db85fac8d263afc953e7c753f95",
+  "cargoLockSha256": "7d631f3b242b6076f19ae849de4b7be6b2efa9d0619dca679da8f4bd03606001"
 }

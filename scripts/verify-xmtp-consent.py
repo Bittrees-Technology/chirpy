@@ -36,7 +36,7 @@ def main():
     assert (provenance["rust"], provenance["wasmBindgen"], provenance["binaryen"]) == ("1.98.1", "0.2.114", "125")
     assert provenance["files"] == {name: sha(data) for name, data in content.items() if name != "PROVENANCE.json"}
     metadata = json.loads(content["package.json"])
-    assert metadata["name"] == "@xmtp/wasm-bindings" and metadata["version"] == "1.10.0-chat-consent.2"
+    assert metadata["name"] == "@xmtp/wasm-bindings" and metadata["version"] == "1.10.0-chat-consent.4"
     assert metadata["private"] is True and "scripts" not in metadata
     wasm = content["dist/bindings_wasm_bg.wasm"]
     assert wasm[:8] == b"\x00asm\x01\x00\x00\x00" and sha(wasm) == manifest["wasmSha256"]
