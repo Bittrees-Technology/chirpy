@@ -31,7 +31,7 @@ export async function configureGate(env = process.env, directory = fileURLToPath
   readGateClientConfig({ XMTP_GATEKEEPER_PRIVATE_KEY: privateKey, GATE_DB_ENCRYPTION_KEY: databaseKey, GATE_DATA_DIR: '/data' });
   const address = privateKeyToAccount(privateKey).address;
   const config = {
-    GATE_DOMAIN: domain, GATE_PORT: '8788', GATE_ALLOW_ORIGIN: origin, MAINNET_RPC_URL: rpc,
+    GATE_DOMAIN: domain, GATE_BIND_HOST: '127.0.0.1', GATE_PORT: '8788', GATE_ALLOW_ORIGIN: origin, MAINNET_RPC_URL: rpc,
     XMTP_GATEKEEPER_PRIVATE_KEY: privateKey, GATE_DB_ENCRYPTION_KEY: databaseKey,
     GATE_DATA_DIR: '/data', GATE_XMTP_ENV: 'production',
     GATE_PUBLIC_URL: `https://${domain}/api/room-join`, CHIRPY_GATE_ROOMS_FILE: '/config/rooms.json',

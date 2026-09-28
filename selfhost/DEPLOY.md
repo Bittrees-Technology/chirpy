@@ -24,7 +24,7 @@ docker compose -f selfhost/docker-compose.yml --env-file selfhost/gate.env ps
 curl -fsS https://gate.example.org/health
 ```
 
-Configure TLS and host firewall routing to the gate port. Compose mounts the database volume at `/data` and the registry read-only at `/config/rooms.json`. Do not omit these mounts or the restrictions when adapting the deployment. Existing volumes must be writable by UID/GID 65532. Never start two processes against one store.
+Compose publishes only on `127.0.0.1` by default. Configure a host TLS reverse proxy or tunnel to `http://127.0.0.1:8788` (or the selected `GATE_PORT`). The container always listens on `8788`, so changing the host port does not change its internal listener. Existing deployments that relied on direct network access must establish the proxy before updating; do not change the binding to restore unencrypted public access. For a proxy on a separate host, explicitly select a private `GATE_BIND_HOST` and restrict it with firewall rules. A containerized proxy should use a shared private Docker network and the gate container port instead of host loopback. Compose mounts the database volume at `/data` and the registry read-only at `/config/rooms.json`. Do not omit these mounts or the restrictions when adapting the deployment. Existing volumes must be writable by UID/GID 65532. Never start two processes against one store.
 
 The complete environment is documented in [gate.env.example](gate.env.example). Required values include `XMTP_GATEKEEPER_PRIVATE_KEY`, `GATE_DB_ENCRYPTION_KEY`, `MAINNET_RPC_URL`, `GATE_ALLOW_ORIGIN`, `GATE_PUBLIC_URL`, `CHIRPY_GATE_ROOMS_FILE`, and `GATE_DATA_DIR`. Use `GATE_XMTP_ENV=production` for release.
 
