@@ -9,8 +9,11 @@ services:
       context: ..
       dockerfile: selfhost/gate.Dockerfile
     env_file: ./gate.env
+    # GATE_PORT selects the host port; the container always listens on 8788.
+    environment:
+      GATE_PORT: "8788"
     ports:
-      - "${GATE_PORT:-8788}:8788"
+      - "${GATE_BIND_HOST:-127.0.0.1}:${GATE_PORT:-8788}:8788"
     restart: unless-stopped
     init: true
     read_only: true

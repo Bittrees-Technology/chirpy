@@ -16,6 +16,7 @@ describe('gate installer', () => {
     const { dir, env } = await setup();
     expect(await configureGate(env, dir)).toMatch(/^0x[0-9a-fA-F]{40}$/);
     const contents = await readFile(join(dir, 'gate.env'), 'utf8');
+    expect(contents).toContain("GATE_BIND_HOST='127.0.0.1'");
     expect(contents).toContain("GATE_DATA_DIR='/data'");
     expect(contents).toContain("CHIRPY_GATE_ROOMS_FILE='/config/rooms.json'");
     expect(contents).toContain("GATE_PUBLIC_URL='https://gate.example.org/api/room-join'");

@@ -1,9 +1,23 @@
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 const image = process.argv[2];
 if (!image) throw new Error('Pass the built test image name.');
-const suffix = randomUUID(); const name = `chirpy-gate-test-${suffix}`; const volume = `${name}-data`;
+const project = `chat-gate-test-${randomUUID()}`;
+const directory = mkdtempSync(join(tmpdir(), 'chat-gate-compose-'));
+let name;
+const config = fileURLToPath(new URL('../selfhost/docker-compose.yml', import.meta.url));
+// Exercise the shipped Compose file with isolated, credential-free fixtures.
+writeFileSync(join(directory, 'gate.env'), 'GATE_PORT=0\nGATE_ALLOW_ORIGIN=https://chirpy.test\n', { mode: 0o600 });
+writeFileSync(join(directory, 'rooms.json'), '[]\n', { mode: 0o644 });
+writeFileSync(join(directory, 'image.json'), JSON.stringify({ services: { gate: { image } } }));
+const compose = (...args) => execFileSync('docker', ['compose', '--project-name', project, '--project-directory', directory,
+  '--env-file', join(directory, 'gate.env'), '-f', config, '-f', join(directory, 'image.json'), ...args],
+  { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GATE_PORT: '0', GATE_BIND_HOST: '' } }).trim();
 const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const node = script => docker('exec', name, 'node', '--input-type=module', '-e', script);
 // Keep a referenced deadline through body consumption so a pending fetch cannot
@@ -17,10 +31,19 @@ async function request(url, options = {}) {
     return { status: response.status, headers: response.headers, body };
   } finally { clearTimeout(deadline); }
 }
-const run = () => docker('run', '-d', '--name', name, '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=128',
-  '--tmpfs', '/tmp:rw,nosuid,noexec,size=64m', '-p', '127.0.0.1::8788', '-v', `${volume}:/data`, '-e', 'GATE_ALLOW_ORIGIN=https://chirpy.test', image);
+const run = () => { compose('up', '-d', '--no-build'); name = compose('ps', '-q', 'gate'); assert.ok(name); };
 try {
-  docker('volume', 'create', volume); run();
+  const rendered = JSON.parse(compose('config', '--format', 'json')).services.gate;
+  assert.equal(rendered.ports.length, 1);
+  assert.equal(rendered.ports[0].host_ip, '127.0.0.1');
+  assert.equal(Number(rendered.ports[0].target), 8788);
+  assert.equal(Number(rendered.ports[0].published), 0);
+  assert.equal(String(rendered.environment.GATE_PORT), '8788');
+  run();
+  const bindings = JSON.parse(docker('inspect', '--format', '{{json .NetworkSettings.Ports}}', name));
+  assert.deepEqual(Object.keys(bindings), ['8788/tcp']);
+  assert.equal(bindings['8788/tcp'].length, 1);
+  assert.equal(bindings['8788/tcp'][0].HostIp, '127.0.0.1');
   const port = docker('inspect', '--format', '{{(index (index .NetworkSettings.Ports "8788/tcp") 0).HostPort}}', name);
   const url = `http://127.0.0.1:${port}`;
   let response;
@@ -47,8 +70,8 @@ try {
   node(`import fs from 'node:fs'; if (!fs.existsSync('/etc/ssl/certs/ca-certificates.crt')) throw new Error('System TLS CA bundle missing');`);
   docker('stop', name); docker('rm', name); run();
   node(`import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(fs.readFileSync('/data/persistence-probe','utf8'), 'synthetic persistence check');`);
-  console.log('Gate container: non-root, read-only root, no capabilities, no privilege escalation, native SDK, HTTP rejection, persistent volume and absence of shell/package managers passed.');
+  console.log('Gate Compose: loopback-only published port, independent host port, non-root, read-only root, no capabilities, no privilege escalation, native SDK, HTTP rejection, persistent volume and absence of shell/package managers passed.');
 } finally {
-  try { docker('rm', '-f', name); } catch { /* Startup may have failed before creation. */ }
-  try { docker('volume', 'rm', volume); } catch (error) { console.error('Test volume cleanup failed:', volume); throw error; }
+  try { compose('down', '--volumes', '--remove-orphans'); }
+  finally { rmSync(directory, { recursive: true, force: true }); }
 }
