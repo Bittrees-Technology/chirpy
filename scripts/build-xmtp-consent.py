@@ -56,7 +56,8 @@ def main():
         run(["git", "init", "--quiet", str(source)], ROOT, env)
         run(["git", "-C", str(source), "fetch", "--depth", "1", "https://github.com/xmtp/libxmtp.git", COMMIT], ROOT, env)
         run(["git", "checkout", "--detach", "FETCH_HEAD"], source, env)
-        run(["git", "apply", str(PATCH)], source, env)
+        # Include added files in the complete HEAD diff used for provenance.
+        run(["git", "apply", "--index", str(PATCH)], source, env)
     if run(["git", "rev-parse", "HEAD"], source, env, True).strip() != COMMIT:
         raise RuntimeError("Source is not the pinned upstream commit")
     actual = subprocess.check_output(["git", "diff", "--binary", "HEAD"], cwd=source, env=env)
