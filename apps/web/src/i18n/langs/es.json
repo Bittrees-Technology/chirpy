@@ -381,7 +381,7 @@
   "status.syncWriteConflict": "La sincronización cambió mientras se guardaba. Inténtalo de nuevo.",
   "status.ensFailed": "No se pudo consultar el nombre ENS. Inténtalo de nuevo.",
   "settings.historyRecovery": "Historial de mensajes",
-  "settings.historyRecoveryHelp": "¿Te mudas a este navegador o dispositivo? Mantén Chat abierto y la mensajería activada en tu dispositivo anterior o en chirpy.bittrees.org, con la misma cartera. Después solicita aquí tu historial de mensajes XMTP. Esto no transfiere ajustes locales ni salas Push.",
+  "settings.historyRecoveryHelp": "¿Te mudas a este navegador o dispositivo? Usa la misma cartera y mantén abierto, con la mensajería activada, el navegador o dispositivo que ya contiene tus mensajes. Si era chirpy.bittrees.org, conserva esa sesión original. Activar otra sesión vacía no recuperará el historial perdido. Solicita aquí tu historial XMTP y revisa los mensajes anteriores, Solicitudes y Bloqueados antes de retirar la sesión anterior. Esto no transfiere ajustes locales ni salas Push.",
   "settings.historyRequest": "Solicitar historial de mensajes",
   "settings.historyRequesting": "Solicitando historial…",
   "settings.historyRequested": "Historial solicitado. Mantén abierta la sesión anterior mientras se sincronizan los mensajes y el consentimiento de las conversaciones. Una solicitud no confirma que haya llegado todo el historial; comprueba tus conversaciones antes de salir de la sesión anterior.",
@@ -856,5 +856,10 @@
   "inboundHistory.attempts": "Intentos de procesamiento (no mensajes enviados)",
   "inboundHistory.deadline": "Fecha límite de autorización",
   "settings.browserWallet": "Billetera del navegador",
-  "settings.chooseBrowserWallet": "Elige una billetera"
+  "settings.chooseBrowserWallet": "Elige una billetera",
+  "list.empty.inbox": "No hay chats en esta bandeja",
+  "list.empty.requests": "No hay solicitudes de mensajes",
+  "list.empty.blocked": "No hay chats bloqueados",
+  "list.historyHelp": "¿Esperabas chats anteriores? Revisa Solicitudes y Bloqueados arriba. Un navegador nuevo puede no tener tus mensajes anteriores, incluso con la misma cartera. Mantén abierto el navegador o dispositivo que contiene esos mensajes, con la mensajería activada, y solicita el historial en Ajustes. No borres sus datos ni retires su acceso a la mensajería hasta comprobar aquí tus conversaciones anteriores.",
+  "list.historySettings": "Abrir recuperación del historial en Ajustes"
 }
