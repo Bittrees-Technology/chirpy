@@ -54,7 +54,7 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
       await expect(first.locator('.msg-body', { hasText: 'Existing browser history before bridge repair' })).toBeVisible();
       expect(after.env).toBe('dev');
       expect(before.libxmtpVersion).toBe('1.9.0');
-      expect(after.libxmtpVersion).toBe('1.10.0');
+      expect(after.libxmtpVersion).toBe('1.9.0');
       await first.locator('.composer-input').fill('Existing installation reply after bridge repair');
       await first.getByRole('button', { name: 'Send', exact: true }).click();
       await expect(second.locator('.msg-body', { hasText: 'Existing installation reply after bridge repair' })).toBeVisible({ timeout: 120_000 });

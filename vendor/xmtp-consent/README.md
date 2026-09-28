@@ -4,7 +4,7 @@ Chat temporarily carries a narrow source patch to `@xmtp/wasm-bindings` 1.10.0,
 used only by the pinned `@xmtp/browser-sdk` 7.0.0. The npm archive is private and
 is installed from this repository. Its MIT license is retained in the archive.
 
-Upstream build baseline: [libxmtp release/1.10.0 at 5c42da5](https://github.com/xmtp/libxmtp/tree/5c42da539cb3bd0f090499d543621cba7f7d2a93).
+Storage-preserving source baseline: [libxmtp at 013c00d](https://github.com/xmtp/libxmtp/tree/013c00da7b399f99d7d507953dad7a1f1d7ef01e).
 The reviewed changes and regression tests are in
 `patches/libxmtp-1.10.0-consent.patch`.
 
@@ -40,24 +40,35 @@ explicit choice receives the corrected timestamp handling.
 
 ## Release baseline and interoperability
 
-Revision 3 corrects the source selection used for the earlier private builds.
-The npm `gitHead` and `wasm-bindings-1.10.0` tag identify the publishing workflow
-checkout, while that workflow downloads binaries built from a separately
-selected release branch. Rebuilding the publishing checkout changed the actual
-cryptographic dependencies: the official binary embeds OpenMLS `beb0884` and
-HPKE 0.4, whereas the earlier private binary embedded OpenMLS `42f1479` and
-HPKE 0.6. A real pinned Node bridge publication failed welcome decryption in
-that private browser build; the same acceptance passed with the official binary.
-Browser-to-browser tests alone did not expose this incompatibility.
+Revision 4 retains the source and OpenMLS storage format of the deployed private
+browser builds and corrects their welcome-wrapper interoperability. The npm
+publishing checkout used for earlier rebuilds was not the source of the official
+release binary. Moving back to the release branch made fresh native bridge
+messages readable but failed the existing-browser upgrade gate: OpenMLS storage
+includes incompatible serialized extension variants. That replacement (revision
+3) was never accepted for production.
 
-The selected release commit is the latest release-branch commit before the
-official publication run, and its dependency versions match the binary. The
-original build logs have expired, so this is a reviewed compatible release
-baseline, not a claim of byte-for-byte reproduction of that publication.
-Both existing fixes are retained. Required acceptance includes actual native
-bridge delivery and reopening a browser database created by the prior private
-package, preserving its installation and history. Do not reset user databases
-or treat a fresh-client success as existing-installation acceptance.
+The precise wrapper mismatch is the X-Wing HPKE suite code: the deployed native
+release uses `0x004d`, while the earlier private browser uses hpke-rs 0.6's
+reassigned `0x647a` under the same XMTP wrapper descriptor. Synthetic cross-version
+probes derive identical public keys but fail authenticated decryption. Curve25519
+controls pass. The adapter preserves the requested HPKE suite code while mapping
+only the underlying KEM operation to the unchanged upstream libcrux provider.
+It does not implement cryptographic primitives or alter stored MLS state.
+
+Outgoing welcomes use the deployed release code. Incoming X-Wing welcomes try
+that code first and then the earlier private-browser code; both attempts require
+authenticated decryption of the welcome and supplied metadata. Malformed data,
+wrong keys, and modified ciphertext must still fail. Earlier unupdated private
+browsers cannot read new release-format welcomes and need this update; existing
+conversation state is retained. The source tests include an independently
+produced hpke-rs 0.4 release fixture and tamper rejection.
+
+Required acceptance includes the actual pinned native bridge, reopening a browser
+database from the prior deployed build with the same inbox and installation,
+earlier history, and replies in that existing conversation. Keep the candidate
+unmerged until all those checks pass. Do not reset user databases or treat a
+fresh-client success as existing-installation acceptance.
 
 Previously skipped welcomes and production pilot recovery remain separate from
 new-message interoperability; replacing the library does not prove recovery.
@@ -68,8 +79,8 @@ Run `python3 scripts/verify-xmtp-consent.py` to verify the archive, source patch
 provenance hashes, supported consumer version and absence of personal builder
 paths. pnpm additionally verifies its locked archive integrity.
 
-Rebuild prerequisites are Rust **1.94.0** with `wasm32-unknown-unknown`,
-wasm-bindgen CLI **0.2.108**, Binaryen **125**, Git, Cargo, Python 3.9+ and a
+Rebuild prerequisites are Rust **1.98.1** with `wasm32-unknown-unknown`,
+wasm-bindgen CLI **0.2.114**, Binaryen **125**, Git, Cargo, Python 3.9+ and a
 WASM-capable Clang/LLVM toolchain. Set `CC_wasm32_unknown_unknown` and
 `AR_wasm32_unknown_unknown` to Clang and llvm-ar where needed.
 

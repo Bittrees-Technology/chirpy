@@ -30,13 +30,13 @@ def main():
         assert all(m.isfile() and 0 <= m.size < 32 * 1024 * 1024 for m in members), "Invalid archive member"
         content = {m.name.removeprefix("package/"): archive.extractfile(m).read() for m in members}
     provenance = json.loads(content["PROVENANCE.json"])
-    assert provenance["upstreamCommit"] == "5c42da539cb3bd0f090499d543621cba7f7d2a93"
+    assert provenance["upstreamCommit"] == "013c00da7b399f99d7d507953dad7a1f1d7ef01e"
     assert provenance["patchSha256"] == sha((ROOT / "patches/libxmtp-1.10.0-consent.patch").read_bytes()), "Patch no longer matches build"
     assert provenance["cargoLockSha256"] == manifest["cargoLockSha256"]
-    assert (provenance["rust"], provenance["wasmBindgen"], provenance["binaryen"]) == ("1.94.0", "0.2.108", "125")
+    assert (provenance["rust"], provenance["wasmBindgen"], provenance["binaryen"]) == ("1.98.1", "0.2.114", "125")
     assert provenance["files"] == {name: sha(data) for name, data in content.items() if name != "PROVENANCE.json"}
     metadata = json.loads(content["package.json"])
-    assert metadata["name"] == "@xmtp/wasm-bindings" and metadata["version"] == "1.10.0-chat-consent.3"
+    assert metadata["name"] == "@xmtp/wasm-bindings" and metadata["version"] == "1.10.0-chat-consent.4"
     assert metadata["private"] is True and "scripts" not in metadata
     wasm = content["dist/bindings_wasm_bg.wasm"]
     assert wasm[:8] == b"\x00asm\x01\x00\x00\x00" and sha(wasm) == manifest["wasmSha256"]
