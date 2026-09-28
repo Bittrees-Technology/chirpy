@@ -868,5 +868,13 @@
   "settings.diagnosticRead": "Leer sesión local",
   "settings.diagnosticReading": "Leyendo…",
   "settings.diagnosticFailed": "No se pudo leer esta sesión. Comprueba que esté conectada la misma cartera e inténtalo de nuevo.",
-  "settings.diagnosticResult": "Solo una instantánea local; los recuentos de conversaciones se limitan a 100. Esto no confirma la entrega ni la recuperación del historial."
+  "settings.diagnosticResult": "Solo una instantánea local; los recuentos de conversaciones se limitan a 100. Esto no confirma la entrega ni la recuperación del historial.",
+  "settings.recoverConversation": "Recuperar una conversación ausente",
+  "settings.recoverConversationHelp": "Usa el identificador de conversación y el número de invitación de una investigación de entrega. Se comprueba la invitación de este navegador y se recupera el historial disponible. Se conservan las conversaciones y tus decisiones de consentimiento, sin reenviar el mensaje.",
+  "settings.recoveryConversationId": "Conversación que recuperar",
+  "settings.recoveryInvitationId": "Número de invitación",
+  "settings.recoverConversationAction": "Recuperar la conversación seleccionada",
+  "settings.recoveringConversation": "Recuperando conversación…",
+  "settings.recoverConversationDone": "Conversación recuperada. Revisa la bandeja de entrada, las solicitudes o los bloqueados; se conservan tus decisiones de consentimiento.",
+  "settings.recoverConversationFailed": "No se pudo confirmar la recuperación. Revisa tus conversaciones y los detalles de la sesión antes de volver a intentarlo. No reenvíes el mensaje."
 }

@@ -94,6 +94,8 @@ export interface Transport {
   /** Ask an existing online installation for history; resolution only confirms the request. */
   requestHistorySync?(): Promise<void>;
   inspectMessaging?(conversationId?: string): Promise<MessagingDiagnostics>;
+  /** Recover a selected skipped invitation in the current installation, without resending. */
+  recoverMissingConversation?(conversationId: string, invitationId: string): Promise<void>;
   getDisplayWalletContext?(): Promise<DisplayWalletContext>;
   refreshDisplayWallets?(): void;
   listConversations(): Promise<Conversation[]>;

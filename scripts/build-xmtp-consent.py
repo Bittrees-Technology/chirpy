@@ -72,6 +72,7 @@ def main():
     run(["cargo", "test", "--locked", "-p", "xmtp_db", "consent_record"], source, env)
     run(["cargo", "test", "--locked", "-p", "xmtp_mls", "--lib", "groups::welcome_sync::tests"], source, env)
     run(["cargo", "test", "--locked", "-p", "xmtp_mls", "--lib", "welcome_compat_tests"], source, env)
+    run(["cargo", "test", "--locked", "-p", "xmtp_mls", "--lib", "welcome_recovery"], source, env)
     if args.tests_only:
         if own_source:
             shutil.rmtree(source)
@@ -89,7 +90,7 @@ def main():
         run(["wasm-opt", str(wasm), "-O", "--strip-debug", "--enable-bulk-memory", "--enable-reference-types", "--enable-multivalue", "--enable-sign-ext", "--enable-nontrapping-float-to-int", "-o", str(optimized)], source, env)
         optimized.replace(wasm)
         metadata = json.loads((source / "bindings/wasm/package.json").read_text())
-        metadata.update(version="1.10.0-chat-consent.4", private=True)
+        metadata.update(version="1.10.0-chat-consent.5", private=True)
         for key in ("scripts", "devDependencies", "publishConfig"):
             metadata.pop(key, None)
         (package / "package.json").write_text(json.dumps(metadata, indent=2) + "\n")

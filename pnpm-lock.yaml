@@ -14,7 +14,8 @@ overrides:
   baseline-browser-mapping@>=2.0.0 <2.11.0: 2.11.0
   '@pushprotocol/restapi>axios': 0.33.0
   '@pushprotocol/restapi>uuid': 11.1.1
-  '@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings': file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.4-1049a6f8c24f.tgz
+  '@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings': file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.5-e3bce6f83137.tgz
+  '@xmtp/browser-sdk@7.0.0': file:vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz
 
 patchedDependencies:
   '@pushprotocol/restapi@1.7.32':
@@ -117,8 +118,8 @@ importers:
         specifier: 1.7.32
         version: 1.7.32(patch_hash=7121f31db3101003aded8b470bc8f777260452581826874c0a22bed2dcf47464)(@types/react@19.2.17)(react@19.2.7)(typescript@5.9.3)(zod@3.25.76)
       '@xmtp/browser-sdk':
-        specifier: 7.0.0
-        version: 7.0.0(viem@2.53.1(typescript@5.9.3)(zod@3.25.76))
+        specifier: file:../../vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz
+        version: file:vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz(viem@2.53.1(typescript@5.9.3)(zod@3.25.76))
       viem:
         specifier: ^2.53.1
         version: 2.53.1(typescript@5.9.3)(zod@3.25.76)
@@ -1412,8 +1413,9 @@ packages:
   '@walletconnect/window-metadata@1.0.1':
     resolution: {integrity: sha512-9koTqyGrM2cqFRW517BPY/iEtUDx2r1+Pwwu5m7sJ7ka79wi3EyqhqcICk/yDmv6jAS1rjKgTKXlEhanYjijcA==}
 
-  '@xmtp/browser-sdk@7.0.0':
-    resolution: {integrity: sha512-Xee5V/JSe3e7RcL6Zd6WbB3tC+ThdjRcXNo+Fgi0wB5x1yLLZCyFvkCnH2VV6R/K+gkywH4px7Mq8tMujdlIuA==}
+  '@xmtp/browser-sdk@file:vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz':
+    resolution: {integrity: sha512-ZyNy07wAFTEZcG3YwzkhWjuETp6FfbLa0uiQj8JYFiiQHetMW49FJrMQLyjUP0LG6P7LdsvB0sF67GoYw4xQsw==, tarball: file:vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz}
+    version: 7.0.0
     engines: {node: '>=22'}
     peerDependencies:
       viem: '>=2'
@@ -1436,9 +1438,9 @@ packages:
     resolution: {integrity: sha512-UMClg1+WkC3pfeHffJoZMYzhqsUa2wZpSJtIrpvBqUD+n1VYVQTfhTqGyaavVIPgITxjHBi/uMS/K18E4qDbPA==}
     engines: {node: '>=22'}
 
-  '@xmtp/wasm-bindings@file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.4-1049a6f8c24f.tgz':
-    resolution: {integrity: sha512-YniXCgaRY7R6ynwKT1aR+xoowomxKVmW/aWuL4+vH7QUJtt2R0tRNuxPtwTjFB2f6OYJnDVxVdDLlW8jLtwmFg==, tarball: file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.4-1049a6f8c24f.tgz}
-    version: 1.10.0-chat-consent.4
+  '@xmtp/wasm-bindings@file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.5-e3bce6f83137.tgz':
+    resolution: {integrity: sha512-//7OELoZrvFEJFQeKDQEroptHaJnddXkm3hXKpOX6AOC05EH9aV7Kwur5Lg0jzGDHjznxmdvqbAglg07/Cbzmg==, tarball: file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.5-e3bce6f83137.tgz}
+    version: 1.10.0-chat-consent.5
     engines: {node: '>=22'}
 
   abitype@1.0.6:
@@ -5150,10 +5152,10 @@ snapshots:
       '@walletconnect/window-getters': 1.0.1
       tslib: 1.14.1
 
-  '@xmtp/browser-sdk@7.0.0(viem@2.53.1(typescript@5.9.3)(zod@3.25.76))':
+  '@xmtp/browser-sdk@file:vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz(viem@2.53.1(typescript@5.9.3)(zod@3.25.76))':
     dependencies:
       '@xmtp/content-type-primitives': 3.0.0
-      '@xmtp/wasm-bindings': file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.4-1049a6f8c24f.tgz
+      '@xmtp/wasm-bindings': file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.5-e3bce6f83137.tgz
     optionalDependencies:
       viem: 2.53.1(typescript@5.9.3)(zod@3.25.76)
 
@@ -5170,7 +5172,7 @@ snapshots:
       '@xmtp/content-type-primitives': 3.0.0
       '@xmtp/node-bindings': 1.10.0
 
-  '@xmtp/wasm-bindings@file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.4-1049a6f8c24f.tgz': {}
+  '@xmtp/wasm-bindings@file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.5-e3bce6f83137.tgz': {}
 
   abitype@1.0.6(typescript@5.9.3)(zod@3.25.76):
     optionalDependencies:

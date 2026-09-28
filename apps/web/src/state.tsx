@@ -863,6 +863,7 @@ interface ChatCtx {
   enableMessaging: (opts?: { revokeStale?: boolean }) => Promise<void>;
   requestHistorySync: () => Promise<void>;
   inspectMessaging: (conversationId?: string) => Promise<MessagingDiagnostics>;
+  recoverMissingConversation: (conversationId: string, invitationId: string) => Promise<void>;
   getDisplayWalletContext: () => Promise<DisplayWalletContext>;
   select: (id: string | null) => void;
   markRead: (throughMessageId: string) => Promise<void>;
@@ -1046,6 +1047,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (transportRef.current !== transport) throw new Error('Wallet or organization changed.');
     return result;
   }, []);
+
+  const recoverMissingConversation = useCallback(async (conversationId: string, invitationId: string) => {
+    const transport = transportRef.current;
+    if (!transport?.recoverMissingConversation || transport.status !== 'ready') throw new Error('Messaging is not ready.');
+    await transport.recoverMissingConversation(conversationId, invitationId);
+    if (transportRef.current !== transport) throw new Error('Wallet or organization changed.');
+    await reloadConversations();
+  }, [reloadConversations]);
 
   const requestHistorySync = useCallback(async () => {
     const transport = transportRef.current;
@@ -1233,8 +1242,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     pushError: push.error ?? push.snapshot.error ?? null, enablePushRooms, refreshPushRooms: push.refresh, leavePushRoom, managePushMember, loadPushMembers, historyError,
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages: pushReadDenied ? [] : messages,
     historyLoading, isHistory: history.before !== undefined, hasOlderMessages: !pushReadDenied && olderCursor !== undefined, navigateHistory,
-    enableMessaging, requestHistorySync, inspectMessaging, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, pushReadDenied, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, inspectMessaging, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+    enableMessaging, requestHistorySync, inspectMessaging, recoverMissingConversation, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent,
+  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, pushReadDenied, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, inspectMessaging, recoverMissingConversation, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

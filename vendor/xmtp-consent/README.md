@@ -105,3 +105,6 @@ recovery acceptance. The stock SDK fails the three timestamp regressions.
 Remove the override, local archive and patch only after a compatible upstream
 release passes these regressions and live acceptance. Do not carry this override
 silently onto a different browser SDK version.
+
+
+Revision5 candidate adds an explicit missing-invitation recovery method for the existing installation. It accepts only the selected V3 V1 invitation, authenticates its expected group, validates initial membership, preserves the welcome cursor, and refuses existing application or MLS state (including an orphan MLS group). The paired private browser SDK exposes it to the same worker. Source recovery tests pass; production acceptance and browser integration remain pending.

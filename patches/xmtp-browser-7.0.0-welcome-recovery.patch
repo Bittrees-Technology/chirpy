@@ -1,0 +1,83 @@
+--- a/src/Client.ts
++++ b/src/Client.ts
+@@ -95,7 +95,7 @@
+         enumerable: false,
+       });
+     }
+-    const worker = new Worker(new URL("./workers/client", import.meta.url), {
++    const worker = new Worker(new URL("./workers/client.js", import.meta.url), {
+       type: "module",
+     });
+     const enableLogging =
+--- a/src/Conversations.ts
++++ b/src/Conversations.ts
+@@ -59,6 +59,15 @@
+    *
+    * @returns Promise that resolves when sync is complete
+    */
++  /** Recover one selected skipped invitation using this existing installation. */
++  async recoverMissingWelcome(envelope: Uint8Array, expectedGroupId: string): Promise<void> {
++    if (!(envelope instanceof Uint8Array) || envelope.length === 0 || envelope.length > 1_048_576
++      || !/^(?:[a-f0-9]{2}){1,128}$/i.test(expectedGroupId)) {
++      throw new Error("Invalid invitation recovery request");
++    }
++    return this.#worker.action("conversations.recoverMissingWelcome", { envelope, expectedGroupId });
++  }
++
+   async sync() {
+     return this.#worker.action("conversations.sync");
+   }
+--- a/src/Opfs.ts
++++ b/src/Opfs.ts
+@@ -6,7 +6,7 @@
+   #enableLogging: boolean;
+ 
+   constructor(enableLogging?: boolean) {
+-    const worker = new Worker(new URL("./workers/opfs", import.meta.url), {
++    const worker = new Worker(new URL("./workers/opfs.js", import.meta.url), {
+       type: "module",
+     });
+     this.#worker = new WorkerBridge<OpfsAction>(worker, enableLogging);
+--- a/src/WorkerConversations.ts
++++ b/src/WorkerConversations.ts
+@@ -24,6 +24,11 @@
+   constructor(client: WorkerClient, conversations: Conversations) {
+     this.#client = client;
+     this.#conversations = conversations;
++  }
++
++  async recoverMissingWelcome(envelope: Uint8Array, expectedGroupId: string): Promise<void> {
++    const conversation = await this.#conversations.recoverMissingWelcome(envelope, expectedGroupId);
++    conversation.free();
+   }
+ 
+   async sync() {
+--- a/src/types/actions/conversations.ts
++++ b/src/types/actions/conversations.ts
+@@ -10,6 +10,12 @@
+ import type { HmacKeys, SafeConversation } from "@/utils/conversions";
+ 
+ export type ConversationsAction =
++  | {
++      action: "conversations.recoverMissingWelcome";
++      id: string;
++      result: undefined;
++      data: { envelope: Uint8Array; expectedGroupId: string };
++    }
+   | {
+       action: "conversations.getConversationById";
+       id: string;
+--- a/src/workers/client.ts
++++ b/src/workers/client.ts
+@@ -706,6 +706,11 @@
+         postMessage({ id, action, result });
+         break;
+       }
++      case "conversations.recoverMissingWelcome": {
++        await client.conversations.recoverMissingWelcome(data.envelope, data.expectedGroupId);
++        postMessage({ id, action, result: undefined });
++        break;
++      }
+       case "conversations.sync": {
+         await client.conversations.sync();
+         postMessage({ id, action, result: undefined });

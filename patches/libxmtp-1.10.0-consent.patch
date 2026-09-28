@@ -22,6 +22,37 @@ index a0c2ff4..a412152 100644
  hpke-rs = { version = "0.6", features = ["hazmat", "serialization", "libcrux"] }
  http = "1.2"
  hyper = { version = "1.7", default-features = false }
+diff --git a/bindings/wasm/src/conversations.rs b/bindings/wasm/src/conversations.rs
+index 37d17e9..2039836 100644
+--- a/bindings/wasm/src/conversations.rs
++++ b/bindings/wasm/src/conversations.rs
+@@ -530,6 +530,26 @@ impl Conversations {
+     Ok(())
+   }
+ 
++  /// Explicitly recover one skipped invitation into this existing installation.
++  /// The encrypted envelope must authenticate and match the selected group.
++  #[wasm_bindgen(js_name = recoverMissingWelcome)]
++  pub async fn recover_missing_welcome(
++    &self,
++    envelope: Vec<u8>,
++    #[wasm_bindgen(js_name = expectedGroupId)] expected_group_id: String,
++  ) -> Result<Conversation, JsError> {
++    use prost::Message;
++    if envelope.is_empty() || envelope.len() > 1_048_576 || expected_group_id.is_empty() || expected_group_id.len() > 256 {
++      return Err(JsError::new("Invalid invitation recovery request"));
++    }
++    let group_id = hex::decode(expected_group_id).map_err(ErrorWrapper::js)?;
++    let proto = xmtp_api_d14n::v3::V3ProtoWelcomeMessage::decode(envelope.as_slice()).map_err(|_| JsError::new("Invalid invitation envelope"))?;
++    let welcome = proto.try_into().map_err(|_| JsError::new("Unsupported invitation envelope"))?;
++    let recovered = self.inner_client.recover_missing_welcome(&welcome, group_id)
++      .await.map_err(ErrorWrapper::js)?;
++    recovered.map(Into::into).ok_or_else(|| JsError::new("Invitation did not recover a conversation"))
++  }
++
+   #[wasm_bindgen(js_name = syncAllConversations)]
+   pub async fn sync_all_conversations(
+     &self,
 diff --git a/crates/xmtp_db/src/encrypted_store/consent_record.rs b/crates/xmtp_db/src/encrypted_store/consent_record.rs
 index a0fbdcb..f65644e 100644
 --- a/crates/xmtp_db/src/encrypted_store/consent_record.rs
@@ -497,6 +528,60 @@ index 0000000..fdbb154
 + fn aead_seal(alg: AeadAlgorithm, key: &[u8], nonce: &[u8], aad: &[u8], msg: &[u8]) -> Result<Vec<u8>, Error> { HpkeLibcrux::aead_seal(alg, key, nonce, aad, msg) }
 + fn aead_open(alg: AeadAlgorithm, key: &[u8], nonce: &[u8], aad: &[u8], msg: &[u8]) -> Result<Vec<u8>, Error> { HpkeLibcrux::aead_open(alg, key, nonce, aad, msg) }
 +}
+diff --git a/crates/xmtp_mls/src/client.rs b/crates/xmtp_mls/src/client.rs
+index a462ef5..cf06e34 100644
+--- a/crates/xmtp_mls/src/client.rs
++++ b/crates/xmtp_mls/src/client.rs
+@@ -1053,6 +1053,26 @@ where
+             .await
+     }
+ 
++    /// Recover one explicitly selected, previously skipped V1 welcome.
++    /// The caller supplies the encrypted envelope and expected group, never
++    /// decrypted MLS state. Existing groups and welcome cursors are preserved.
++    pub async fn recover_missing_welcome(
++        &self,
++        welcome: &xmtp_proto::types::WelcomeMessage,
++        expected_group_id: Vec<u8>,
++    ) -> Result<Option<MlsGroup<Context>>, GroupError> {
++        self.ensure_identity_ready()?;
++        let validator = crate::groups::InitialMembershipValidator::new(&self.context);
++        crate::groups::XmtpWelcome::builder()
++            .context(self.context.clone())
++            .welcome(welcome)
++            .cursor_increment(false)
++            .recovery_group_id(expected_group_id)
++            .validator(validator)
++            .process()
++            .await
++    }
++
+     /// Sync all groups for the current installation and return the number of groups that were synced.
+     /// Only active groups will be synced.
+     pub async fn sync_all_groups(
+diff --git a/crates/xmtp_mls/src/groups/error.rs b/crates/xmtp_mls/src/groups/error.rs
+index 75cf2c0..44bffb6 100644
+--- a/crates/xmtp_mls/src/groups/error.rs
++++ b/crates/xmtp_mls/src/groups/error.rs
+@@ -80,6 +80,10 @@ impl std::fmt::Display for ReceiveErrors {
+ }
+ #[derive(Debug, Error, ErrorCode)]
+ pub enum GroupError {
++    /// Recovery cannot replace a group or process an invitation outside its explicit scope.
++    /// This is not retryable without correcting the request.
++    #[error("Welcome recovery scope is invalid or existing group state must be preserved")]
++    WelcomeRecoveryRejected,
+     #[error(transparent)]
+     #[error_code(inherit)]
+     NotFound(#[from] NotFound),
+@@ -545,6 +549,7 @@ impl RetryableError for GroupError {
+             Self::NotFound(_)
+             | Self::UserLimitExceeded
+             | Self::InvalidGroupMembership
++            | Self::WelcomeRecoveryRejected
+             | Self::Intent(_)
+             | Self::CreateMessage(_)
+             | Self::TlsError(_)
 diff --git a/crates/xmtp_mls/src/groups/mls_ext/welcome_wrapper.rs b/crates/xmtp_mls/src/groups/mls_ext/welcome_wrapper.rs
 index 2fa46c1..8aa781b 100644
 --- a/crates/xmtp_mls/src/groups/mls_ext/welcome_wrapper.rs
@@ -632,7 +717,7 @@ index 2fa46c1..8aa781b 100644
 +    }
 +}
 diff --git a/crates/xmtp_mls/src/groups/welcome_sync.rs b/crates/xmtp_mls/src/groups/welcome_sync.rs
-index a0d367d..3c56de8 100644
+index a0d367d..4c55e85 100644
 --- a/crates/xmtp_mls/src/groups/welcome_sync.rs
 +++ b/crates/xmtp_mls/src/groups/welcome_sync.rs
 @@ -9,12 +9,13 @@ use crate::mls_store::MlsStore;
@@ -726,7 +811,79 @@ index a0d367d..3c56de8 100644
              .await;
  
          // Rotate the keys regardless of whether the welcomes failed or succeeded. It is better to over-rotate than
-@@ -618,6 +656,23 @@ mod tests {
+@@ -548,6 +586,71 @@ mod tests {
+         assert!(res.is_ok(), "{}", res.unwrap_err());
+     }
+ 
++    #[rstest]
++    #[xmtp_common::test]
++    async fn welcome_recovery_imports_skipped_group_without_rewinding_or_replacing(context: NewMockContext) {
++        let mem = Arc::new(SqlKeyStore::new(MemoryStorage::default()));
++        let client = create_mls_client(mem.as_ref());
++        let (kp, mls_welcome) = client.join_group();
++        let mut welcome = generate_welcome(50, kp.hpke_init_key().as_slice().to_vec(), mls_welcome, None);
++        if let WelcomeMessageType::V1(v1) = &mut welcome.variant {
++            v1.installation_key = context.installation_id().as_slice().try_into().unwrap();
++        }
++        let (context, _) = TestWelcomeSetup::builder()
++            .validator(NoopValidator)
++            .context(context)
++            .database_calls(|db: &mut MockDbQuery| {
++                db.expect_get_last_cursor_for_originators()
++                    .returning(|_, _, _| Ok(vec![Cursor::v3_welcomes(100)]));
++                db.expect_find_group().returning(|_| Ok(None));
++                db.expect_update_cursor().never();
++            })
++            .transaction_calls(|db: &mut MockDbQuery| {
++                db.expect_update_cursor().once().returning(|_, kind, cursor| {
++                    assert_eq!(kind, EntityKind::CommitMessage);
++                    assert_eq!(cursor, Cursor::mls_commits(0));
++                    Ok(true)
++                });
++            })
++            .nested_transaction_calls(|db: &mut MockDbQuery| {
++                // Keep the application query absent even after import to verify
++                // the separate MLS-state guard prevents overwriting an orphan.
++                db.expect_find_group().returning(|_| Ok(None));
++                db.expect_update_responded_at_sequence_id().returning(|_, _, _| Ok(()));
++                db.expect_insert_or_replace_group().once().returning(Ok);
++            })
++            .mem(mem)
++            .build();
++        let decoded = crate::groups::mls_ext::DecryptedWelcome::from_welcome_proto(&welcome, &context).await.unwrap();
++        let expected = decoded.staged_welcome.public_group().group_id().as_slice().to_vec();
++        drop(decoded);
++        let wrong_target = XmtpWelcome::builder().context(context.clone()).welcome(&welcome)
++            .cursor_increment(false).recovery_group_id(vec![7; 16]).validator(NoopValidator)
++            .process().await;
++        assert!(matches!(wrong_target, Err(GroupError::WelcomeRecoveryRejected)));
++        let denied = XmtpWelcome::builder().context(context.clone()).welcome(&welcome)
++            .cursor_increment(false).recovery_group_id(expected.clone()).validator(NonRetryableValidator)
++            .process().await;
++        assert!(matches!(denied, Err(GroupError::NoPSKSupport)));
++        let mut tampered = welcome.clone();
++        if let WelcomeMessageType::V1(v1) = &mut tampered.variant { v1.data[0] ^= 1; }
++        assert!(XmtpWelcome::builder().context(context.clone()).welcome(&tampered)
++            .cursor_increment(false).recovery_group_id(expected.clone()).validator(NoopValidator)
++            .process().await.is_err());
++        // Refusals above must not consume the welcome's key or change state.
++        let result = XmtpWelcome::builder().context(context.clone()).welcome(&welcome)
++            .cursor_increment(false).recovery_group_id(expected.clone()).validator(NoopValidator)
++            .process().await.unwrap().unwrap();
++        assert_eq!(result.group_id, expected);
++        let group_id = openmls::group::GroupId::from_slice(&expected);
++        let epoch = openmls::group::MlsGroup::load(context.mls_storage(), &group_id).unwrap().unwrap().epoch();
++        let second = XmtpWelcome::builder().context(context.clone()).welcome(&welcome)
++            .cursor_increment(false).recovery_group_id(expected).validator(NoopValidator)
++            .process().await;
++        assert!(matches!(second, Err(GroupError::WelcomeRecoveryRejected)));
++        assert_eq!(openmls::group::MlsGroup::load(context.mls_storage(), &group_id).unwrap().unwrap().epoch(), epoch);
++    }
++
+     #[rstest]
+     #[xmtp_common::test]
+     async fn increments_cursor_on_non_retryable_in_tx(context: NewMockContext) {
+@@ -618,6 +721,23 @@ mod tests {
          }
      }
  
@@ -750,7 +907,7 @@ index a0d367d..3c56de8 100644
      #[rstest]
      #[xmtp_common::test]
      async fn increments_cursor_on_non_retryable_during_validation(context: NewMockContext) {
-@@ -668,7 +723,7 @@ mod tests {
+@@ -668,7 +788,7 @@ mod tests {
          );
  
          let (context, validator) = TestWelcomeSetup::builder()
@@ -759,7 +916,7 @@ index a0d367d..3c56de8 100644
              .context(context)
              .nested_transaction_calls(|db: &mut MockDbQuery| {
                  db.expect_find_group().returning(|_id| Ok(None));
-@@ -751,6 +806,71 @@ mod tests {
+@@ -751,6 +871,71 @@ mod tests {
          assert!(res.is_err(), "{}", res.unwrap_err());
      }
  
@@ -832,10 +989,81 @@ index a0d367d..3c56de8 100644
      fn make_cursor(originator_id: u32, sequence_id: u64) -> GlobalCursor {
          let mut map = GlobalCursor::default();
 diff --git a/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs b/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs
-index 68062a7..47c1e48 100644
+index 68062a7..fe39196 100644
 --- a/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs
 +++ b/crates/xmtp_mls/src/groups/welcomes/xmtp_welcome.rs
-@@ -544,9 +544,13 @@ where
+@@ -59,6 +59,10 @@ pub struct XmtpWelcome<'a, C, V> {
+     welcome: &'a xmtp_proto::types::WelcomeMessage,
+     cursor_increment: bool,
+     validator: V,
++    /// Explicit recovery of a missing group from an earlier V1 welcome.
++    /// Never used by normal sync and never allowed to replace existing state.
++    #[builder(default)]
++    recovery_group_id: Option<Vec<u8>>,
+     /// Worker events collected throughout the welcome process
+     #[builder(default = "Some(mls_sync::DeferredEvents::default())")]
+     events: Option<mls_sync::DeferredEvents>,
+@@ -99,6 +103,19 @@ where
+     pub async fn process(self) -> Result<Option<MlsGroup<C>>, GroupError> {
+         let mut this = self.build()?;
+         let db = this.context.db();
++        if let Some(expected) = &this.recovery_group_id {
++            let v1 = this.welcome.as_v1().ok_or(GroupError::WelcomeRecoveryRejected)?;
++            if this.cursor_increment || expected.is_empty() || expected.len() > 128
++                || this.welcome.originator_id() != Originators::WELCOME_MESSAGES
++                || this.welcome.sequence_id() == 0
++                || this.welcome.sequence_id() > i64::MAX as u64
++                || v1.installation_key.as_slice() != this.context.installation_id().as_slice()
++                || this.welcome.sequence_id() > this.last_sequence_id(&db)? as u64
++            {
++                return Err(GroupError::WelcomeRecoveryRejected);
++            }
++            ensure_recovery_group_absent(this.context.mls_storage(), expected)?;
++        }
+         if let Some(group) = this.check_if_processed(&db)? {
+             return Ok(Some(group));
+         }
+@@ -158,7 +175,7 @@ where
+     /// if the cursor of this welcome is less than the one we have in our local database,
+     /// we can safely return the local cached group as if we had processed it.
+     fn check_if_processed(&self, db: &impl DbQuery) -> Result<Option<MlsGroup<C>>, GroupError> {
+-        if self.welcome.resuming() {
++        if self.welcome.resuming() || self.recovery_group_id.is_some() {
+             return Ok(None);
+         }
+         let context = &self.context;
+@@ -206,6 +223,12 @@ where
+             .check_initial_membership(staged_welcome)
+             .await?;
+         let group_id = staged_welcome.public_group().group_id();
++        if let Some(expected) = &self.recovery_group_id {
++            if group_id.as_slice() != expected.as_slice() {
++                return Err(GroupError::WelcomeRecoveryRejected);
++            }
++            ensure_recovery_group_absent(self.context.mls_storage(), expected)?;
++        }
+         // try to load the group this welcome represents
+         // defensive to avoid race conditions & duplicates
+         if db.find_group(group_id.as_slice())?.is_some() {
+@@ -303,8 +326,16 @@ where
+         } = decrypted_welcome;
+ 
+         tracing::debug!("calling update cursor for welcome {}", welcome.cursor);
++        if let Some(expected) = &self.recovery_group_id {
++            if staged_welcome.public_group().group_id().as_slice() != expected.as_slice() {
++                return Err(GroupError::WelcomeRecoveryRejected);
++            }
++            // Repeat inside the commit transaction: another task may have
++            // imported the group while membership validation was awaiting I/O.
++            ensure_recovery_group_absent(&storage, expected)?;
++        }
+         let requires_processing =
+-            welcome.resuming() || welcome.sequence_id() > self.last_sequence_id(&db)? as u64;
++            self.recovery_group_id.is_some() || welcome.resuming() || welcome.sequence_id() > self.last_sequence_id(&db)? as u64;
+         if !requires_processing {
+             tracing::error!("Skipping already processed welcome {}", welcome.cursor);
+             return Err(ProcessIntentError::WelcomeAlreadyProcessed(welcome.cursor).into());
+@@ -544,9 +575,13 @@ where
              stored_group.created_at_ns,
          );
  
@@ -851,3 +1079,59 @@ index 68062a7..47c1e48 100644
          } else if is_readd_after_leaving {
              // If user is being re-added after leaving, reset consent to Unknown
              // This requires the user to explicitly accept being added back
+@@ -585,6 +620,17 @@ where
+     }
+ }
+ 
++/// Both application and MLS state must be absent. A storage error is a refusal,
++/// not permission to replace a group whose state cannot currently be loaded.
++fn ensure_recovery_group_absent(storage: &impl XmtpMlsStorageProvider, expected: &[u8]) -> Result<(), GroupError> {
++    if storage.db().find_group(expected)?.is_some()
++        || OpenMlsGroup::load(storage, &openmls::group::GroupId::from_slice(expected))?.is_some()
++    {
++        return Err(GroupError::WelcomeRecoveryRejected);
++    }
++    Ok(())
++}
++
+ #[cfg(test)]
+ mod tests {
+     use xmtp_common::Generate;
+@@ -596,6 +642,37 @@ mod tests {
+ 
+     use super::*;
+ 
++    #[rstest::rstest]
++    #[case(true, 16)]
++    #[case(false, 0)]
++    #[case(false, 129)]
++    #[case(false, 16)]
++    #[xmtp_common::test]
++    async fn welcome_recovery_rejects_invalid_scope_before_decryption(
++        mut context: NewMockContext,
++        #[case] increment: bool,
++        #[case] target_length: usize,
++    ) {
++        // An unrelated installation, bad target or cursor-changing request
++        // must fail without reading keys, changing cursors or making API calls.
++        context.store.expect_db().once().returning(xmtp_db::mock::MockDbQuery::new);
++        let mut w = xmtp_proto::types::WelcomeMessage::generate();
++        w.cursor = Cursor::v3_welcomes(50);
++        if increment || target_length != 16 {
++            if let xmtp_proto::types::WelcomeMessageType::V1(v1) = &mut w.variant {
++                v1.installation_key = context.installation_id().as_slice().try_into().unwrap();
++            }
++        }
++        let result = XmtpWelcome::builder()
++            .context(context)
++            .welcome(&w)
++            .cursor_increment(increment)
++            .recovery_group_id(vec![1; target_length])
++            .validator(NoopValidator)
++            .process().await;
++        assert!(matches!(result, Err(GroupError::WelcomeRecoveryRejected)));
++    }
++
+     // Is async so that the async timeout from rstest is used in wasm (does not spawn thread)
+     #[rstest::rstest]
+     #[xmtp_common::test]
