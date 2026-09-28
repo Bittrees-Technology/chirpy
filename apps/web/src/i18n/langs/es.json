@@ -861,5 +861,12 @@
   "list.empty.requests": "No hay solicitudes de mensajes",
   "list.empty.blocked": "No hay chats bloqueados",
   "list.historyHelp": "¿Esperabas chats anteriores? Revisa Solicitudes y Bloqueados arriba. Un navegador nuevo puede no tener tus mensajes anteriores, incluso con la misma cartera. Mantén abierto el navegador o dispositivo que contiene esos mensajes, con la mensajería activada, y solicita el historial en Ajustes. No borres sus datos ni retires su acceso a la mensajería hasta comprobar aquí tus conversaciones anteriores.",
-  "list.historySettings": "Abrir recuperación del historial en Ajustes"
+  "list.historySettings": "Abrir recuperación del historial en Ajustes",
+  "settings.messagingDiagnostics": "Diagnóstico de mensajería",
+  "settings.messagingDiagnosticsHelp": "Para investigar conversaciones ausentes. Solo lee los identificadores de esta sesión y los recuentos de su base de datos local. No envía mensajes, sincroniza historial, cambia accesos ni incluye claves o contenido de mensajes. Los resultados permanecen en esta página.",
+  "settings.diagnosticConversation": "ID de conversación (opcional)",
+  "settings.diagnosticRead": "Leer sesión local",
+  "settings.diagnosticReading": "Leyendo…",
+  "settings.diagnosticFailed": "No se pudo leer esta sesión. Comprueba que esté conectada la misma cartera e inténtalo de nuevo.",
+  "settings.diagnosticResult": "Solo una instantánea local; los recuentos de conversaciones se limitan a 100. Esto no confirma la entrega ni la recuperación del historial."
 }

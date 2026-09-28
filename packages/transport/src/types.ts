@@ -93,6 +93,7 @@ export interface Transport {
   enable?(opts?: { revokeStale?: boolean }): Promise<void>;
   /** Ask an existing online installation for history; resolution only confirms the request. */
   requestHistorySync?(): Promise<void>;
+  inspectMessaging?(conversationId?: string): Promise<MessagingDiagnostics>;
   getDisplayWalletContext?(): Promise<DisplayWalletContext>;
   refreshDisplayWallets?(): void;
   listConversations(): Promise<Conversation[]>;
@@ -117,3 +118,10 @@ export interface Transport {
   /** Subscribe to any change (new message, new conversation, read state). */
   subscribe(cb: () => void): () => void;
 }
+
+/** Read-only local session evidence; never keys, message contents or a delivery claim. */
+export type MessagingDiagnostics = {
+  network: string; inboxId: string; installationId: string;
+  listedConversations: number; listLimit: number; cachedConversations: number;
+  conversation?: { id: string; found: boolean; active?: boolean; consent?: number; messageCount?: string };
+};

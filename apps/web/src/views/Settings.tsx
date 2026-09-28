@@ -7,6 +7,7 @@ import { DisplayWallet } from "./DisplayWallet";
 import { PublicProfile } from "./PublicProfile";
 import { DisplayNameInput } from "./DisplayNameInput";
 import { UpdateCard } from "./UpdateCard";
+import { MessagingDiagnosticsView } from "./MessagingDiagnostics";
 import { HistoryRecovery } from "./HistoryRecovery";
 import { SettingsRestore } from "./SettingsRestore";
 import { SettingsRecovery } from "./SettingsRecovery";
@@ -24,7 +25,7 @@ export function Settings(
   } = useIdentity();
   const { orgs, recoverySnapshots, organizationStorageError, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, storageError, storageBusy, recoveryPaused, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices, legacySavedItems = [], removeLegacySavedItem, removeLegacyBlockedAddress } = useSettingsPrefs();
-  const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging, requestHistorySync } = useChat();
+  const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging, requestHistorySync, inspectMessaging } = useChat();
   const { lang, setLang, t } = useI18n();
   const gateSummary = (rules: unknown[]) => rules.length === 0 ? t("settings.open") : rules.length === 1 ? t("settings.oneRule") : t("settings.rules", undefined, { count: rules.length });
   const [selectedBrowserWallet, setSelectedBrowserWallet] = useState("");
@@ -277,6 +278,7 @@ export function Settings(
 
       {transportId === 'xmtp' && mode === 'wallet' && transportStatus === 'ready' &&
         <HistoryRecovery key={`${identity.address.toLowerCase()}:${activeOrgId}`} request={requestHistorySync} />}
+      {transportId === 'xmtp' && transportStatus === 'ready' && <MessagingDiagnosticsView key={`${identity.address.toLowerCase()}:${activeOrgId}`} inspect={inspectMessaging} />}
       {mode === 'wallet' && <SettingsRestore key={`restore:${identity.address.toLowerCase()}`} wallet={identity.address} />}
       {mode === 'wallet' && !storageError && !recoveryPaused && <SettingsRecovery key={identity.address.toLowerCase()} wallet={identity.address}
         preferences={{ blocked: prefs.blocked, readReceiptsDefault: prefs.readReceiptsDefault, readReceiptOverrides: prefs.readReceiptOverrides ?? {} }} />}
