@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 
-export function send(runtime: string, wallet: string): Promise<{ network: string; eventId: string; text: string }> {
+export function send(runtime: string, wallet: string): Promise<{ network: string; eventId: string; text: string; receipt: { conversationId: string; messageId: string } }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [join(runtime, 'sender.mjs'), '--dev', wallet], {
       cwd: runtime, env: { PATH: '/usr/bin:/bin', HOME: runtime, LANG: 'C.UTF-8' }, stdio: ['ignore', 'pipe', 'pipe'],

@@ -78,6 +78,20 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
       await expect(second.locator('.msg-body', { hasText: 'Existing installation reply after bridge repair' })).toBeVisible({ timeout: 120_000 });
       const published = skippedPublication ?? await send(runtime!, wallet.toLowerCase());
       writeFileSync(test.info().outputPath('upgrade-publication.json'), JSON.stringify({ before, after, published }));
+      if (recoverSkipped) {
+        const ids = [...new Set(welcomeFailures.filter(text => /Decryption failed/.test(text)).map(text => /sid\((\d+)\)/.exec(text)?.[1]).filter(Boolean))];
+        expect(ids).toHaveLength(1);
+        await first.locator('.nav-item', { hasText: 'Settings' }).click();
+        await first.getByText('Recover a missing conversation', { exact: true }).click();
+        await first.getByLabel('Conversation to recover', { exact: true }).fill(published.receipt.conversationId);
+        await first.getByLabel('Invitation number', { exact: true }).fill(ids[0]!);
+        await first.getByRole('button', { name: 'Recover selected conversation', exact: true }).click();
+        await expect(first.getByRole('status').filter({ hasText: 'Conversation recovered.' })).toBeVisible({ timeout: 120_000 });
+        const recoveredIdentity = await identity(first);
+        expect(recoveredIdentity).toEqual(after);
+        writeFileSync(test.info().outputPath('recovery-observed.json'), JSON.stringify({ invitationId: ids[0], conversationId: published.receipt.conversationId, before, after: recoveredIdentity }));
+        await first.locator('.nav-item', { hasText: 'Chats' }).click();
+      }
       await first.getByRole('button', { name: 'Requests', exact: true }).click();
       await first.locator('.list-item', { hasText: 'Bridge browser acceptance' }).click({ timeout: 120_000 });
       await expect(first.locator('.msg-body').filter({ hasText: published.eventId })).toHaveText(published.text);
@@ -101,7 +115,7 @@ async function captureIdentity(context: BrowserContext) {
         super(url, options);
         this.addEventListener('message', event => {
           const { action, error } = event.data ?? {};
-          if (error && ['client.init', 'client.register', 'conversations.list', 'conversations.sync', 'conversations.syncAll'].includes(action)) {
+          if (error && ['client.init', 'client.register', 'conversations.list', 'conversations.sync', 'conversations.syncAll', 'conversations.recoverMissingWelcome'].includes(action)) {
             errors.push({ action, message: String(error?.message ?? error).replace(/[a-f0-9]{64,}/gi, '[redacted]').slice(0, 1000) });
             if (errors.length > 20) errors.shift();
           }

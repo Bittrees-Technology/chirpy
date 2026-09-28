@@ -29,7 +29,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Verify the reviewed XMTP consent dependency
-        run: python3 scripts/verify-xmtp-consent.py --installed
+        run: |
+          python3 scripts/verify-xmtp-consent.py --installed
+          python3 scripts/verify-xmtp-browser.py --installed
       - name: Dependency security audit
         run: pnpm audit --audit-level=moderate
       - name: Isolated inbound worker runtime
@@ -79,7 +81,9 @@ jobs:
           key: xmtp-consent-rust-1.98.1-${{ runner.os }}-${{ hashFiles('patches/libxmtp-1.10.0-consent.patch') }}
           restore-keys: xmtp-consent-rust-1.98.1-${{ runner.os }}-
       - name: Verify package provenance and consumer pin
-        run: python3 scripts/verify-xmtp-consent.py
+        run: |
+          python3 scripts/verify-xmtp-consent.py
+          python3 scripts/verify-xmtp-browser.py
       - name: Test exact upstream consent storage and welcome imports
         run: python3 scripts/build-xmtp-consent.py --tests-only
 

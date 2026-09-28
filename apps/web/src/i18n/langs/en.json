@@ -868,5 +868,13 @@
   "settings.diagnosticRead": "Read local session",
   "settings.diagnosticReading": "Reading…",
   "settings.diagnosticFailed": "Could not read this session. Check that the same wallet is connected and try again.",
-  "settings.diagnosticResult": "Local snapshot only; conversation counts are capped at 100. This does not confirm delivery or restored history."
+  "settings.diagnosticResult": "Local snapshot only; conversation counts are capped at 100. This does not confirm delivery or restored history.",
+  "settings.recoverConversation": "Recover a missing conversation",
+  "settings.recoverConversationHelp": "Use the conversation ID and invitation number from a delivery investigation. This checks the invitation for this browser and recovers its available history. It keeps your existing conversations and consent choices and does not resend the message.",
+  "settings.recoveryConversationId": "Conversation to recover",
+  "settings.recoveryInvitationId": "Invitation number",
+  "settings.recoverConversationAction": "Recover selected conversation",
+  "settings.recoveringConversation": "Recovering conversation…",
+  "settings.recoverConversationDone": "Conversation recovered. Check Inbox, Requests or Blocked; your existing consent choices still apply.",
+  "settings.recoverConversationFailed": "Recovery could not be confirmed. Check your conversations and session details before trying again. Do not resend the message."
 }

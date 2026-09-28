@@ -1,3 +1,4 @@
+import { fetchRecoveryWelcome, validateRecoverySelection } from "./welcomeRecovery.js";
 import { DisplayWalletChoices, type DisplayWalletReader } from './displayWalletChoices.js';
 import { InboxIdentities, inboxWallets, linkedInboxWallets, messageInboxIds } from "./inboxIdentities.js";
 import { INVALID_ROOM_METADATA, MAX_ROOM_DESCRIPTION_LENGTH, ROOM_META_VERSION, parseRoomMeta, type RoomMeta } from "./roomMetadata.js";
@@ -260,6 +261,7 @@ export class XmtpTransport implements Transport {
   private readonly readState: ReadState;
   private messageCursors = new Map<string, { conversationId: string; at: bigint }>();
   private historyRequest: Promise<void> | null = null;
+  private recoveryPending = false;
   private historyRequestedAt: number | null = null;
   private leaveRequests = new Set<string>();
   private observedLeaveRequests = new WeakMap<XmtpClient, Set<string>>();
@@ -349,6 +351,42 @@ export class XmtpTransport implements Transport {
     }
     await check();
     return result;
+  }
+
+  async recoverMissingConversation(conversationId: string, invitationId: string): Promise<void> {
+    const selected = validateRecoverySelection(conversationId, invitationId);
+    if (this.recoveryPending) throw new Error('A conversation recovery is already in progress.');
+    const client = this.requireClient();
+    const installation = client.installationId;
+    if (!installation) throw new Error('Messaging identity unavailable.');
+    const check = async () => {
+      const accounts = await this.provider?.request({ method: 'eth_accounts' });
+      if (!Array.isArray(accounts) || typeof accounts[0] !== 'string' || accounts[0].toLowerCase() !== this.myAddress
+        || this.client !== client || this.status !== 'ready' || client.installationId !== installation) {
+        throw new Error('Wallet changed. Recovery stopped.');
+      }
+    };
+    this.recoveryPending = true;
+    try {
+      await check();
+      if (await client.conversations.getConversationById(conversationId)) {
+        throw new Error('This conversation is already stored. Its existing state was preserved.');
+      }
+      const envelope = await fetchRecoveryWelcome(xmtpEnv(), installation, selected);
+      await check();
+      await client.conversations.recoverMissingWelcome(envelope, conversationId);
+      await check();
+      const recovered = await client.conversations.getConversationById(conversationId);
+      if (!recovered || recovered.id !== conversationId) throw new Error('Recovery could not be confirmed. Do not resend the message.');
+      // Apply later membership changes before presenting the recovered room.
+      // No consent is granted and no new identity, group or message is created.
+      await recovered.sync();
+      await check();
+      this.fullRefreshRequired = true;
+      await this.listConversations();
+      await check();
+      this.changeCallback?.();
+    } finally { this.recoveryPending = false; }
   }
 
   async requestHistorySync(): Promise<void> {
