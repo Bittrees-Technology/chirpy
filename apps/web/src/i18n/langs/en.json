@@ -381,7 +381,7 @@
   "status.syncWriteConflict": "Sync changed while saving. Please try again.",
   "status.ensFailed": "The ENS name could not be looked up. Please try again.",
   "settings.historyRecovery": "Message history",
-  "settings.historyRecoveryHelp": "Moving to this browser or device? Keep Chat open and messaging enabled on your old device or at chirpy.bittrees.org, using the same wallet. Then request your XMTP message history here. This does not transfer local settings or Push rooms.",
+  "settings.historyRecoveryHelp": "Moving to this browser or device? Use the same wallet and keep the browser or device that already holds your messages open with messaging enabled. If that was chirpy.bittrees.org, keep that original session available. Simply enabling another empty session will not recover missing history. Request your XMTP history here, then check older messages and Requests and Blocked before retiring the old session. This does not transfer local settings or Push rooms.",
   "settings.historyRequest": "Request message history",
   "settings.historyRequesting": "Requesting history…",
   "settings.historyRequested": "History requested. Keep your old session open while messages and conversation consent sync. A request does not confirm that all history has arrived; check your conversations before leaving the old session.",
@@ -856,5 +856,10 @@
   "inboundHistory.attempts": "Processing claims (not messages sent)",
   "inboundHistory.deadline": "Authorization deadline",
   "settings.browserWallet": "Browser wallet",
-  "settings.chooseBrowserWallet": "Choose a wallet"
+  "settings.chooseBrowserWallet": "Choose a wallet",
+  "list.empty.inbox": "No chats in this inbox",
+  "list.empty.requests": "No message requests",
+  "list.empty.blocked": "No blocked chats",
+  "list.historyHelp": "Expecting older chats? Check Requests and Blocked above. A new browser may not have your earlier messages, even with the same wallet. Keep the browser or device that holds those messages open with messaging enabled, then request history in Settings. Do not clear its data or remove its messaging access until you have checked your older conversations here.",
+  "list.historySettings": "Open history recovery in Settings"
 }

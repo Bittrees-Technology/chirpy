@@ -156,11 +156,19 @@ export function ConversationColumn(
           </div>
         )}
         {!showConnectEmpty && items.length === 0 && (
+          <>
           <Empty
             icon={isRooms ? "🏛️" : "📭"}
-            title={isRooms ? t("list.emptyRoomsTitle", "No rooms yet") : t("list.emptyChatsTitle", "No chats yet")}
+            title={isRooms ? t("list.emptyRoomsTitle", "No rooms yet") : t(`list.empty.${inboxView}`)}
             hint={isRooms ? t("list.emptyRoomsHint", "+ Room to create a token-gated community space") : t("list.emptyChatsHint", "+ Chat to start an encrypted DM")}
           />
+          {!isRooms && identityMode === "wallet" && inboxView === "inbox" && (
+            <section className="card" aria-label={t("settings.historyRecovery")}>
+              <p className="muted">{t("list.historyHelp")}</p>
+              <button className="btn btn-ghost btn-sm" onClick={onOpenSettings}>{t("list.historySettings")}</button>
+            </section>
+          )}
+          </>
         )}
         {items.length > 0 && filteredItems.length === 0 && (
           <Empty icon="🔎" title={t("list.noResultsTitle", "No results")} hint={t("list.noResultsHint", "Try another search")} />
