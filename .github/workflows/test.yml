@@ -65,7 +65,7 @@ jobs:
 
   xmtp-consent-storage:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -80,7 +80,7 @@ jobs:
           restore-keys: xmtp-consent-rust-1.98.1-${{ runner.os }}-
       - name: Verify package provenance and consumer pin
         run: python3 scripts/verify-xmtp-consent.py
-      - name: Test the exact upstream source plus reviewed consent patch
+      - name: Test exact upstream consent storage and welcome imports
         run: python3 scripts/build-xmtp-consent.py --tests-only
 
   gate-container:

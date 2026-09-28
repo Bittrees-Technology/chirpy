@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild Chat's narrow XMTP consent patch from pinned upstream source.
+"""Rebuild Chat's XMTP consent and welcome reliability patches from pinned upstream source.
 
 Requires Rust 1.98.1 (wasm32-unknown-unknown target), wasm-bindgen 0.2.114,
 Binaryen 125, a WASM-capable C compiler, Git and Cargo. Never publishes.
@@ -32,7 +32,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, help="Reuse an exact already-patched checkout; its complete tracked diff is verified")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--tests-only", action="store_true", help="Verify the patch and run its native database regressions without packaging")
+    parser.add_argument("--tests-only", action="store_true", help="Verify the patch and run its consent and welcome regressions without packaging")
     parser.add_argument("--toolchain", default="1.98.1", help="Installed rustup toolchain name; its version must be 1.98.1")
     args = parser.parse_args()
     if not args.tests_only and args.output is None:
@@ -45,6 +45,10 @@ def main():
         version = run(command, ROOT, env, True).strip()
         if not version.startswith(expected):
             raise RuntimeError("Unexpected build tool: " + version)
+    if not args.tests_only:
+        target_libdir = Path(run(["rustc", "--target", "wasm32-unknown-unknown", "--print", "target-libdir"], ROOT, env, True).strip())
+        if not any(target_libdir.glob("libcore-*.rlib")):
+            raise RuntimeError("Missing wasm32-unknown-unknown target for pinned Rust toolchain; install it before building")
     patch = PATCH.read_bytes()
     own_source = args.source is None
     source = args.source.resolve() if args.source else Path(tempfile.mkdtemp(prefix="chat-xmtp-build-"))
@@ -65,6 +69,7 @@ def main():
     env["CARGO_TARGET_DIR"] = str(source / "target")
     print("Building verified source in", source, flush=True)
     run(["cargo", "test", "--locked", "-p", "xmtp_db", "consent_record"], source, env)
+    run(["cargo", "test", "--locked", "-p", "xmtp_mls", "--lib", "groups::welcome_sync::tests"], source, env)
     if args.tests_only:
         if own_source:
             shutil.rmtree(source)
@@ -82,7 +87,7 @@ def main():
         run(["wasm-opt", str(wasm), "-O", "--strip-debug", "--enable-bulk-memory", "--enable-reference-types", "--enable-multivalue", "--enable-sign-ext", "--enable-nontrapping-float-to-int", "-o", str(optimized)], source, env)
         optimized.replace(wasm)
         metadata = json.loads((source / "bindings/wasm/package.json").read_text())
-        metadata.update(version="1.10.0-chat-consent.1", private=True)
+        metadata.update(version="1.10.0-chat-consent.2", private=True)
         for key in ("scripts", "devDependencies", "publishConfig"):
             metadata.pop(key, None)
         (package / "package.json").write_text(json.dumps(metadata, indent=2) + "\n")
