@@ -277,8 +277,8 @@ export function Settings(
       </section>
 
       {transportId === 'xmtp' && mode === 'wallet' && transportStatus === 'ready' &&
-        <HistoryRecovery key={`${identity.address.toLowerCase()}:${activeOrgId}`} request={requestHistorySync} />}
-      {transportId === 'xmtp' && transportStatus === 'ready' && <MessagingDiagnosticsView key={`${identity.address.toLowerCase()}:${activeOrgId}`} inspect={inspectMessaging} />}
+        <HistoryRecovery key={`history:${identity.address.toLowerCase()}:${activeOrgId}`} request={requestHistorySync} />}
+      {transportId === 'xmtp' && transportStatus === 'ready' && <MessagingDiagnosticsView key={`diagnostics:${identity.address.toLowerCase()}:${activeOrgId}`} inspect={inspectMessaging} />}
       {mode === 'wallet' && <SettingsRestore key={`restore:${identity.address.toLowerCase()}`} wallet={identity.address} />}
       {mode === 'wallet' && !storageError && !recoveryPaused && <SettingsRecovery key={identity.address.toLowerCase()} wallet={identity.address}
         preferences={{ blocked: prefs.blocked, readReceiptsDefault: prefs.readReceiptsDefault, readReceiptOverrides: prefs.readReceiptOverrides ?? {} }} />}
