@@ -14,7 +14,7 @@ overrides:
   baseline-browser-mapping@>=2.0.0 <2.11.0: 2.11.0
   '@pushprotocol/restapi>axios': 0.33.0
   '@pushprotocol/restapi>uuid': 11.1.1
-  '@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings': file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.1-0febd03bd9ff.tgz
+  '@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings': file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.2-ac69a5d4645b.tgz
 
 patchedDependencies:
   '@pushprotocol/restapi@1.7.32':
@@ -1436,9 +1436,9 @@ packages:
     resolution: {integrity: sha512-UMClg1+WkC3pfeHffJoZMYzhqsUa2wZpSJtIrpvBqUD+n1VYVQTfhTqGyaavVIPgITxjHBi/uMS/K18E4qDbPA==}
     engines: {node: '>=22'}
 
-  '@xmtp/wasm-bindings@file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.1-0febd03bd9ff.tgz':
-    resolution: {integrity: sha512-RW3urZaq+gxbWf2cZ+rRkNxW9m6zBa+3GkZ8TBQ8Pnp+NUsMvIJY2JWu3bvFffbihHLF7tkQGQX2AU48t8lIlA==, tarball: file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.1-0febd03bd9ff.tgz}
-    version: 1.10.0-chat-consent.1
+  '@xmtp/wasm-bindings@file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.2-ac69a5d4645b.tgz':
+    resolution: {integrity: sha512-6X1HOcDeRx+GwPNlDp8zQGcCixwCyLCNVq9+2dfwzbjSi7YAKIqUipca9tk/CT1L59ZUbwjn0gmkAY5o970zAQ==, tarball: file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.2-ac69a5d4645b.tgz}
+    version: 1.10.0-chat-consent.2
     engines: {node: '>=22'}
 
   abitype@1.0.6:
@@ -5153,7 +5153,7 @@ snapshots:
   '@xmtp/browser-sdk@7.0.0(viem@2.53.1(typescript@5.9.3)(zod@3.25.76))':
     dependencies:
       '@xmtp/content-type-primitives': 3.0.0
-      '@xmtp/wasm-bindings': file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.1-0febd03bd9ff.tgz
+      '@xmtp/wasm-bindings': file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.2-ac69a5d4645b.tgz
     optionalDependencies:
       viem: 2.53.1(typescript@5.9.3)(zod@3.25.76)
 
@@ -5170,7 +5170,7 @@ snapshots:
       '@xmtp/content-type-primitives': 3.0.0
       '@xmtp/node-bindings': 1.10.0
 
-  '@xmtp/wasm-bindings@file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.1-0febd03bd9ff.tgz': {}
+  '@xmtp/wasm-bindings@file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.2-ac69a5d4645b.tgz': {}
 
   abitype@1.0.6(typescript@5.9.3)(zod@3.25.76):
     optionalDependencies:
