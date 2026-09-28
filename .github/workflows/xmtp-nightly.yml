@@ -30,6 +30,13 @@ jobs:
         run: node scripts/test-mail-browser-upgrade.mjs --dev
         env:
           CHIRPY_TEST_NATIVE_CSP: "1"
+      # The following Playwright suite clears test-results on startup.
+      - name: Preserve native bridge and existing-browser upgrade evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xmtp-bridge-upgrade-evidence
+          path: test-results/
       - run: pnpm e2e:xmtp
         env:
           CHIRPY_TEST_NATIVE_CSP: "1"
