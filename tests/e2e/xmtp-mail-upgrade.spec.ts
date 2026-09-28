@@ -16,6 +16,7 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
     const peer = await browser.newContext();
     const wallet = await injectSyntheticWallet(receiver);
     const peerWallet = await injectSyntheticWallet(peer);
+    const recoverSkipped = process.env.CHAT_TEST_SKIPPED_WELCOME === '1';
     let upgraded = false;
     const policy = JSON.parse(readFileSync('apps/web/src-tauri/tauri.conf.json', 'utf8')).app.security.csp;
     for (const context of [receiver, peer]) {
@@ -29,6 +30,15 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
     }
     const first = await receiver.newPage();
     const second = await peer.newPage();
+    const welcomeFailures: string[] = [];
+    first.on('console', message => {
+      const text = message.text();
+      if (/welcome/i.test(text) && /non-retryable|Decryption failed/i.test(text)) {
+        welcomeFailures.push(text.slice(0, 2000));
+        if (welcomeFailures.length > 20) welcomeFailures.shift();
+      }
+    });
+    let skippedPublication: Awaited<ReturnType<typeof send>> | undefined;
     try {
       await enable(first, wallet); await enable(second, peerWallet);
       const before = await identity(first);
@@ -42,6 +52,14 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
       await first.locator('.list-item', { hasText: 'Existing browser history before bridge repair' }).click({ timeout: 120_000 });
       await first.getByRole('button', { name: 'Accept request', exact: true }).click();
       await expect(first.locator('.msg-body', { hasText: 'Existing browser history before bridge repair' })).toBeVisible();
+      if (recoverSkipped) {
+        // Reproduce the old failure on a disposable identity BEFORE replacing
+        // its bundle. Recovery must use this same publication and database.
+        skippedPublication = await send(runtime!, wallet.toLowerCase());
+        writeFileSync(test.info().outputPath('skipped-publication.json'), JSON.stringify(skippedPublication));
+        await expect.poll(() => welcomeFailures.some(text => /non-retryable/i.test(text) && /Decryption failed/i.test(text)), { timeout: 120_000 }).toBe(true);
+        writeFileSync(test.info().outputPath('skipped-welcome-errors.json'), JSON.stringify(welcomeFailures));
+      }
       upgraded = true;
       await first.reload();
       const after = await identity(first);
@@ -58,13 +76,14 @@ test.describe('Existing browser bridge compatibility @xmtp', () => {
       await first.locator('.composer-input').fill('Existing installation reply after bridge repair');
       await first.getByRole('button', { name: 'Send', exact: true }).click();
       await expect(second.locator('.msg-body', { hasText: 'Existing installation reply after bridge repair' })).toBeVisible({ timeout: 120_000 });
-      const published = await send(runtime!, wallet.toLowerCase());
+      const published = skippedPublication ?? await send(runtime!, wallet.toLowerCase());
       writeFileSync(test.info().outputPath('upgrade-publication.json'), JSON.stringify({ before, after, published }));
       await first.getByRole('button', { name: 'Requests', exact: true }).click();
       await first.locator('.list-item', { hasText: 'Bridge browser acceptance' }).click({ timeout: 120_000 });
       await expect(first.locator('.msg-body').filter({ hasText: published.eventId })).toHaveText(published.text);
-      console.info('Same dev installation retained its earlier history and received the actual native bridge publication after upgrade.');
+      console.info(recoverSkipped ? 'Same dev installation recovered the pre-upgrade publication without resending.' : 'Same dev installation retained its earlier history and received the actual native bridge publication after upgrade.');
     } finally {
+      writeFileSync(test.info().outputPath('skipped-welcome-errors.json'), JSON.stringify(welcomeFailures));
       const ui = await first.locator('body').innerText().catch(() => 'Unavailable');
       await first.locator('.nav-item', { hasText: 'Settings' }).click().catch(() => {});
       writeFileSync(test.info().outputPath('upgrade-browser-state.json'), JSON.stringify({ identity: await identity(first).catch(() => null), ui, settings: await first.locator('body').innerText().catch(() => 'Unavailable'), errors: await first.evaluate(() => (window as any).__upgradeErrors).catch(() => []) }));
@@ -90,6 +109,14 @@ async function captureIdentity(context: BrowserContext) {
           const { inboxId, installationId, libxmtpVersion, env } = event.data.result;
           (window as any).__upgradeIdentity = { inboxId, installationId, libxmtpVersion, env };
         });
+      }
+      postMessage(...args: any[]) {
+        const request = args[0];
+        if (request?.action === 'client.init') {
+          if (request.data?.options?.env !== 'dev') throw Error('Upgrade diagnostic requires dev');
+          request.data.options.loggingLevel = 2;
+        }
+        return (OriginalWorker.prototype.postMessage as any).apply(this, args);
       }
     };
   });
