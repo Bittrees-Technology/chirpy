@@ -450,3 +450,16 @@ it('uses v2 references unchanged for replies/reactions and still rejects a forei
   await expect(f.rooms.react(id, reference, '👍')).rejects.toThrow();
   expect(f.client.send).toHaveBeenCalledTimes(2);
 });
+
+it('reads production lowercase member roles without copying profiles or accepting unknown authority', async () => {
+  const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+  for (const role of ['admin', 'member', 'ADMIN', 'MEMBER']) {
+    vi.mocked(f.client.participants).mockResolvedValue({ members: [{ address: `eip155:${owner}`, role, userInfo: { secret: 'never-copy' } }] });
+    expect((await f.rooms.members(id)).members).toEqual([{ address: owner, role: role.toUpperCase() }]);
+  }
+  for (const role of ['owner', 'super-admin', 'Admin', ' admin', null, {}]) {
+    vi.mocked(f.client.participants).mockResolvedValue({ members: [{ address: owner, role }] });
+    await expect(f.rooms.members(id)).rejects.toThrow('unsupported member list');
+  }
+  expect(f.client.add).not.toHaveBeenCalled(); expect(f.client.remove).not.toHaveBeenCalled();
+});

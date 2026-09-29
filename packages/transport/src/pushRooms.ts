@@ -220,11 +220,12 @@ export class PushRooms {
     const members = raw.members.map(value => {
       const member = object(value);
       const address = parsePushIdentity(member.address);
-      if (!address || (member.role !== 'ADMIN' && member.role !== 'MEMBER')) throw new Error('Push returned an unsupported member list.');
+      const role = member.role === 'admin' ? 'ADMIN' : member.role === 'member' ? 'MEMBER' : member.role;
+      if (!address || (role !== 'ADMIN' && role !== 'MEMBER')) throw new Error('Push returned an unsupported member list.');
       if (seen.has(address)) throw new Error('Push returned a duplicated member. Refresh the member list.');
       seen.add(address);
       // Do not copy SDK userInfo, encrypted keys or unselected profile fields.
-      return { address, role: member.role } as PushMember;
+      return { address, role } as PushMember;
     });
     return { members, page, hasMore: members.length === 20, pending };
   }

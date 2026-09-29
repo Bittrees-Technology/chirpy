@@ -122,3 +122,8 @@ The same validator applies to incoming and outgoing references. Unsupported
 versions, malformed hashes, whitespace and URL/path-shaped references are rejected.
 Accepting this wire format does not bypass recipient matching, cursor continuity,
 parent lookup, decryption handling or live membership/posting authority.
+
+The member roster also accepts the production lowercase `admin`/`member` values
+as exact equivalents of legacy `ADMIN`/`MEMBER`. It omits `userInfo` and rejects
+unknown role values. Reading a roster never grants authority; moderation continues
+to require the current wallet’s separate live participant status.
