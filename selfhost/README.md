@@ -85,3 +85,23 @@ New Docker named volumes inherit the image's `/data` ownership. Before upgrading
 `node scripts/test-gate-container.mjs IMAGE` verifies the built image in isolated containers and removes its test volume afterward. CI requires this check, including a separate dependency audit during the image build; the monorepo audit alone does not cover its separate dependency graph.
 
 The final image is also scanned in CI for high/critical vulnerabilities with a pinned scanner. Lower-severity base-library findings are recorded in `docs/security/container-baseline-2026-09-09.json`; a clean application npm audit is not a whole-image security assessment.
+
+### Governance role rooms
+
+A reviewed registry may use a rule such as
+`{"kind":"role","role":"Associate","authority":"bittrees-governance"}`.
+Only `Associate`, `Junior Partner`, and `Partner` are supported. Use `combine: "any"`
+with the three rules for Bittrees Members. Governance evaluates its own hierarchy;
+Chat does not copy assignments or accept role claims from the browser. Rules with
+missing or different authority are rejected, even alongside a passing token rule.
+
+The server queries the fixed HTTPS Governance gate with redirects disabled, an
+8-second deadline, bounded JSON responses and no persistent role cache. Responses
+must explicitly mark the role source ready and match their 200/403 status. A failed
+or malformed read denies admission and remains unknown for removal; existing
+repeated-denial, identity-binding and administrator protections still apply.
+Health includes this dependency whenever the registry contains a role rule.
+
+This code does not create a group or grant gatekeeper authority. Provision the actual
+room, namespace, isolated identity and recovery before configuring the registry.
+Existing Push rooms continue using their original protocol and authority.

@@ -2,11 +2,11 @@ import { createMembershipRevalidator } from './gate-membership.js';
 import { getGatekeeperClient } from './gate-client.js';
 import { gateWorkQueue } from './gate-queue.js';
 import { loadRooms } from './room-join.js';
-import { makeViemChainReader } from '../packages/core/src/viemChainReader.ts';
+import { makeGateChainReader } from './gate-role-authority.js';
 import { logEvent } from './server-utils.js';
 
 export function startMembershipWorker({ env = process.env, getClient = getGatekeeperClient, getRooms = loadRooms,
-  reader = () => makeViemChainReader(env.MAINNET_RPC_URL), workQueue = gateWorkQueue,
+  reader = () => makeGateChainReader(env.MAINNET_RPC_URL), workQueue = gateWorkQueue,
   report = counts => logEvent('membership.revalidation', counts) } = {}) {
   const mode = env.GATE_MEMBERSHIP_MODE || 'off';
   if (mode === 'off') return () => {};

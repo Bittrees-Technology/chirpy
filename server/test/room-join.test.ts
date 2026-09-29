@@ -1,3 +1,4 @@
+import { createGovernanceRoleReader } from "../gate-role-authority.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { createGateWorkQueue, GateQueueBusyError } from "../../server/gate-queue.js";
@@ -7,16 +8,16 @@ vi.mock("@xmtp/node-sdk", () => ({ IdentifierKind: { Ethereum: 0 } }));
 const alice = privateKeyToAccount(`0x${"1".repeat(64)}`);
 const mallory = privateKeyToAccount(`0x${"2".repeat(64)}`);
 const gate = { combine: "all", rules: [{ kind: "token", standard: "erc721", token: alice.address, min: "1" }] };
-function setup(workQueue = createGateWorkQueue()) {
+function setup(workQueue = createGateWorkQueue(), roleFetcher?) {
   let clock = 1000;
   const addMembers = vi.fn();
   const balance = vi.fn().mockResolvedValue(1n);
-  const room = { id: "room-one", namespace: "acme", title: "Members", chainId: 1, gate };
+  const room = { id: "room-one", namespace: "acme", title: "Members", chainId: 1, gate: roleFetcher ? { combine: "any", rules: [{ kind: "role", role: "Associate", authority: "bittrees-governance" }] } : gate };
   const rooms = [room];
   const bot = { inboxId: "bot", fetchInboxIdByIdentifier: vi.fn().mockResolvedValue("alice-inbox"),
     conversations: { sync: vi.fn(), getConversationById: vi.fn().mockResolvedValue({ sync: vi.fn(), isSuperAdmin: () => true, addMembers }) } };
   const handler = createJoinHandler({ workQueue, getClient: async () => bot, getRooms: async () => rooms,
-    reader: () => ({ erc721Balance: balance }) as any, service: () => "https://gate.example/api/room-join", now: () => clock });
+    reader: () => ({ erc721Balance: balance, rolesOf: createGovernanceRoleReader({ fetcher: roleFetcher }) }) as any, service: () => "https://gate.example/api/room-join", now: () => clock });
   const call = async (body) => {
     const res = { code: 0, body: null as any, setHeader() {}, status(n) { this.code = n; return this; }, json(body) { this.body = body; return this; } };
     await handler({ method: "POST", body }, res); return res;
@@ -96,4 +97,15 @@ describe("trusted room admission", () => {
     const s = setup(); expect((await s.call({ action: "catalog", namespace: "other" })).body.rooms).toEqual([]);
     expect((await s.call({ action: "catalog", namespace: "acme" })).body.rooms[0].id).toBe("room-one");
   });
+});
+
+it("uses authoritative roles for signed admission and rejects outage or wrong namespace", async () => {
+  for (const status of [200, 403, 503]) {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ access: status === 200, roleSourceReady: status !== 503, combine: 'any', rules: 1 }), { status, headers: { 'content-type': 'application/json' } }));
+    const s = setup(createGateWorkQueue(), fetcher);
+    expect((await s.call({ action: 'challenge', convId: 'room-one', namespace: 'foreign', address: alice.address, inboxId: 'alice-inbox' })).code).not.toBe(200);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect((await s.join(await s.challenge())).code).toBe(status === 200 ? 200 : 403);
+    expect(s.addMembers).toHaveBeenCalledTimes(status === 200 ? 1 : 0);
+  }
 });
