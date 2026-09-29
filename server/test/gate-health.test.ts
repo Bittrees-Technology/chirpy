@@ -15,7 +15,7 @@ describe('live gate dependency readiness', () => {
     const group = { sync: vi.fn(), isSuperAdmin: vi.fn(() => true) };
     const client = { inboxId: 'bot', conversations: { sync: vi.fn(), getConversationById: vi.fn(async () => group) } };
     const probe = createGateProbe({ env, getClient: async () => client, getRooms: async () => [{ id: 'one' }, { id: 'two' }], fetcher: rpc(), now: () => 1000000 });
-    expect(await probe()).toMatchObject({ rpc: true, xmtp: true }); expect(group.sync).toHaveBeenCalledTimes(2);
+    expect(await probe()).toMatchObject({ rpc: true, xmtp: true, roles: true }); expect(group.sync).toHaveBeenCalledTimes(2);
     group.isSuperAdmin.mockReturnValue(false); expect(await probe()).toMatchObject({ rpc: true, xmtp: false });
     const getClient = vi.fn();
     await expect(createGateProbe({ env: { ...env, GATE_PUBLIC_URL: 'https://gate.example/wrong' }, getClient })()).rejects.toThrow('configuration');
@@ -24,16 +24,16 @@ describe('live gate dependency readiness', () => {
   });
   it('starts unready, expires stale success and never overlaps a hung probe', async () => {
     vi.useFakeTimers(); let finish!: (value: any) => void;
-    const probe = vi.fn().mockResolvedValueOnce({ rpc: true, xmtp: true }).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const probe = vi.fn().mockResolvedValueOnce({ rpc: true, xmtp: true, roles: true }).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const monitor = createGateDependencyMonitor({ probe, intervalMs: 100, staleMs: 200, report: vi.fn() });
     expect(monitor.snapshot().ready).toBe(false); monitor.start(); monitor.start();
     await vi.advanceTimersByTimeAsync(1); expect(monitor.snapshot().ready).toBe(true);
     await vi.advanceTimersByTimeAsync(1000); expect(probe).toHaveBeenCalledTimes(2); expect(monitor.snapshot().ready).toBe(false);
-    monitor.stop(); finish({ rpc: true, xmtp: true }); await vi.advanceTimersByTimeAsync(1); expect(monitor.snapshot().ready).toBe(false);
+    monitor.stop(); finish({ rpc: true, xmtp: true, roles: true }); await vi.advanceTimersByTimeAsync(1); expect(monitor.snapshot().ready).toBe(false);
   });
   it('reports dependency failures without leaking details and recovers on a later pass', async () => {
     vi.useFakeTimers(); const report = vi.fn();
-    const probe = vi.fn().mockRejectedValueOnce(new Error('secret diagnostic')).mockResolvedValueOnce({ rpc: true, xmtp: true });
+    const probe = vi.fn().mockRejectedValueOnce(new Error('secret diagnostic')).mockResolvedValueOnce({ rpc: true, xmtp: true, roles: true });
     const monitor = createGateDependencyMonitor({ probe, report, intervalMs: 100, staleMs: 200 }); monitor.start();
     await vi.advanceTimersByTimeAsync(1); expect(monitor.snapshot().ready).toBe(false); expect(JSON.stringify(monitor.snapshot())).not.toContain('secret');
     await vi.advanceTimersByTimeAsync(100); expect(monitor.snapshot().ready).toBe(true); monitor.stop();
@@ -59,4 +59,10 @@ it('defaults direct gate listeners to loopback and validates explicit binding', 
   expect(gateListenConfig({GATE_BIND_HOST:'0.0.0.0'}).host).toBe('0.0.0.0');
   for (const GATE_PORT of ['0','65536','-1','1e3','80\n']) expect(()=>gateListenConfig({GATE_PORT})).toThrow();
   for (const GATE_BIND_HOST of ['example.org','127.0.0.1\n','https://127.0.0.1']) expect(()=>gateListenConfig({GATE_BIND_HOST})).toThrow();
+});
+
+it('marks the gate unready when role authority is down despite healthy RPC and XMTP', async () => {
+  vi.useFakeTimers();
+  const monitor = createGateDependencyMonitor({ probe: async () => ({ rpc: true, xmtp: true, roles: false }), report: vi.fn() });
+  monitor.start(); await vi.advanceTimersByTimeAsync(1); expect(monitor.snapshot().ready).toBe(false); monitor.stop();
 });

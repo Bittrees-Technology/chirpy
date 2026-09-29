@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { evalGate, validateProductionGate } from "../packages/core/src/gating.ts";
-import { makeViemChainReader } from "../packages/core/src/viemChainReader.ts";
+import { makeGateChainReader } from "./gate-role-authority.js";
 import { getAddress, recoverMessageAddress } from "viem";
 import { createGateWorkQueue, gateWorkQueue, GateQueueBusyError } from "./gate-queue.js";
 import { getGatekeeperClient } from "./gate-client.js";
@@ -32,7 +32,7 @@ export function joinMessage(challenge) {
 // One process owns the gatekeeper's durable XMTP database. Challenges are deliberately
 // ephemeral: a restart invalidates them. Never share that database across processes.
 export function createJoinHandler({ getClient = getGatekeeperClient, getRooms = loadRooms,
-  reader = () => makeViemChainReader(process.env.MAINNET_RPC_URL),
+  reader = () => makeGateChainReader(process.env.MAINNET_RPC_URL),
   service = () => process.env.GATE_PUBLIC_URL, now = Date.now, workQueue = createGateWorkQueue() } = {}) {
   const challenges = new Map();
   return async function handler(req, res) {

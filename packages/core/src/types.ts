@@ -7,7 +7,7 @@ export type RoomRule =
   | { kind: "token"; standard: "erc20" | "erc721" | "erc1155"; token: string; min: string; tokenId?: string }
   | { kind: "safe"; safe: string }
   | { kind: "ens"; name?: string }
-  | { kind: "role"; role: string }
+  | { kind: "role"; role: string; authority?: "bittrees-governance" }
   | { kind: "power"; tier: number };
 
 export type Combine = "any" | "all";
