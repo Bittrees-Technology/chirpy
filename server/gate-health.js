@@ -1,3 +1,4 @@
+import { probeGovernanceRoles } from './gate-role-authority.js';
 import { createHash } from 'node:crypto';
 import { buildGateHealthReport } from './ops-utils.js';
 import { readGateClientConfig } from './gate-config.js';
@@ -41,8 +42,8 @@ export function createGateProbe({ env = process.env, getClient = getGatekeeperCl
         });
       }
     };
-    const results = await Promise.allSettled([probeMainnet(env.MAINNET_RPC_URL, { fetcher, now, signal }), xmtp()]);
-    return { rpc: results[0].status === 'fulfilled', xmtp: results[1].status === 'fulfilled', registryHash };
+    const results = await Promise.allSettled([probeMainnet(env.MAINNET_RPC_URL, { fetcher, now, signal }), xmtp(), probeGovernanceRoles(rooms, { fetcher, signal })]);
+    return { rpc: results[0].status === 'fulfilled', xmtp: results[1].status === 'fulfilled', roles: results[2].status === 'fulfilled', registryHash };
   };
 }
 
@@ -55,7 +56,7 @@ export function createGateDependencyMonitor({ probe = createGateProbe(), now = D
   const tick = async () => {
     if (stopped || running) return;
     running = true; const started = now();
-    try { const checks = await probe(controller.signal); state = { ...checks, ready: checks.rpc === true && checks.xmtp === true, checkedAt: now() }; }
+    try { const checks = await probe(controller.signal); state = { ...checks, ready: checks.rpc === true && checks.xmtp === true && checks.roles === true, checkedAt: now() }; }
     catch { state = { ready: false, checkedAt: now(), rpc: false, xmtp: false }; }
     finally {
       running = false;

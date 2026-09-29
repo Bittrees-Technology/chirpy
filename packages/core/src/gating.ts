@@ -191,6 +191,7 @@ export function validateProductionGate(value: unknown): value is Gate {
   if (!["all", "any"].includes(gate.combine) || !Array.isArray(gate.rules) || !gate.rules.length || gate.rules.length > 32) return false;
   return gate.rules.every((r) => {
     if (!r || typeof r !== "object") return false;
+    if (r.kind === "role") return r.authority === "bittrees-governance" && ["Associate", "Junior Partner", "Partner"].includes(r.role);
     if (r.kind === "safe") return isAddr(r.safe);
     if (r.kind === "ens") return r.name === undefined || (typeof r.name === "string" && r.name.length > 0 && r.name.length <= 255);
     if (r.kind !== "token" || !isAddr(r.token) || !["erc20", "erc721", "erc1155"].includes(r.standard)) return false;
