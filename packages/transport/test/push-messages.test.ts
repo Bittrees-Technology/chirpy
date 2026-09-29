@@ -58,3 +58,17 @@ describe('Push history boundary', () => {
     expect(() => readPushHistory({}, conversation)).toThrow();
   });
 });
+
+it('preserves v2 IDs and mixed legacy links through exact continuation and room checks', () => {
+  const current = 'v2:' + 'a'.repeat(64), older = 'v2:' + 'b'.repeat(64);
+  const page = readPushHistory([message(current, first), message(first, older)], conversation);
+  expect(page.messages.map(m => m.id)).toEqual([first, current]);
+  expect(page.nextReference).toBe(older);
+  expect(readPushHistory([message(older, null)], conversation, older).messages[0].id).toBe(older);
+  expect(() => readPushHistory([message(older, null)], conversation, current)).toThrow();
+  expect(() => readPushHistory([{ ...message(current, null), toDID: 'b'.repeat(64) }], conversation)).toThrow();
+  for (const invalid of ['v2:' + 'a'.repeat(63), 'v2:' + 'a'.repeat(65), 'v2:' + 'g'.repeat(64), 'v3:' + 'a'.repeat(64), current + '/other', current + '\n']) {
+    expect(() => readPushHistory([message(invalid, null)], conversation)).toThrow();
+    expect(() => readPushHistory([message(current, invalid)], conversation)).toThrow();
+  }
+});

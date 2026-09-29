@@ -1,3 +1,4 @@
+import { isPushMessageId } from './pushMessageId.js';
 import { pushSenderIdentity } from './pushIdentity.js';
 import type { ChatMessage } from './types.js';
 import { parsePushConversationId } from './pushRegistry.js';
@@ -15,7 +16,7 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 function cid(value: unknown): string {
-  if (typeof value !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(value)) invalid();
+  if (!isPushMessageId(value)) invalid();
   return value;
 }
 /** Only decrypted SDK results belong here; this function does not verify signatures.
