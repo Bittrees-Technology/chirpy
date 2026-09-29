@@ -39,6 +39,7 @@ try {
   assert.equal(Number(rendered.ports[0].target), 8788);
   assert.equal(Number(rendered.ports[0].published), 0);
   assert.equal(String(rendered.environment.GATE_PORT), '8788');
+  assert.equal(rendered.environment.GATE_BIND_HOST, '0.0.0.0');
   run();
   const bindings = JSON.parse(docker('inspect', '--format', '{{json .NetworkSettings.Ports}}', name));
   assert.deepEqual(Object.keys(bindings), ['8788/tcp']);

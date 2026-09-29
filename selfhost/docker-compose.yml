@@ -12,6 +12,8 @@ services:
     # GATE_PORT selects the host port; the container always listens on 8788.
     environment:
       GATE_PORT: "8788"
+      # Bind inside the container; host publication remains loopback by default.
+      GATE_BIND_HOST: "0.0.0.0"
     ports:
       - "${GATE_BIND_HOST:-127.0.0.1}:${GATE_PORT:-8788}:8788"
     restart: unless-stopped

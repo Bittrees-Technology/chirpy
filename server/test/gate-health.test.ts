@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createGateDependencyMonitor, createGateProbe, probeMainnet, gateRegistryHash } from '../gate-health.js';
-import { createGateServer } from '../../selfhost/gate-server.mjs';
+import { createGateServer, gateListenConfig } from '../../selfhost/gate-server.mjs';
 const env = { XMTP_GATEKEEPER_PRIVATE_KEY: `0x${'1'.repeat(64)}`, GATE_DB_ENCRYPTION_KEY: '2'.repeat(64), GATE_DATA_DIR: '/data', MAINNET_RPC_URL: 'https://rpc.example', GATE_PUBLIC_URL: 'https://gate.example/api/room-join', CHIRPY_GATE_ROOMS_FILE: '/rooms.json', GATE_ALLOW_ORIGIN: 'https://chirpy.example' };
 const rpc = (chain = '0x1', timestamp = '0x3e8') => vi.fn(async (_url, options) => ({ ok: true, json: async () => ({ result: JSON.parse(options.body).method === 'eth_chainId' ? chain : { timestamp } }) }));
 afterEach(() => vi.useRealTimers());
@@ -51,6 +51,14 @@ describe('live gate dependency readiness', () => {
       rooms.pop(); ready = false; expect((await fetch(url)).status).toBe(503);
     } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
   });
+});
+
+it('defaults direct gate listeners to loopback and validates explicit binding', () => {
+  expect(gateListenConfig({})).toEqual({ host:'127.0.0.1', port:8788 });
+  expect(gateListenConfig({GATE_BIND_HOST:'::1',GATE_PORT:'18789'})).toEqual({host:'::1',port:18789});
+  expect(gateListenConfig({GATE_BIND_HOST:'0.0.0.0'}).host).toBe('0.0.0.0');
+  for (const GATE_PORT of ['0','65536','-1','1e3','80\n']) expect(()=>gateListenConfig({GATE_PORT})).toThrow();
+  for (const GATE_BIND_HOST of ['example.org','127.0.0.1\n','https://127.0.0.1']) expect(()=>gateListenConfig({GATE_BIND_HOST})).toThrow();
 });
 
 it('marks the gate unready when role authority is down despite healthy RPC and XMTP', async () => {

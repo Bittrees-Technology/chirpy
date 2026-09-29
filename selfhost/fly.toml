@@ -19,6 +19,7 @@ primary_region = "iad"
 
 [env]
   GATE_PORT = "8788"
+  GATE_BIND_HOST = "0.0.0.0"
   # XMTP_GATEKEEPER_PRIVATE_KEY, MAINNET_RPC_URL, GATE_ALLOW_ORIGIN → set via `fly secrets set`.
 
 # Persist the XMTP MLS store (GATE_DATA_DIR=/data in the image) so the gatekeeper reuses its

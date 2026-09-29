@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { createGateDependencyMonitor, gateRegistryHash } from "../server/gate-health.js";
@@ -97,13 +98,21 @@ export function createGateServer({ handler = roomJoinHandler, registry = loadRoo
   return server;
 }
 
+export function gateListenConfig(env = process.env) {
+  const host = env.GATE_BIND_HOST || "127.0.0.1";
+  const rawPort = String(env.GATE_PORT || "8788");
+  const port = Number(rawPort);
+  if (!isIP(host) || rawPort.trim() !== rawPort || !/^[0-9]{1,5}$/.test(rawPort) || port < 1 || port > 65535) throw new Error("Invalid gate listen address or port.");
+  return { host, port };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const port = Number(process.env.GATE_PORT || 8788);
+  const { host, port } = gateListenConfig();
   const dependencies = createGateDependencyMonitor();
   const server = createGateServer({ dependencySnapshot: dependencies.snapshot });
   dependencies.start();
   server.once("close", dependencies.stop);
   const stopMembership = startMembershipWorker();
   server.once("close", stopMembership);
-  server.listen(port, () => logEvent("server.started", { route: "selfhost/gate-server", port }));
+  server.listen(port, host, () => logEvent("server.started", { route: "selfhost/gate-server", port }));
 }
