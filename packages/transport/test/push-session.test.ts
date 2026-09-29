@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PushRoomSession, PushSessionChangedError, type RawPushClient, type PushSigner, type PushWalletProvider } from '../src/pushSession';
 const owner = `0x${'1'.repeat(40)}`; const other = `0x${'2'.repeat(40)}`;
 function deferred<T>() { let resolve!: (v:T)=>void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
-function fixture() {
+function fixture(owner = `0x${'1'.repeat(40)}`) {
   let address = owner; let chain = '0x1'; let current = true;
   const listeners = new Map<string, Set<() => void>>();
   const request = vi.fn(async ({ method }: { method: string }): Promise<any> => {
@@ -26,6 +26,25 @@ function fixture() {
     address: (value: string) => { address = value; }, chain: (value: string) => { chain = value; }, replace: () => { current = false; } };
 }
 describe('wallet-bound Push sessions', () => {
+  it('recovers checksum-address membership while guarding lowercase provider accounts', async () => {
+    const checksum = '0xE5350D96FC3161BF5c385843ec5ee24E8B465B2f';
+    const f = fixture(checksum.toLowerCase());
+    f.initialize.mockImplementationOnce(async signer => ({ ...f.raw, account: signer.account.address,
+      chat: { ...f.raw.chat, group: { ...f.raw.chat.group, participants: {
+        ...f.raw.chat.group.participants,
+        status: async () => ({ participant: signer.account.address === checksum, pending: false, role: 'admin' }),
+      } } },
+    }));
+    const client = await f.session.enable();
+    expect(await client.participantStatus('existing-room')).toEqual({ participant: true, pending: false, role: 'admin' });
+    expect(f.initialize).toHaveBeenCalledOnce();
+    f.address(checksum);
+    expect(await f.session.enable()).toBe(client);
+    f.address(other);
+    await expect(client.participantStatus('existing-room')).rejects.toBeInstanceOf(PushSessionChangedError);
+    f.session.dispose();
+  });
+
   it('requires removable wallet observers to detect reconnects of the same account', () => {
     expect(() => new PushRoomSession(owner, { request: async () => undefined }, () => true)).toThrow('safely observe');
   });

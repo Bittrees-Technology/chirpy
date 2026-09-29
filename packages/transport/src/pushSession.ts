@@ -1,4 +1,4 @@
-import { createWalletClient, custom, type Address, type WalletClient } from 'viem';
+import { createWalletClient, custom, getAddress, type Address, type WalletClient } from 'viem';
 import type { Eip1193Provider } from './index.js';
 
 export interface PushWalletProvider extends Eip1193Provider {
@@ -141,7 +141,9 @@ export class PushRoomSession {
     }
     const operation = this.#bounded(revision, Promise.resolve().then(async () => {
       const chain = await this.#check(revision);
-      const wallet = createWalletClient({ account: this.#owner, transport: custom(this.provider) });
+      // Push membership lookups distinguish address casing. Use the canonical checksum
+      // for SDK identity, retaining lowercase comparisons for wallet ownership guards.
+      const wallet = createWalletClient({ account: getAddress(this.#owner), transport: custom(this.provider) });
       const checkAccount = (account: unknown) => {
         if (account === undefined) return;
         const address = typeof account === 'string' ? account : (account as { address?: unknown } | null)?.address;

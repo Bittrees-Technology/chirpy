@@ -100,3 +100,16 @@ A traversal starts at latest history and retains bounded reaction events from it
 Tests exercise native envelopes, original-room and fresh-authority checks, malformed/foreign references, deduplication across pages, linked ordering, unchanged revisits, bounded caches, uncertain sends and source/wallet/permission changes. Browser tests cover native send/readback, missing-parent activity, snapshot counts, disabled already-added choices and narrow-screen layout. Public plaintext signature and delivery limitations are unchanged. Existing production-room and physical-device acceptance remain required.
 
 References: [Push reaction message contract](https://comms.push.org/docs/chat/message-types/reaction/), pinned `@pushprotocol/restapi@1.7.32` `validations/messageObject.js` and `types/messageTypes.js`, and [Push UI reaction aggregation](https://github.com/push-protocol/push-sdk/blob/main/packages/uiweb/src/lib/components/chat/ChatViewBubble/reactions/Reactions.tsx). The pinned validator, rather than the documentation’s empty-content example, defines the supported outgoing values.
+
+### Wallet address casing and existing membership
+
+Pass an EIP-55 checksummed account to the Push SDK. Its production group member
+status endpoint can distinguish the checksum and lowercase spellings of the same
+Ethereum address, returning existing admin membership only for the former. Keep
+case-insensitive ownership checks against the live wallet provider; casing must
+not loosen account-change guards or trigger group creation/join as a workaround.
+
+Membership and entry permission remain separate: an existing member may have
+`chat: true` while the custom entry rule returns `entry: false`. Do not bypass
+that rule for new members. Verify admission independently with the original
+Governance authority before accepting the new-member rollout.
