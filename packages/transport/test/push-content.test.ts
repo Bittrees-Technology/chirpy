@@ -58,3 +58,13 @@ describe('Push structured history', () => {
     expect(()=>readPushHistory(rows,conversation)).toThrow('No messages were replaced');
   });
 });
+
+it('preserves exact v2 reply and reaction references and rejects malformed references', () => {
+  const reference = 'v2:' + 'a'.repeat(64);
+  expect(parse('Reply', { content: wire('Text', 'reply'), reference }).replyTo).toBe(reference);
+  expect(parse('Reaction', { content: '👍', reference }).pushReaction?.reference).toBe(reference);
+  for (const invalid of [reference + '/other', 'v3:' + 'a'.repeat(64), 'v2:' + 'a'.repeat(63)]) {
+    expect(parse('Reply', { content: wire('Text', 'reply'), reference: invalid }).replyTo).toBeUndefined();
+    expect(parse('Reaction', { content: '👍', reference: invalid }).pushReaction).toBeUndefined();
+  }
+});

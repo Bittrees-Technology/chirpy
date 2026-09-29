@@ -113,3 +113,12 @@ Membership and entry permission remain separate: an existing member may have
 `chat: true` while the custom entry rule returns `entry: false`. Do not bypass
 that rule for new members. Verify admission independently with the original
 Governance authority before accepting the new-member rollout.
+
+### Push v2 history references
+
+History, linked pagination, replies and reactions preserve both legacy alphanumeric
+CID tokens and the observed production `v2:` plus 64 lowercase hex message IDs.
+The same validator applies to incoming and outgoing references. Unsupported
+versions, malformed hashes, whitespace and URL/path-shaped references are rejected.
+Accepting this wire format does not bypass recipient matching, cursor continuity,
+parent lookup, decryption handling or live membership/posting authority.

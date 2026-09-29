@@ -1,3 +1,4 @@
+import { isPushMessageId } from './pushMessageId.js';
 import { writePushFiles, type PushAttachment } from './pushMedia.js';
 import type { Message as PushSdkMessage } from '@pushprotocol/restapi';
 import { parsePushIdentity } from './pushIdentity.js';
@@ -234,7 +235,7 @@ export class PushRooms {
     const replyTo = opts?.replyTo;
     if (replyTo !== undefined && files.length > 1) throw new Error('Replies support one file. Remove extra files or cancel the reply.');
     if (replyTo !== undefined && files.length && body.trim()) throw new Error('File replies cannot include a caption. Clear the caption or cancel the reply.');
-    if (replyTo !== undefined && (typeof replyTo !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(replyTo))) throw new Error('Choose an original message in this room to reply to.');
+    if (replyTo !== undefined && !isPushMessageId(replyTo)) throw new Error('Choose an original message in this room to reply to.');
     const parts = [...(body.trim() ? [{ type: 'Text' as const, content: body }] : []), ...files.map(content => ({ type: 'File' as const, content }))];
     const payload: PushSdkMessage = replyTo !== undefined
       ? { type: 'Reply', content: parts[0], reference: replyTo }
@@ -243,7 +244,7 @@ export class PushRooms {
   }
   async react(id: string, reference: string, emoji: string): Promise<void> {
     if (!isPushReactionEmoji(emoji)) throw new Error('Choose a supported Push reaction.');
-    if (typeof reference !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(reference)) throw new Error('Choose an original message in this room to react to.');
+    if (!isPushMessageId(reference)) throw new Error('Choose an original message in this room to react to.');
     await this.#post(id, { type: 'Reaction', content: emoji, reference }, reference);
   }
   async #post(id: string, payload: PushSdkMessage, reference?: string): Promise<void> {

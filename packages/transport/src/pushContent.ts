@@ -1,3 +1,4 @@
+import { isPushMessageId } from './pushMessageId.js';
 import type { ChatMessage, PushMessagePart } from './types.js';
 import { readPushAttachment, readPushMediaLink } from './pushMedia.js';
 import { isPushReactionEmoji } from './pushReactions.js';
@@ -35,12 +36,11 @@ export function readPushContent(row: Record<string, unknown>, id: string): Pick<
   const object = record(row.messageObj);
   if (row.messageType === 'Reaction') {
     if (!object || !exact(object, ['content', 'reference']) || !isPushReactionEmoji(object.content)
-      || typeof object.reference !== 'string' || !/^[a-zA-Z0-9]{10,128}$/.test(object.reference) || object.reference === id) return unsupported();
+      || !isPushMessageId(object.reference) || object.reference === id) return unsupported();
     return { body: object.content, pushReaction: { emoji: object.content, reference: object.reference } };
   }
   if (row.messageType === 'Reply') {
-    if (!object || !exact(object, ['content', 'reference']) || typeof object.reference !== 'string'
-      || !/^[a-zA-Z0-9]{10,128}$/.test(object.reference) || object.reference === id) return unsupported();
+    if (!object || !exact(object, ['content', 'reference']) || !isPushMessageId(object.reference) || object.reference === id) return unsupported();
     const content = wirePart(object.content);
     return content ? { ...content, replyTo: object.reference } : unsupported();
   }

@@ -433,3 +433,20 @@ describe('Push multiple-file dispatch', () => {
     await expect(f.rooms.send(id, '', { files })).rejects.toThrow('Unknown combined outcome'); expect(f.client.send).toHaveBeenCalledOnce();
   });
 });
+
+it('uses v2 references unchanged for replies/reactions and still rejects a foreign parent', async () => {
+  const f = setup(); await f.rooms.discover(); await f.rooms.enable();
+  const reference = 'v2:' + 'a'.repeat(64);
+  const original = { cid: reference, link: null, fromDID: owner, toDID: group, timestamp: 1, messageType: 'Text', messageContent: 'Original' };
+  vi.mocked(f.client.history).mockResolvedValue([original]);
+  await f.rooms.send(id, 'Reply', { replyTo: reference });
+  await f.rooms.react(id, reference, '👍');
+  expect(f.client.history).toHaveBeenNthCalledWith(1, group, { reference, limit: 1 });
+  expect(f.client.history).toHaveBeenNthCalledWith(2, group, { reference, limit: 1 });
+  expect(f.client.send).toHaveBeenNthCalledWith(1, group, { type: 'Reply', content: { type: 'Text', content: 'Reply' }, reference });
+  expect(f.client.send).toHaveBeenNthCalledWith(2, group, { type: 'Reaction', content: '👍', reference });
+  vi.mocked(f.client.history).mockResolvedValue([{ ...original, toDID: 'b'.repeat(64) }]);
+  await expect(f.rooms.send(id, 'wrong room', { replyTo: reference })).rejects.toThrow();
+  await expect(f.rooms.react(id, reference, '👍')).rejects.toThrow();
+  expect(f.client.send).toHaveBeenCalledTimes(2);
+});
