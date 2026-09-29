@@ -213,7 +213,7 @@
   "dialog.addRule": "Add rule:",
   "dialog.safeOwners": "Safe owners",
   "dialog.role": "Role",
-  "dialog.supported": "Supported on Ethereum mainnet: token holdings with an explicit ERC-1155 token ID, Safe owners, and ENS. Role, voting-power and Safe-delegate gates are unavailable.",
+  "dialog.supported": "Supported: Ethereum mainnet token holdings with an explicit ERC-1155 token ID, Safe owners, ENS, and Governance membership roles. Role access requires a configured gate service. Voting-power and Safe-delegate gates are unavailable.",
   "dialog.openRules": "No rules = open to everyone.",
   "dialog.tokenPlaceholder": "token 0x…",
   "dialog.minimumPlaceholder": "min",
@@ -309,7 +309,7 @@
   "status.consentDirect": "Consent controls apply to direct messages.",
   "status.peerDisabled": "That address hasn't activated XMTP messaging yet.",
   "status.gateSetup": "Gated rooms need an external gate service and gatekeeper address. Ask your organization administrator to configure them first.",
-  "status.gateRules": "Production gates currently support mainnet token rules (explicit ERC-1155 IDs), Safe owners, and ENS. Check the rule and a positive minimum.",
+  "status.gateRules": "Use supported mainnet token rules (explicit ERC-1155 IDs), Safe owners, ENS, or an approved Governance role. Check the rule and a positive token minimum.",
   "status.gatekeeperDisabled": "Gatekeeper wallet has not activated XMTP messaging yet.",
   "status.roomMissing": "Room not found in this organization.",
   "status.roomOpen": "This room is open.",
@@ -876,5 +876,7 @@
   "settings.recoverConversationAction": "Recover selected conversation",
   "settings.recoveringConversation": "Recovering conversation…",
   "settings.recoverConversationDone": "Conversation recovered. Check Inbox, Requests or Blocked; your existing consent choices still apply.",
-  "settings.recoverConversationFailed": "Recovery could not be confirmed. Check your conversations and session details before trying again. Do not resend the message."
+  "settings.recoverConversationFailed": "Recovery could not be confirmed. Check your conversations and session details before trying again. Do not resend the message.",
+  "dialog.governanceRole": "Governance role",
+  "dialog.chooseGovernanceRole": "Choose a Governance role"
 }

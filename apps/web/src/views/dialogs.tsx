@@ -111,7 +111,7 @@ export function GateRuleEditor(
   const update = (i: number, patch: Partial<RoomRule>) =>
     onChange(rules.map((r, idx) => (idx === i ? { ...r, ...patch } as RoomRule : r)));
   const remove = (i: number) => onChange(rules.filter((_, idx) => idx !== i));
-  const add = (kind: RoomRule["kind"]) => onChange([...rules, defaultRule(kind)]);
+  const add = (kind: RoomRule["kind"]) => onChange([...rules, production && kind === "role" ? { kind: "role", role: "Associate", authority: "bittrees-governance" } : defaultRule(kind)]);
 
   return (
     <div className="gate-editor">
@@ -120,7 +120,7 @@ export function GateRuleEditor(
         <button data-insights="token" className="chip" onClick={() => add("token")}>Token</button>
         {gating.enableSafeRules && <button className="chip" onClick={() => add("safe")}>{production ? t("dialog.safeOwners") : "Safe"}</button>}
         {gating.enableEnsRules && <button data-insights="ens" className="chip" onClick={() => add("ens")}>ENS</button>}
-        {!production && <button className="chip" onClick={() => add("role")}>{t("dialog.role")}</button>}
+        {<button className="chip" onClick={() => add("role")}>{t(production ? "dialog.governanceRole" : "dialog.role")}</button>}
         {!production && gating.powerTier && <button className="chip" onClick={() => add("power")}>{gating.powerTier.label}</button>}
       </div>
       {production && <p className="field-hint">{t("dialog.supported")}</p>}
@@ -143,7 +143,10 @@ export function GateRuleEditor(
           )}
           {r.kind === "safe" && <input className="input input-sm" placeholder={t("dialog.safePlaceholder")} aria-label={t("dialog.safeAddress")} value={r.safe} onChange={(e) => update(i, { safe: e.target.value })} />}
           {r.kind === "ens" && <input className="input input-sm" placeholder={t("dialog.ensPlaceholder")} aria-label={t("dialog.ensName")} value={r.name ?? ""} onChange={(e) => update(i, { name: e.target.value.trim() || undefined })} />}
-          {r.kind === "role" && <input className="input input-sm" placeholder={t("dialog.rolePlaceholder")} aria-label={t("dialog.role")} value={r.role} onChange={(e) => update(i, { role: e.target.value })} />}
+          {r.kind === "role" && (production ? <select className="input input-sm" aria-label={t("dialog.governanceRole")} value={r.authority === "bittrees-governance" && ["Associate", "Junior Partner", "Partner"].includes(r.role) ? r.role : ""} onChange={(e) => update(i, { role: e.target.value, authority: "bittrees-governance" })}>
+            <option value="" disabled>{t("dialog.chooseGovernanceRole")}</option>
+            {["Associate", "Junior Partner", "Partner"].map(role => <option key={role} value={role}>{role}</option>)}
+          </select> : <input className="input input-sm" placeholder={t("dialog.rolePlaceholder")} aria-label={t("dialog.role")} value={r.role} onChange={(e) => update(i, { role: e.target.value })} />)}
           {r.kind === "power" && <input className="input input-sm input-xs" type="number" aria-label={t("dialog.powerTier")} value={r.tier} onChange={(e) => update(i, { tier: Number(e.target.value) || 0 })} />}
           <button className="icon-btn" onClick={() => remove(i)} aria-label={t("dialog.removeRule")}>✕</button>
         </div>

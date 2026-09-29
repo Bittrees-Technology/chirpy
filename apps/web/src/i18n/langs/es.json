@@ -213,7 +213,7 @@
   "dialog.addRule": "Añadir regla:",
   "dialog.safeOwners": "Propietarios de Safe",
   "dialog.role": "Rol",
-  "dialog.supported": "Compatible con la red principal de Ethereum: tenencia de tokens con un ID explícito para ERC-1155, propietarios de Safe y ENS. No están disponibles los controles por rol, poder de voto o delegados de Safe.",
+  "dialog.supported": "Compatible: tenencia de tokens en la red principal de Ethereum con un ID explícito para ERC-1155, propietarios de Safe, ENS y roles de Governance. El acceso por rol requiere un servicio de control de acceso configurado. No están disponibles los controles por poder de voto o delegados de Safe.",
   "dialog.openRules": "Sin reglas = abierto a todo el mundo.",
   "dialog.tokenPlaceholder": "token 0x…",
   "dialog.minimumPlaceholder": "mín.",
@@ -309,7 +309,7 @@
   "status.consentDirect": "Los controles de consentimiento se aplican a los mensajes directos.",
   "status.peerDisabled": "Esa dirección aún no ha activado la mensajería XMTP.",
   "status.gateSetup": "Las salas con acceso restringido necesitan un servicio externo de control de acceso y su dirección de cartera. Pide a la administración de tu organización que los configure primero.",
-  "status.gateRules": "Los controles de acceso de producción admiten reglas de tokens en la red principal (con ID explícito para ERC-1155), propietarios de Safe y ENS. Revisa la regla y usa un mínimo positivo.",
+  "status.gateRules": "Usa reglas de tokens compatibles en la red principal (con ID explícito para ERC-1155), propietarios de Safe, ENS o un rol aprobado de Governance. Revisa la regla y usa un mínimo de tokens positivo.",
   "status.gatekeeperDisabled": "La cartera del servicio de control de acceso aún no ha activado la mensajería XMTP.",
   "status.roomMissing": "No se ha encontrado la sala en esta organización.",
   "status.roomOpen": "Esta sala está abierta.",
@@ -876,5 +876,7 @@
   "settings.recoverConversationAction": "Recuperar la conversación seleccionada",
   "settings.recoveringConversation": "Recuperando conversación…",
   "settings.recoverConversationDone": "Conversación recuperada. Revisa la bandeja de entrada, las solicitudes o los bloqueados; se conservan tus decisiones de consentimiento.",
-  "settings.recoverConversationFailed": "No se pudo confirmar la recuperación. Revisa tus conversaciones y los detalles de la sesión antes de volver a intentarlo. No reenvíes el mensaje."
+  "settings.recoverConversationFailed": "No se pudo confirmar la recuperación. Revisa tus conversaciones y los detalles de la sesión antes de volver a intentarlo. No reenvíes el mensaje.",
+  "dialog.governanceRole": "Rol de Governance",
+  "dialog.chooseGovernanceRole": "Elige un rol de Governance"
 }
