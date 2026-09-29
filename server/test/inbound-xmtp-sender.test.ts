@@ -26,7 +26,7 @@ function setup() {
     contentType:{authorityId:'xmtp.org',typeId:'text',versionMajor:1,versionMinor:0}};
   const dm = {id:conversationId,peerInboxId:peer,members:vi.fn(async()=>[{inboxId:config.inboxId},{inboxId:peer}]),sendText:vi.fn(async()=>messageId)};
   const client = {isRegistered:true,inboxId:config.inboxId,installationId:config.installationId,
-    fetchInboxIdByIdentifier:vi.fn(async()=>peer),conversations:{createDm:vi.fn(async()=>dm),getMessageById:vi.fn(()=>message)}};
+    fetchInboxIdByIdentifier:vi.fn(async()=>peer),conversations:{sync:vi.fn(async()=>{}),createDm:vi.fn(async()=>dm),getMessageById:vi.fn(()=>message)}};
   const build = vi.fn(async()=>client), loadSdk = vi.fn(async()=>({Client:{build},IdentifierKind:{Ethereum:0},LogLevel:{Off:'Off'},DeliveryStatus:{Published:1},GroupMessageKind:{Application:0}}));
   const dependencies = {loadSdk,sourceCheck:vi.fn(async()=>true),recipientCheck:vi.fn(async()=>recipient)};
   return {config,identity,journal,input,client,dm,message,dependencies,build};
@@ -34,7 +34,7 @@ function setup() {
 afterEach(()=>{for(const j of journals.splice(0))try{j.close();}catch{};for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});});
 it('uses the registered installation without a signer, rechecks authority and verifies exact publication',async()=>{
   const s=setup();const result=await publishInboundXmtp(s.journal,s.config,s.input,s.dependencies);
-  expect(result.receipt.messageId).toBe(s.message.id);expect(s.dependencies.sourceCheck).toHaveBeenCalledTimes(2);expect(s.dependencies.recipientCheck).toHaveBeenCalledTimes(2);
+  expect(result.receipt.messageId).toBe(s.message.id);expect(s.dependencies.sourceCheck).toHaveBeenCalledTimes(3);expect(s.dependencies.recipientCheck).toHaveBeenCalledTimes(3);
   expect(s.build.mock.calls[0][1]).toMatchObject({disableDeviceSync:true,disableAutoRegister:true,dbPath:join(s.config.directory,'xmtp.db3')});
   expect(s.dm.sendText).toHaveBeenCalledExactlyOnceWith(s.input.text,false);
   expect(s.journal.inspect().blocked).toBe(true); // Only the parent records after child termination.
@@ -94,4 +94,28 @@ it('real child refuses disabled configuration without modifying the journal',()=
 it('real child terminates before configuration or SDK access when its expected parent is absent',()=>{
  const result=spawnSync(process.execPath,[fileURLToPath(new URL('../inbound-sender-child.js',import.meta.url)),'--config','/missing-config','--parent-pid','1'],{input:'{}',encoding:'utf8',timeout:5000});
  expect(result.signal).toBe('SIGKILL');expect(result.stdout).toBe('');
+});
+
+it('imports invitations before selecting the recipient DM, without retrying messages', async()=>{
+ const s=setup();let imported=false;
+ s.client.conversations.sync.mockImplementation(async()=>{imported=true;});
+ s.client.conversations.createDm.mockImplementation(async()=>{if(!imported)throw Error('stale conversation');return s.dm;});
+ await publishInboundXmtp(s.journal,s.config,s.input,s.dependencies);
+ expect(s.client.conversations.sync).toHaveBeenCalledTimes(1);
+ expect(s.client.conversations.sync.mock.invocationCallOrder[0]).toBeLessThan(s.client.conversations.createDm.mock.invocationCallOrder[0]);
+ expect(s.dm.sendText).toHaveBeenCalledTimes(1);
+});
+it('fails closed on invitation sync failure without selecting or sending', async()=>{
+ const s=setup();s.client.conversations.sync.mockRejectedValueOnce(new Error('offline'));
+ await expect(publishInboundXmtp(s.journal,s.config,s.input,s.dependencies)).rejects.toThrow('offline');
+ expect(s.client.conversations.createDm).not.toHaveBeenCalled();expect(s.dm.sendText).not.toHaveBeenCalled();
+ expect(s.journal.claimLaunch(s.input.scope,s.identity)).toBe(false);
+});
+it.each(['source','recipient'])('rechecks %s authorization after invitation sync before selecting',async kind=>{
+ const s=setup();s.client.conversations.sync.mockImplementation(async()=>{
+  if(kind==='source')s.dependencies.sourceCheck.mockResolvedValue(false);
+  else s.dependencies.recipientCheck.mockResolvedValue({...s.input.recipient,wallet:'0x'+'9'.repeat(40)});
+ });
+ await expect(publishInboundXmtp(s.journal,s.config,s.input,s.dependencies)).rejects.toThrow();
+ expect(s.client.conversations.createDm).not.toHaveBeenCalled();expect(s.dm.sendText).not.toHaveBeenCalled();
 });
