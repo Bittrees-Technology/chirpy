@@ -84,6 +84,11 @@ export async function publishInboundXmtp(journal, configuration, payload, {
   const identifier = { identifier: input.recipient.wallet, identifierKind: sdk.IdentifierKind.Ethereum };
   const peer = await client.fetchInboxIdByIdentifier(identifier);
   if (!hex(peer) || peer === config.inboxId) throw Error('Recipient inbox unavailable');
+  // Import new invitations before selecting a DM. A recipient may have opened
+  // a fresh conversation after losing an older invitation's local keys.
+  // This is welcome-only sync: never flush messages or retry queued intents.
+  await client.conversations.sync();
+  await authorize();
   const dm = await client.conversations.createDm(peer);
   if (dm.peerInboxId !== peer || typeof dm.id !== 'string' || !/^[a-f0-9]{32,64}$/.test(dm.id)) throw Error('Recipient conversation mismatch');
   const members = await dm.members();

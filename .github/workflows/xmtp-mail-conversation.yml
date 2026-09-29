@@ -1,0 +1,23 @@
+name: xmtp-mail-conversation
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/inbound-conversation-refresh]
+permissions:
+  contents: read
+jobs:
+  recipient-conversation-renewal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify dev DM selection and retained history
+        run: node scripts/test-mail-conversation-renewal.mjs --dev
