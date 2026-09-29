@@ -56,7 +56,7 @@ Then:
 | `GATE_PUBLIC_URL` | ✅ | Canonical HTTPS URL ending in `/api/room-join`. |
 | `CHIRPY_GATE_ROOMS_FILE` | ✅ | `/config/rooms.json` for Compose; host registry is mounted read-only. |
 | `GATE_PORT` | ↺ | Compose host port (default `8788`); the container always listens on `8788`. Direct Node deployments use this as the process listen port. |
-| `GATE_BIND_HOST` | ↺ | Compose host interface, default `127.0.0.1`. Keep local for a host reverse proxy or tunnel; other interfaces require explicit routing/firewall review. |
+| `GATE_BIND_HOST` | ↺ | Host interface for Compose publication or a direct Node listener, default `127.0.0.1`. Container/Fly listeners explicitly use `0.0.0.0` internally. Keep local for a host reverse proxy or tunnel; other interfaces require explicit routing/firewall review. |
 | `GATE_DOMAIN` | ↺ | Informational; used by your reverse proxy/TLS. |
 | `GATE_DATA_DIR` | ✅ | Persistent XMTP MLS store path (default `/data`, backed by a volume). Keeps the gatekeeper's XMTP installation stable across restarts; don't point it at ephemeral storage. |
 
