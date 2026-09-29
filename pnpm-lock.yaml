@@ -7,7 +7,7 @@ settings:
 overrides:
   ws@>=8.0.0 <8.21.0: 8.21.0
   postcss@>=8.0.0 <8.5.23: 8.5.23
-  undici@>=7.0.0 <7.29.0: 7.29.0
+  undici@>=7.0.0 <7.29.1: 7.29.1
   axios@>=1.0.0 <1.18.0: 1.18.0
   nanoid@>=3.0.0 <3.3.18: 3.3.18
   browserslist@>=4.0.0 <4.28.7: 4.28.7
@@ -2755,8 +2755,8 @@ packages:
   undici-types@7.28.0:
     resolution: {integrity: sha512-LJAfY+2w6HGeT8d8J1wNQsUGUEGio6NWWpwdwurQe4f6oojzCFuGLizl1KSve4irsTxyLly1QhEeE6iapdaIvQ==}
 
-  undici@7.29.0:
-    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
+  undici@7.29.1:
+    resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
     engines: {node: '>=20.18.1'}
 
   unique-names-generator@4.7.1:
@@ -5923,7 +5923,7 @@ snapshots:
       saxes: 6.0.0
       symbol-tree: 3.2.4
       tough-cookie: 6.0.1
-      undici: 7.29.0
+      undici: 7.29.1
       w3c-xmlserializer: 5.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -6690,7 +6690,7 @@ snapshots:
   undici-types@7.28.0:
     optional: true
 
-  undici@7.29.0: {}
+  undici@7.29.1: {}
 
   unique-names-generator@4.7.1: {}
 

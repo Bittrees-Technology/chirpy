@@ -125,5 +125,6 @@ export interface Transport {
 export type MessagingDiagnostics = {
   network: string; inboxId: string; installationId: string;
   listedConversations: number; listLimit: number; cachedConversations: number;
+  lastRecovery?: { stage: string; outcome: "running" | "succeeded" | "failed"; errorCode?: string };
   conversation?: { id: string; found: boolean; active?: boolean; consent?: number; messageCount?: string };
 };

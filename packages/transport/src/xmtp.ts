@@ -262,6 +262,8 @@ export class XmtpTransport implements Transport {
   private messageCursors = new Map<string, { conversationId: string; at: bigint }>();
   private historyRequest: Promise<void> | null = null;
   private recoveryPending = false;
+  // Ephemeral and bound to the exact client: never persist errors or expose them across sessions.
+  private recoveryDiagnostics = new WeakMap<object, { installation: string; conversationId: string; evidence: NonNullable<MessagingDiagnostics['lastRecovery']> }>();
   private historyRequestedAt: number | null = null;
   private leaveRequests = new Set<string>();
   private observedLeaveRequests = new WeakMap<XmtpClient, Set<string>>();
@@ -350,6 +352,10 @@ export class XmtpTransport implements Transport {
         consent: await conversation.consentState(), messageCount: String(await conversation.countMessages()) });
     }
     await check();
+    const recovery = this.recoveryDiagnostics.get(client);
+    if (recovery?.installation === installationId && (!id || id === recovery.conversationId)) {
+      result.lastRecovery = { ...recovery.evidence };
+    }
     return result;
   }
 
@@ -366,26 +372,47 @@ export class XmtpTransport implements Transport {
         throw new Error('Wallet changed. Recovery stopped.');
       }
     };
+    const evidence: NonNullable<MessagingDiagnostics['lastRecovery']> = { stage: 'wallet-check', outcome: 'running' };
+    this.recoveryDiagnostics.set(client, { installation, conversationId, evidence });
+    const guardedCheck = async () => { evidence.stage = 'wallet-check'; await check(); };
     this.recoveryPending = true;
     try {
-      await check();
+      await guardedCheck();
+      evidence.stage = 'existing-conversation-check';
       if (await client.conversations.getConversationById(conversationId)) {
         throw new Error('This conversation is already stored. Its existing state was preserved.');
       }
+      evidence.stage = 'invitation-lookup';
       const envelope = await fetchRecoveryWelcome(xmtpEnv(), installation, selected);
-      await check();
+      await guardedCheck();
+      evidence.stage = 'invitation-import';
       await client.conversations.recoverMissingWelcome(envelope, conversationId);
-      await check();
+      await guardedCheck();
+      evidence.stage = 'local-confirmation';
       const recovered = await client.conversations.getConversationById(conversationId);
       if (!recovered || recovered.id !== conversationId) throw new Error('Recovery could not be confirmed. Do not resend the message.');
       // Apply later membership changes before presenting the recovered room.
       // No consent is granted and no new identity, group or message is created.
+      evidence.stage = 'membership-sync';
       await recovered.sync();
-      await check();
+      await guardedCheck();
       this.fullRefreshRequired = true;
+      evidence.stage = 'conversation-refresh';
       await this.listConversations();
-      await check();
+      await guardedCheck();
+      evidence.stage = 'change-notification';
       this.changeCallback?.();
+      evidence.stage = 'complete';
+      evidence.outcome = 'succeeded';
+    } catch (error) {
+      evidence.outcome = 'failed';
+      // Library errors may contain keys, message content or URLs. Keep only known fixed codes.
+      const allowed = ['GroupError::WelcomeRecoveryRejected', 'GroupError::UnwrapWelcome',
+        'NotFound::KeyPackageReference', 'NotFound::KeyPackage', 'NotFound::PostQuantumPrivateKey'];
+      evidence.errorCode = error instanceof Error
+        ? allowed.find(code => error.message.startsWith(`[${code}]`)) ?? 'unclassified'
+        : 'unclassified';
+      throw error;
     } finally { this.recoveryPending = false; }
   }
 
