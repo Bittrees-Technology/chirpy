@@ -58,7 +58,7 @@ input, textarea, select { font-family: inherit; }
   width: 42px; height: 42px; border-radius: 12px; background: var(--bg-2);
   color: var(--muted); font-size: 22px; line-height: 1; display: grid; place-items: center;
 }
-.sidebar-main { width: 230px; display: flex; flex-direction: column; }
+.sidebar-main { width: 150px; flex: 0 0 150px; min-width: 0; display: flex; flex-direction: column; }
 .brand { padding: 16px 16px 10px; padding-top: calc(16px + env(safe-area-inset-top)); }
 .brand-name { font-family: var(--font-serif); font-weight: 700; font-size: 18px; letter-spacing: .2px; }
 .brand-org { color: var(--muted); font-size: 12px; margin-top: 2px; }
@@ -75,7 +75,8 @@ input, textarea, select { font-family: inherit; }
   margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px 16px;
   padding-bottom: calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line);
 }
-.foot-name { font-size: 13px; font-weight: 600; }
+.foot-meta { min-width: 0; }
+.foot-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .foot-addr { font-size: 11px; color: var(--muted); }
 
 /* ---------- Avatar ---------- */
@@ -265,7 +266,6 @@ input, textarea, select { font-family: inherit; }
     padding: 7px 8px; font-size: 11px; font-weight: 600;
   }
   .mobile-nav-item.active { background: var(--bg-3); color: var(--text); }
-  .sidebar-main { width: 180px; }
   .list-col { width: 100%; }
   .split.mobile-list .thread { display: none; }
   .split.mobile-list .list-col { display: flex; }
