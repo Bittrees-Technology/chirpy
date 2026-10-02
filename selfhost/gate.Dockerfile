@@ -8,7 +8,7 @@ RUN mkdir -p /data && chown 65532:65532 /data
 
 # Debian 13 supplies the glibc and CA bundle required by the native XMTP SDK.
 # Node 24 runs the shared erasable TypeScript directly, without a runtime compiler.
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:774b7d020b24214835769e24c3544835526cd0288f0b094eae48e8b2c2429a79
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e
 WORKDIR /app
 COPY --from=dependencies /app/package.json /app/package-lock.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
