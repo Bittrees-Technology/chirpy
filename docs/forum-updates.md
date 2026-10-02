@@ -9,3 +9,5 @@ Follow/unfollow and read state are stored under a separate per-wallet local key.
 Email subscriptions are managed by Governance and use a separate confirmed-email consent flow. Chat does not receive email addresses, subscription tokens or sending credentials.
 
 Validation includes parser/storage/account-switch unit tests and an end-to-end browser test using the existing synthetic wallet fixture. No real message was sent. The required audit also prompted compatible Axios updates to 0.34.0 (Push) and 1.20.0 (other dependencies); SDK versions and the reviewed XMTP artifacts remain unchanged.
+
+The container security gate also detected two fixed OpenSSL advisories in the previously pinned runtime image. The runtime remains the official nonroot Node 24 / Debian 13 distroless image, updated to the current immutable manifest digest. CI rebuilds, tests and scans the shipped image; no running self-hosted service is redeployed by this source change.
