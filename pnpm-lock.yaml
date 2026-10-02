@@ -8,14 +8,14 @@ overrides:
   ws@>=8.0.0 <8.21.0: 8.21.0
   postcss@>=8.0.0 <8.5.23: 8.5.23
   undici@>=7.0.0 <7.29.1: 7.29.1
-  axios@>=1.0.0 <1.18.0: 1.18.0
   nanoid@>=3.0.0 <3.3.18: 3.3.18
   browserslist@>=4.0.0 <4.28.7: 4.28.7
   baseline-browser-mapping@>=2.0.0 <2.11.0: 2.11.0
-  '@pushprotocol/restapi>axios': 0.33.0
+  '@pushprotocol/restapi>axios': 0.34.0
   '@pushprotocol/restapi>uuid': 11.1.1
   '@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings': file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.5-e3bce6f83137.tgz
   '@xmtp/browser-sdk@7.0.0': file:vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz
+  axios@>=1.0.0 <1.20.0: 1.20.0
 
 patchedDependencies:
   '@pushprotocol/restapi@1.7.32':
@@ -1508,13 +1508,13 @@ packages:
   axios-retry@4.5.0:
     resolution: {integrity: sha512-aR99oXhpEDGo0UuAlYcn2iGRds30k366Zfa05XWScR9QaQD4JYiP3/1Qt1u7YlefUOK+cn0CcwoL1oefavQUlQ==}
     peerDependencies:
-      axios: 1.18.0
+      axios: 1.20.0
 
-  axios@0.33.0:
-    resolution: {integrity: sha512-juz19g7B3UWT9r3+tgRFQf2Bdy6IKDVroiyuVOUrkILVKHpqHL++K1l8ybvfdEP9B/VE72vk8vllbnedVCm/og==}
+  axios@0.34.0:
+    resolution: {integrity: sha512-CkOmqy7BaT4VC9+wRUmSM3LVwCkKK3UYc7koEqIHWRpOTJypwdNctaVOgnOjhHP3599Ubq2K8KqYwfC7c8NdPQ==}
 
-  axios@1.18.0:
-    resolution: {integrity: sha512-E32NzpYKp++W7XRe52rHiXV2ehxmh3wbdgO7MHeFM+vqxLBYHzt0ElkiImtOBxtOmyp0yoC8C6uESVV84Y2/hw==}
+  axios@1.20.0:
+    resolution: {integrity: sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==}
 
   base-x@5.0.1:
     resolution: {integrity: sha512-M7uio8Zt++eg3jPj+rHMfCC+IuygQHHCOU+IYsVtik6FWjuYpVt/+MRKcgsAMHh8mMFAwnB+Bs+mTrFiXjMzKg==}
@@ -3270,8 +3270,8 @@ snapshots:
       '@solana-program/token': 0.9.0(@solana/kit@5.5.1(typescript@5.9.3))
       '@solana/kit': 5.5.1(typescript@5.9.3)
       abitype: 1.0.6(typescript@5.9.3)(zod@3.25.76)
-      axios: 1.18.0
-      axios-retry: 4.5.0(axios@1.18.0)
+      axios: 1.20.0
+      axios-retry: 4.5.0(axios@1.20.0)
       bs58: 6.0.0
       jose: 6.2.3
       md5: 2.3.0
@@ -3499,7 +3499,7 @@ snapshots:
   '@pushprotocol/restapi@1.7.32(patch_hash=7121f31db3101003aded8b470bc8f777260452581826874c0a22bed2dcf47464)(@types/react@19.2.17)(react@19.2.7)(typescript@5.9.3)(zod@3.25.76)':
     dependencies:
       '@metamask/eth-sig-util': 5.1.0
-      axios: 0.33.0
+      axios: 0.34.0
       buffer: 6.0.3
       crypto-js: 4.2.0
       immer: 10.2.0
@@ -5239,13 +5239,13 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  axios-retry@4.5.0(axios@1.18.0):
+  axios-retry@4.5.0(axios@1.20.0):
     dependencies:
-      axios: 1.18.0
+      axios: 1.20.0
       is-retry-allowed: 2.2.0
     optional: true
 
-  axios@0.33.0:
+  axios@0.34.0:
     dependencies:
       follow-redirects: 1.16.0
       form-data: 4.0.6
@@ -5253,7 +5253,7 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
-  axios@1.18.0:
+  axios@1.20.0:
     dependencies:
       follow-redirects: 1.16.0
       form-data: 4.0.6

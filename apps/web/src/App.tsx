@@ -1,3 +1,5 @@
+import { useForumFollow } from "./forumFollow";
+import { ForumUpdates } from "./views/ForumUpdates";
 import React, { useState, useEffect, createContext, useContext } from "react";
 import { useChat, useIdentity, useOrgs, useSettingsPrefs } from "./state";
 import { useI18n } from "./i18n";
@@ -14,11 +16,11 @@ import { Mailbox } from "./views/Mailbox";
 import { MessageRoutes } from "./views/MessageRoutes";
 import { recipientFromFragment } from "./messageRouting";
 
-type View = "chats" | "rooms" | "settings" | "routes" | "mail";
+type View = "chats" | "rooms" | "settings" | "routes" | "mail" | "forum";
 const AppViewContext = createContext<{ view: View; setView: (view: View) => void } | null>(null);
 /** Keep navigation stable while wallet-owned state is discarded on account changes. */
 export function AppViewProvider({ children }: { children: React.ReactNode }) {
-  const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get("mail") === "connected" ? "mail" : "chats");
+  const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get("forum") === "governance" ? "forum" : new URLSearchParams(window.location.search).get("mail") === "connected" ? "mail" : "chats");
   return <AppViewContext.Provider value={{ view, setView }}>{children}</AppViewContext.Provider>;
 }
 
@@ -47,7 +49,7 @@ function OrgRail({ onCreateOrg }: { onCreateOrg: () => void }) {
 }
 
 function Sidebar(
-  { view, setView, onCreateOrg }: { view: View; setView: (v: View) => void; onCreateOrg: () => void },
+  { view, setView, onCreateOrg, unread = 0 }: { view: View; setView: (v: View) => void; onCreateOrg: () => void; unread?: number },
 ) {
   const { identity } = useIdentity();
   const { activeOrg } = useOrgs();
@@ -57,6 +59,7 @@ function Sidebar(
     { id: "rooms", label: t("nav.rooms", "Rooms"), icon: "👥" },
     { id: "mail", label: t("mailbox.title"), icon: "📨" },
     { id: "routes", label: t("routing.nav"), icon: "✉️" },
+    { id: "forum", label: unread ? `Forum (${unread})` : "Forum", icon: "📰" },
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
   return (
@@ -86,13 +89,14 @@ function Sidebar(
   );
 }
 
-function MobileNav({ view, setView }: { view: View; setView: (v: View) => void }) {
+function MobileNav({ view, setView, unread = 0 }: { view: View; setView: (v: View) => void; unread?: number }) {
   const { t } = useI18n();
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chats", label: t("nav.chats"), icon: "💬" },
     { id: "rooms", label: t("nav.rooms", "Rooms"), icon: "👥" },
     { id: "mail", label: t("mailbox.title"), icon: "📨" },
     { id: "routes", label: t("routing.nav"), icon: "✉️" },
+    { id: "forum", label: unread ? `Forum (${unread})` : "Forum", icon: "📰" },
     { id: "settings", label: t("nav.settings"), icon: "⚙️" },
   ];
   return (
@@ -112,6 +116,7 @@ export function App() {
   const { t } = useI18n();
   const { transportId, transportStatus } = useChat();
   const { identity, mode } = useIdentity();
+  const forum = useForumFollow(identity.address, mode === "wallet");
   const { activeOrg } = useOrgs();
   const navigation = useContext(AppViewContext);
   if (!navigation) throw new Error("App requires AppViewProvider");
@@ -141,7 +146,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={openView} onCreateOrg={() => setDialog("createOrg")} />
+      <Sidebar unread={forum.unread} view={view} setView={openView} onCreateOrg={() => setDialog("createOrg")} />
       <main className={`main${(storageError || recoveryPaused) ? " has-settings-error" : ""}`}>
         {storageError && <div className="error-banner settings-storage-error" role="alert">{t("settings.storageError")}</div>}
         {recoveryPaused && !storageError && <div className="settings-storage-error" role="status">{t("restore.paused")}</div>}
@@ -161,13 +166,14 @@ export function App() {
             <Thread showBack onBack={() => setMobilePane("list")} />
           </div>
         )}
+        {view === "forum" && <ForumUpdates forum={forum} />}
         {view === "mail" && <Mailbox key={`${identity.address}:${mode}`} onOpenSettings={() => openView("settings")} />}
         {view === "routes" && <MessageRoutes onCompose={() => { setLinkedRecipient(null); setDialog("newDm"); }} />}
         {view === "settings" && (
           <Settings onCreateOrg={() => setDialog("createOrg")} onImportOrg={() => setDialog("importOrg")} />
         )}
       </main>
-      <MobileNav view={view} setView={openView} />
+      <MobileNav unread={forum.unread} view={view} setView={openView} />
 
       {dialog === "newDm" && <NewDmDialog key={linkedRecipient ?? "manual"} initialRecipient={linkedRecipient ?? ""} initialLabel={contactLabel} onContacts={() => setDialog("contacts")} onClose={close} onCreated={() => { setView("chats"); setMobilePane("thread"); }} />}
       {(dialog === "contacts" || dialog === "notes") && <LocalLibrary key={`${identity.address}:${dialog}`} kind={dialog} onClose={close} onPick={contact => { setLinkedRecipient(contact.address); setContactLabel(contact.label); setDialog("newDm"); }} />}

@@ -33,14 +33,14 @@
       "ws@>=8.0.0 <8.21.0": "8.21.0",
       "postcss@>=8.0.0 <8.5.23": "8.5.23",
       "undici@>=7.0.0 <7.29.1": "7.29.1",
-      "axios@>=1.0.0 <1.18.0": "1.18.0",
       "nanoid@>=3.0.0 <3.3.18": "3.3.18",
       "browserslist@>=4.0.0 <4.28.7": "4.28.7",
       "baseline-browser-mapping@>=2.0.0 <2.11.0": "2.11.0",
-      "@pushprotocol/restapi>axios": "0.33.0",
+      "@pushprotocol/restapi>axios": "0.34.0",
       "@pushprotocol/restapi>uuid": "11.1.1",
       "@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings": "file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.5-e3bce6f83137.tgz",
-      "@xmtp/browser-sdk@7.0.0": "file:vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz"
+      "@xmtp/browser-sdk@7.0.0": "file:vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz",
+      "axios@>=1.0.0 <1.20.0": "1.20.0"
     },
     "patchedDependencies": {
       "@pushprotocol/restapi@1.7.32": "patches/@pushprotocol__restapi@1.7.32.patch"
