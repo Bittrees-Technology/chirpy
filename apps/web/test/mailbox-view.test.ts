@@ -263,3 +263,24 @@ it('same-wallet provider replacement discards the previous private draft',async(
  await act(async()=>setActiveProvider({request:async()=>[state.identity.address]},'injected'));
  expect(container.querySelector('textarea')).toBeNull();await click('New email');expect(container.querySelector('textarea')?.value).toBe('');
 });
+
+it('keeps the loaded inbox through navigation and synchronizes while another Chat view is active',async()=>{
+ vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});
+ const draw=(active:boolean)=>act(async()=>root.render(React.createElement(I18nProvider,null,React.createElement(Mailbox,{active,onOpenSettings:()=>{}}))));
+ await draw(true);const initial=vi.mocked(mail.mailPage).mock.calls.length;
+ await draw(false);vi.mocked(mail.mailPage).mockResolvedValue({messages:[{...item,subject:'Arrived in background'}],nextCursor:null});
+ await act(async()=>vi.advanceTimersByTimeAsync(45000));await draw(true);
+ expect(mail.mailPage).toHaveBeenCalledTimes(initial+1);expect(mail.mailStatus).toHaveBeenCalledTimes(1);expect(container.textContent).toContain('Arrived in background');
+});
+it('retains the inbox on transient failures but purges it when access is revoked',async()=>{
+ vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});await render();
+ vi.mocked(mail.mailPage).mockRejectedValue(new mail.MailClientError('unavailable',503));
+ await act(async()=>vi.advanceTimersByTimeAsync(45000));expect(container.textContent).toContain(item.subject);expect(container.textContent).not.toContain('Email connections are not available yet');
+ vi.mocked(mail.mailPage).mockRejectedValue(new mail.MailClientError('denied',403));
+ await act(async()=>vi.advanceTimersByTimeAsync(45000));expect(container.textContent).not.toContain(item.subject);
+});
+it('checks source access while composing and removes a draft on revocation',async()=>{
+ vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});await render();await click('New email');
+ vi.mocked(mail.mailFolders).mockRejectedValue(new mail.MailClientError('denied',403));
+ await act(async()=>vi.advanceTimersByTimeAsync(45000));expect(container.querySelector('textarea')).toBeNull();expect(container.textContent).not.toContain(item.subject);
+});
