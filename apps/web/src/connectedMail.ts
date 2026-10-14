@@ -4,7 +4,7 @@ import {stringToHex} from 'viem';
 import {parseSiweMessage,createSiweMessage} from 'viem/siwe';
 import {getActiveProvider,getProviderRevision,subscribeProvider} from './walletProviders';
 export type MailConnection={mailbox:string;scopes:('read'|'send')[];expiresAt:string|null};
-export type MailSummary={id:string;from:string;subject:string;date:string};
+export type MailSummary={id:string;from:string;subject:string;date:string;read?:boolean};
 export type MailMessage=MailSummary&{text:string;sourceVersion?:string;replyTo?:string;threadedReply?:boolean};
 export type MailReceipt={id:string;createdAt:number};
 export class MailClientError extends Error {constructor(public code:'session'|'unavailable'|'denied'|'wallet'|'failed'|'storage'|'pageChanged'|'pageLimit'|'attachmentFiles',public status?:number){super(code);}}
@@ -81,7 +81,7 @@ async function operation(wallet:string,action:string,input:unknown,signal?:Abort
  return withMailWalletSession(wallet,signal,async(signal,current)=>{await assertMailWallet(wallet);current();const data=await request('operation',{wallet,action,input},signal);await assertMailWallet(wallet);current();signal?.throwIfAborted();return data; });
 }
 export async function mailFolders(wallet:string,signal?:AbortSignal){const data=await operation(wallet,'folders',{},signal);if(!Array.isArray(data.folders)||data.folders.length>1000||!data.folders.every(validMailFolder))throw new MailClientError('failed');return [...new Set(data.folders)] as string[];}
-function summary(v:any):MailSummary{if(!v||!messageId(v.id)||typeof v.from!=='string'||Array.from(v.from).length>200||typeof v.subject!=='string'||Array.from(v.subject).length>200||typeof v.date!=='string'||Array.from(v.date).length>80)throw new MailClientError('failed');return {id:v.id,from:v.from,subject:v.subject,date:v.date};}
+function summary(v:any):MailSummary{if(!v||!messageId(v.id)||typeof v.from!=='string'||Array.from(v.from).length>200||typeof v.subject!=='string'||Array.from(v.subject).length>200||typeof v.date!=='string'||Array.from(v.date).length>80||v.read!==undefined&&typeof v.read!=='boolean')throw new MailClientError('failed');return {id:v.id,from:v.from,subject:v.subject,date:v.date,...(typeof v.read==='boolean'?{read:v.read}:{})};}
 export async function mailPage(wallet:string,folder:string,cursor:string|null=null,signal?:AbortSignal){
  if(!validMailFolder(folder)||(cursor!==null&&!messageId(cursor)))throw new MailClientError('failed');
  let data;try{data=await operation(wallet,'messages',{folder,...(cursor?{cursor}:{})},signal);}catch(e){if(e instanceof MailClientError&&(e.status===409||e.status===413))throw new MailClientError(e.status===409?'pageChanged':'pageLimit');throw e;}

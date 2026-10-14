@@ -563,6 +563,8 @@
   "mailbox.olderHint": "Showing older messages, up to 25 per page. Refresh returns to the newest messages.",
   "mailbox.recent": "Latest 25 messages. Syncs every 45 seconds while Chat is open, including when you use other views.",
   "mailbox.empty": "No recent messages in this folder.",
+  "mailbox.read": "Read",
+  "mailbox.unread": "Unread",
   "mailbox.noSubject": "(No subject)",
   "mailbox.sendOnly": "This connection allows sending only. Reconnect with read permission to view your mailbox.",
   "mailbox.from": "From {mailbox}",
