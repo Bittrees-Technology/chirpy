@@ -7,7 +7,7 @@ import {I18nProvider} from '../src/i18n';
 import * as mail from '../src/connectedMail';
 const state=vi.hoisted(()=>({identity:{address:'0x'+'1'.repeat(40)},mode:'wallet'}));
 vi.mock('../src/state',()=>({useIdentity:()=>state}));
-vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailHtml:vi.fn(),mailAttachments:vi.fn(),downloadMailAttachment:vi.fn(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailThreadPage:vi.fn(),mailThread:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),sendMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
+vi.mock('../src/connectedMail',async original=>({...await original<any>(),mailReadState:vi.fn(),mailHtml:vi.fn(),mailAttachments:vi.fn(),downloadMailAttachment:vi.fn(),mailStatus:vi.fn(),mailFolders:vi.fn(),mailPage:vi.fn(),mailThreadPage:vi.fn(),mailThread:vi.fn(),mailMessage:vi.fn(),disconnectMail:vi.fn(),sendMail:vi.fn(),mailReceipt:vi.fn(()=>null)}));
 let container:HTMLDivElement,root:Root;
 const connection=()=>({mailbox:'fixture@bittrees.org',scopes:['read','send'] as ('read'|'send')[],expiresAt:new Date(Date.now()+3600000).toISOString()});
 const item={id:'a'.repeat(64),from:'Fixture <fixture@bittrees.org>',subject:'Acceptance fixture',date:'Today'};
@@ -285,4 +285,20 @@ it('checks source access while composing and removes a draft on revocation',asyn
  vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});await render();await click('New email');
  vi.mocked(mail.mailFolders).mockRejectedValue(new mail.MailClientError('denied',403));
  await act(async()=>vi.advanceTimersByTimeAsync(45000));expect(container.querySelector('textarea')).toBeNull();expect(container.textContent).not.toContain(item.subject);
+});
+
+it('read-only grants never show status mutation controls or mark on open',async()=>{
+ vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Fixture',sourceVersion:'b'.repeat(64)});
+ await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());
+ expect(container.textContent).not.toContain('Mark read');expect(mail.mailReadState).not.toHaveBeenCalled();
+});
+it('explicit read-status controls update the list only after confirmed success',async()=>{
+ vi.mocked(mail.mailStatus).mockResolvedValue({...connection(),scopes:['read','read-state']});
+ vi.mocked(mail.mailMessage).mockResolvedValue({...item,text:'Fixture',sourceVersion:'b'.repeat(64)});
+ vi.mocked(mail.mailPage).mockResolvedValue({messages:[{...item,read:false}],nextCursor:null});
+ vi.mocked(mail.mailReadState).mockResolvedValue({id:item.id,sourceVersion:'b'.repeat(64),read:true});
+ await render();await act(async()=>container.querySelector<HTMLButtonElement>('.mailbox-row')!.click());expect(mail.mailReadState).not.toHaveBeenCalled();
+ await click('Mark read');expect(mail.mailReadState).toHaveBeenCalledTimes(1);expect(container.querySelector('.mailbox-read-state')?.textContent).toBe('Read');expect(container.textContent).toContain('Marked read in Mail.');
+ vi.mocked(mail.mailReadState).mockRejectedValue(new mail.MailClientError('readStateUncertain'));
+ await click('Mark unread');expect(mail.mailReadState).toHaveBeenCalledTimes(2);expect(container.querySelector('.mailbox-read-state')?.textContent).toBe('Read');expect(container.textContent).toContain('Read status could not be confirmed');
 });

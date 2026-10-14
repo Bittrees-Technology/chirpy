@@ -102,15 +102,15 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
    const after=await session(token,input.wallet);if(after.value.pending||after.value.connection)throw denied();
    const grant=await mail('exchange',{code:input.code,verifier:pending.verifier,wallet:input.wallet,audience:CHAT_ORIGIN});
    const expiry=grant?.expiresAt===null?null:typeof grant?.expiresAt==='string'?Date.parse(grant.expiresAt):NaN;
-   if(!hex(grant?.token)||Object.keys(grant).some(k=>!['token','grantId','wallet','mailbox','scopes','audience','expiresAt'].includes(k))||!hex(grant?.grantId)||grant.wallet!==input.wallet||grant.audience!==CHAT_ORIGIN||typeof grant.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(grant.mailbox)||!Array.isArray(grant.scopes)||!grant.scopes.length||grant.scopes.length>2||new Set(grant.scopes).size!==grant.scopes.length||grant.scopes.some(s=>!['read','send'].includes(s))||expiry!==null&&(!Number.isFinite(expiry)||expiry<=now()||expiry>now()+30*86400000)){if(hex(grant?.token))await revokeGrant(grant.token);throw new ConnectedMailError(502,'Mail returned an invalid connection.');}
+   if(!hex(grant?.token)||Object.keys(grant).some(k=>!['token','grantId','wallet','mailbox','scopes','audience','expiresAt'].includes(k))||!hex(grant?.grantId)||grant.wallet!==input.wallet||grant.audience!==CHAT_ORIGIN||typeof grant.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(grant.mailbox)||!Array.isArray(grant.scopes)||!grant.scopes.length||grant.scopes.length>3||new Set(grant.scopes).size!==grant.scopes.length||grant.scopes.some(s=>!['read','send','read-state'].includes(s))||(grant.scopes.includes('read-state')&&!grant.scopes.includes('read'))||expiry!==null&&(!Number.isFinite(expiry)||expiry<=now()||expiry>now()+30*86400000)){if(hex(grant?.token))await revokeGrant(grant.token);throw new ConnectedMailError(502,'Mail returned an invalid connection.');}
    try{if(pending.expires<=now())throw denied();await cas(after,{...after.value,expires:expiry===null?null:Math.max(after.value.expires,expiry),connection:grant});}catch(e){await revokeGrant(grant.token);throw e;}
    return publicConnection(grant);
   },
   async operation(token,input){
    exactMailInput(input,['wallet','action','input']);const record=await session(token,input.wallet),grant=record.value.connection;
    if(!address(input.wallet)||!liveGrant(grant,now()))throw denied();
-   const scope=input.action==='send'?'send':['folders','messages','message','threads','thread','attachments','attachment','attachmentFile','html'].includes(input.action)?'read':null;
-   if(!scope||!grant.scopes.includes(scope))throw new ConnectedMailError(403,'This connection does not allow that action.');
+   const scope=input.action==='readState'?'read-state':input.action==='send'?'send':['folders','messages','message','threads','thread','attachments','attachment','attachmentFile','html'].includes(input.action)?'read':null;
+   if(!scope||!grant.scopes.includes(scope)||(scope==='read-state'&&!grant.scopes.includes('read')))throw new ConnectedMailError(403,'This connection does not allow that action.');
    if(input.action==='send'&&input.input?.attachments!==undefined&&!validOutgoingAttachments(input.input.attachments,input.input.transferVersion===2?1048576:262144))throw new ConnectedMailError(400,'Invalid email attachments.');
    const result=await mail('operation',input,grant.token);
    const latest=await session(token,input.wallet);if(latest.value.connection?.grantId!==grant.grantId||!liveGrant(grant,now()))throw denied();

@@ -235,3 +235,13 @@ it('relays a 1 MiB batch only with the explicit transfer contract and preserves 
  expect((await call('operation',{...input,input:{...input.input,padding:'x'.repeat(1450001)}},{cookie})).code).toBe(413);
  const read=fixture();read.grant.scopes=['read'];const q=await read.connected();await expect(read.api.operation(q.session.token,input)).rejects.toMatchObject({status:403});
 });
+
+it('relay permits read-status writes only with the separately granted scope',async()=>{
+ for(const scopes of [['read'],['read','read-state']]){
+  const f=fixture();f.grant.scopes=scopes;const {session}=await f.connected();
+  const input={wallet,action:'readState',input:{folder:'INBOX',id:'a'.repeat(64),version:'b'.repeat(64),read:true}};
+  if(scopes.length===1)await expect(f.api.operation(session.token,input)).rejects.toMatchObject({status:403});
+  else {await f.api.operation(session.token,input);expect(f.calls.at(-1).body).toEqual(input);}
+ }
+ const f=fixture();f.grant.scopes=['read-state'];const pending=await f.pending();await expect(f.api.callback(pending.session.token,pending.input)).rejects.toMatchObject({status:502});
+});
