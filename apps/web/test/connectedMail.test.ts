@@ -234,3 +234,34 @@ it('preserves source read flags, retains unknown state for older sources and rej
  fetcher.mockResolvedValueOnce(Response.json({messages:[{...m,read:'true'}],nextCursor:null}));
  await expect(mailPage(wallet,'INBOX',null)).rejects.toMatchObject({code:'failed'});
 });
+async function chunkFixture(change?:(data:any,offset:number)=>any){
+ const bytes=Uint8Array.from({length:1048576},(_,i)=>i%251),sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+ fetcher.mockImplementation(async(_url,init)=>{
+  const request=JSON.parse(init.body),offset=request.input.offset??0,context={...fileContext,chunkBytes:262144,transferVersion:3};
+  if(request.action==='attachments')return Response.json({...context,attachments:[fileItem]});
+  const data={...context,transfer:'chunk',attachment:fileItem,offset,nextOffset:offset+262144<bytes.length?offset+262144:null,sha256,data:Buffer.from(bytes.subarray(offset,offset+262144)).toString('base64')};
+  const result=change?change(data,offset):data;return result instanceof Response?result:Response.json(result);
+ });return bytes;
+}
+it.each(['network','503'])('resumes a %s failure without downloading completed chunks again and verifies the complete digest',async mode=>{
+ let failed=false;const expected=await chunkFixture((data,offset)=>{if(offset===262144&&!failed){failed=true;if(mode==='network')throw new TypeError('Network error');return Response.json({error:'temporary'},{status:503});}return data;});
+ const items=await mailAttachments(wallet,'INBOX',fileContext.id,fileContext.sourceVersion);expect(items[0].transferVersion).toBe(3);
+ const result=await downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,items[0]);expect(Buffer.from(result.bytes).equals(Buffer.from(expected))).toBe(true);
+ const offsets=fetcher.mock.calls.map(([,init])=>JSON.parse(init.body)).filter(x=>x.action==='attachment').map(x=>x.input.offset);
+ expect(offsets).toEqual([0,262144,262144,524288,786432]);
+},15000);
+it('never retries revoked chunks or accepts altered chunk offsets, versions, bytes or digests',async()=>{
+ for(const mutate of [(d:any)=>({...d,offset:1}),(d:any)=>({...d,sourceVersion:'c'.repeat(64)}),(d:any)=>({...d,sha256:'c'.repeat(64)}),(d:any)=>({...d,nextOffset:1}),(d:any)=>({...d,data:d.data.slice(4)}),()=>Response.json({error:'revoked'},{status:403})]){
+  fetcher.mockClear();await chunkFixture((data,offset)=>offset===262144?mutate(data):data);
+  await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,{...fileItem,transferVersion:3})).rejects.toBeInstanceOf(MailClientError);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+ }
+});
+it('bounds repeated chunk failures and stops immediately when the wallet changes between chunks',async()=>{
+ await chunkFixture(()=>Response.json({error:'offline'},{status:503}));
+ await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,{...fileItem,transferVersion:3})).rejects.toMatchObject({code:'unavailable'});
+ expect(fetcher).toHaveBeenCalledTimes(3);
+ fetcher.mockClear();await chunkFixture();
+ await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,{...fileItem,transferVersion:3},undefined,progress=>{if(progress.phase==='preparing'&&progress.bytes===262144)reconnectSameWallet();})).rejects.toMatchObject({code:'wallet'});
+ expect(fetcher).toHaveBeenCalledTimes(1);
+});
