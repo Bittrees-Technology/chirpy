@@ -134,7 +134,7 @@ The synthetic XMTP dev drill passed actual wallet-to-inbox binding, eligible-mem
 
 ## Native sync routing
 
-Packaged native apps require `VITE_API_ORIGIN` pointing at the hosted HTTPS origin. The release workflow defaults this to `https://chirpy.bittrees.org` and supports a repository variable override. Web builds retain same-origin routing when unset. Sync refuses credentials, paths in the configured origin, redirects and mismatched server authorization identities; requests omit cookies.
+Packaged native apps require `VITE_API_ORIGIN` pointing at the hosted HTTPS origin. The release workflow defaults this to `https://chat.bittrees.org` and supports a repository variable override. Web builds retain same-origin routing when unset. Sync refuses credentials, paths in the configured origin, redirects and mismatched server authorization identities; requests omit cookies.
 
 The server allows its canonical service origin plus explicitly configured `CHIRPY_SYNC_ALLOWED_ORIGINS`. Native release origins are `tauri://localhost`, `http://tauri.localhost`, and `https://tauri.localhost`; wildcard/null and unlisted origins are rejected. Preflight allows only GET/POST and Content-Type, with no credentialed CORS. Scoped wallet/device signatures remain required for mutations. See [Tauri's platform URL implementation](https://docs.rs/tauri/latest/src/tauri/manager/mod.rs.html) for the platform origin differences.
 

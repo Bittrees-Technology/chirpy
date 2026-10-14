@@ -21,7 +21,7 @@ jobs:
     env:
       VITE_TRANSPORT: xmtp
       VITE_XMTP_ENV: production
-      VITE_API_ORIGIN: ${{ vars.VITE_API_ORIGIN || 'https://chirpy.bittrees.org' }}
+      VITE_API_ORIGIN: ${{ vars.VITE_API_ORIGIN || 'https://chat.bittrees.org' }}
       VITE_MAINNET_RPC_URL: ${{ vars.VITE_MAINNET_RPC_URL }}
       VITE_WALLETCONNECT_PROJECT_ID: ${{ vars.VITE_WALLETCONNECT_PROJECT_ID }}
       CHIRPY_GATE_HEALTH_URL: ${{ vars.CHIRPY_GATE_HEALTH_URL }}
