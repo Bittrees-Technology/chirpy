@@ -1,6 +1,6 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {createSiweMessage} from 'viem/siwe';
-import {mailHtml,mailAttachments,downloadMailAttachment,connectMail,mailStatus,mailMessages,mailPage,mailThreadPage,mailThread,mailMessage,mailReceipt,sendMail,replyAddress,MailClientError} from '../src/connectedMail';
+import {mailReadState,mailHtml,mailAttachments,downloadMailAttachment,connectMail,mailStatus,mailMessages,mailPage,mailThreadPage,mailThread,mailMessage,mailReceipt,sendMail,replyAddress,MailClientError} from '../src/connectedMail';
 const mocks=vi.hoisted(()=>({provider:null as any,revision:0,listeners:new Set<()=>void>()}));
 vi.mock('../src/walletProviders',()=>({getActiveProvider:()=>mocks.provider,getProviderRevision:()=>mocks.revision,subscribeProvider:(fn:()=>void)=>{mocks.listeners.add(fn);return ()=>mocks.listeners.delete(fn);}}));
 const wallet='0x'+'1'.repeat(40);let storage:Map<string,string>;let requests:any[],fetcher:ReturnType<typeof vi.fn>;
@@ -264,4 +264,23 @@ it('bounds repeated chunk failures and stops immediately when the wallet changes
  fetcher.mockClear();await chunkFixture();
  await expect(downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,{...fileItem,transferVersion:3},undefined,progress=>{if(progress.phase==='preparing'&&progress.bytes===262144)reconnectSameWallet();})).rejects.toMatchObject({code:'wallet'});
  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('read status updates bind exact selection, validate acknowledgement, and never retry',async()=>{
+ const id='a'.repeat(64),version='b'.repeat(64);
+ fetcher.mockResolvedValueOnce(Response.json({id,sourceVersion:version,read:true}));
+ await expect(mailReadState(wallet,'INBOX',id,version,true)).resolves.toEqual({id,sourceVersion:version,read:true});
+ expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({wallet,action:'readState',input:{folder:'INBOX',id,version,read:true}});
+ fetcher.mockResolvedValueOnce(Response.json({id,sourceVersion:version,read:true}));
+ await expect(mailReadState(wallet,'INBOX',id,version,false)).rejects.toMatchObject({code:'readStateUncertain'});
+ fetcher.mockRejectedValueOnce(new TypeError('offline'));
+ await expect(mailReadState(wallet,'INBOX',id,version,false)).rejects.toMatchObject({code:'readStateUncertain'});
+ expect(fetcher).toHaveBeenCalledTimes(3);
+});
+it('accepts opt-in read-state scope only together with read',async()=>{
+ for(const scopes of [['read','read-state'],['read-state']]){
+  fetcher.mockResolvedValueOnce(Response.json({enabled:true,wallet,connection:{mailbox:'fixture@bittrees.org',scopes,expiresAt:null}}));
+  if(scopes.length===2)expect((await mailStatus(wallet))?.scopes).toEqual(scopes);
+  else await expect(mailStatus(wallet)).rejects.toMatchObject({code:'failed'});
+ }
 });

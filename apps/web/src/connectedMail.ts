@@ -3,11 +3,11 @@ export {MAIL_ATTACHMENT_BYTES,MAIL_ATTACHMENT_COUNT,validAttachmentName};
 import {stringToHex} from 'viem';
 import {parseSiweMessage,createSiweMessage} from 'viem/siwe';
 import {getActiveProvider,getProviderRevision,subscribeProvider} from './walletProviders';
-export type MailConnection={mailbox:string;scopes:('read'|'send')[];expiresAt:string|null};
+export type MailConnection={mailbox:string;scopes:('read'|'send'|'read-state')[];expiresAt:string|null};
 export type MailSummary={id:string;from:string;subject:string;date:string;read?:boolean};
 export type MailMessage=MailSummary&{text:string;sourceVersion?:string;replyTo?:string;threadedReply?:boolean};
 export type MailReceipt={id:string;createdAt:number};
-export class MailClientError extends Error {constructor(public code:'session'|'unavailable'|'denied'|'wallet'|'failed'|'storage'|'pageChanged'|'pageLimit'|'attachmentFiles',public status?:number){super(code);}}
+export class MailClientError extends Error {constructor(public code:'session'|'unavailable'|'denied'|'wallet'|'failed'|'storage'|'pageChanged'|'pageLimit'|'attachmentFiles'|'readStateUncertain',public status?:number){super(code);}}
 const isWallet=(v:unknown):v is string=>typeof v==='string'&&/^0x[a-f0-9]{40}$/.test(v);
 const messageId=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 export const validMailFolder=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$/.test(v)&&v===v.trim();
@@ -45,7 +45,7 @@ async function request(action:string,input?:unknown,signal?:AbortSignal){
 }
 function connection(v:any):MailConnection|null{
  if(v===null)return null;
- if(!v||typeof v.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(v.mailbox)||!Array.isArray(v.scopes)||!v.scopes.length||v.scopes.length>2||new Set(v.scopes).size!==v.scopes.length||v.scopes.some((s:unknown)=>s!=='read'&&s!=='send')||(v.expiresAt!==null&&(typeof v.expiresAt!=='string'||!Number.isFinite(Date.parse(v.expiresAt)))))throw new MailClientError('failed');
+ if(!v||typeof v.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(v.mailbox)||!Array.isArray(v.scopes)||!v.scopes.length||v.scopes.length>3||new Set(v.scopes).size!==v.scopes.length||v.scopes.some((s:unknown)=>!['read','send','read-state'].includes(String(s)))||(v.scopes.includes('read-state')&&!v.scopes.includes('read'))||(v.expiresAt!==null&&(typeof v.expiresAt!=='string'||!Number.isFinite(Date.parse(v.expiresAt)))))throw new MailClientError('failed');
  return {mailbox:v.mailbox,scopes:v.scopes,expiresAt:v.expiresAt};
 }
 export async function mailStatus(wallet:string,signal?:AbortSignal){
@@ -222,3 +222,16 @@ export async function sendMail(wallet:string,draft:MailDraft,signal?:AbortSignal
  });
 }
 export function replyAddress(from:string){const match=/<([^<>]+)>$/.exec(from);const candidate=(match?.[1]||from).trim();return validMailDraft({to:candidate,subject:'',text:'x'})?candidate:'';}
+
+/** Explicit opt-in write. Never automatically retry an uncertain flag change. */
+export async function mailReadState(wallet:string,folder:string,id:string,version:string,read:boolean,signal?:AbortSignal){
+ if(!validMailFolder(folder)||!messageId(id)||!messageId(version)||typeof read!=='boolean')throw new MailClientError('failed');
+ try{
+  const result=await operation(wallet,'readState',{folder,id,version,read},signal);
+  if(!result||Object.keys(result).sort().join(',')!=='id,read,sourceVersion'||result.id!==id||result.sourceVersion!==version||result.read!==read)throw new MailClientError('readStateUncertain');
+  return {id,sourceVersion:version,read};
+ }catch(e){
+  if(signal?.aborted||e instanceof MailClientError&&['wallet','session','denied'].includes(e.code))throw e;
+  throw new MailClientError('readStateUncertain');
+ }
+}
