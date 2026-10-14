@@ -276,6 +276,8 @@ it('retains the inbox on transient failures but purges it when access is revoked
  vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});await render();
  vi.mocked(mail.mailPage).mockRejectedValue(new mail.MailClientError('unavailable',503));
  await act(async()=>vi.advanceTimersByTimeAsync(45000));expect(container.textContent).toContain(item.subject);expect(container.textContent).not.toContain('Email connections are not available yet');
+ vi.mocked(mail.mailPage).mockResolvedValue({messages:[item],nextCursor:null});
+ await act(async()=>vi.advanceTimersByTimeAsync(45000));expect(container.querySelector('[role=alert]')).toBeNull();
  vi.mocked(mail.mailPage).mockRejectedValue(new mail.MailClientError('denied',403));
  await act(async()=>vi.advanceTimersByTimeAsync(45000));expect(container.textContent).not.toContain(item.subject);
 });

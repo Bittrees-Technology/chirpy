@@ -51,7 +51,7 @@ function MailboxSession({onOpenSettings,active}:{onOpenSettings:()=>void;active:
   if(background)pollingRef.current=true;
   else{cancelPoll();busyRef.current=true;setBusy(true);setError('');setNotice('');}
   const generation=++epoch.current,c=new AbortController();controller.current=c;const current=()=>epoch.current===generation&&!c.signal.aborted;
-  try{await fn(c.signal,current);}catch(e){if(current()){
+  try{await fn(c.signal,current);if(background&&current())setError('');}catch(e){if(current()){
    const code=e instanceof MailClientError?e.code:'failed';setError(code);
    if(code==='session'||code==='wallet'||code==='denied'){clearPrivate();setConnection(null);setAuthenticated(false);setPhase(code==='denied'?'denied':'signedOut');}
    if(code==='unavailable'&&!connection)setPhase('unavailable');
