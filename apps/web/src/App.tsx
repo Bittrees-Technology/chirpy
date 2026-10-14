@@ -167,7 +167,7 @@ export function App() {
           </div>
         )}
         {view === "forum" && <ForumUpdates forum={forum} />}
-        <div hidden={view !== "mail"}><Mailbox key={`${identity.address}:${mode}`} active={view === "mail"} onOpenSettings={() => openView("settings")} /></div>
+        <div hidden={view !== "mail"} style={{display:view === "mail" ? "contents" : "none"}}><Mailbox key={`${identity.address}:${mode}`} active={view === "mail"} onOpenSettings={() => openView("settings")} /></div>
         {view === "routes" && <MessageRoutes onCompose={() => { setLinkedRecipient(null); setDialog("newDm"); }} />}
         {view === "settings" && (
           <Settings onCreateOrg={() => setDialog("createOrg")} onImportOrg={() => setDialog("importOrg")} />
