@@ -6,11 +6,11 @@ import {useI18n} from '../i18n';
 import {Button,Field} from '../ui';
 import {MailClientError,prepareMailAttachments,mailHtml,mailAttachments,downloadMailAttachment,type MailAttachment,type MailDownloadProgress,mailStatus,connectMail,disconnectMail,mailFolders,mailPage,mailThreadPage,mailThread,mailMessage,sendMail,mailReceipt,clearMailReceipt,validMailDraft,replyAddress,type MailThreadSummary,type MailThreadPage,type MailConnection,type MailSummary,type MailMessage,type MailDraft,type MailReceipt} from '../connectedMail';
 const emptyDraft=():MailDraft=>({to:'',subject:'',text:''});
-export function Mailbox({onOpenSettings}:{onOpenSettings:()=>void}){
+export function Mailbox({onOpenSettings,active=true}:{onOpenSettings:()=>void;active?:boolean}){
  const {identity,mode}=useIdentity(),revision=useSyncExternalStore(subscribeProvider,getProviderRevision);
- return <MailboxSession key={`${identity.address.toLowerCase()}:${mode}:${revision}`} onOpenSettings={onOpenSettings}/>;
+ return <MailboxSession key={`${identity.address.toLowerCase()}:${mode}:${revision}`} onOpenSettings={onOpenSettings} active={active}/>;
 }
-function MailboxSession({onOpenSettings}:{onOpenSettings:()=>void}){
+function MailboxSession({onOpenSettings,active}:{onOpenSettings:()=>void;active:boolean}){
  const {identity,mode}=useIdentity(),wallet=identity.address.toLowerCase(),{t}=useI18n();
  const canonical=['http:','https:'].includes(window.location.protocol)&&['chat.bittrees.org','localhost','127.0.0.1'].includes(window.location.hostname);
  const [connection,setConnection]=useState<MailConnection|null>(null),[authenticated,setAuthenticated]=useState(false),[phase,setPhase]=useState('checking');
@@ -22,14 +22,15 @@ function MailboxSession({onOpenSettings}:{onOpenSettings:()=>void}){
  const [htmlPreview,setHtmlPreview]=useState<{key:string;document:string;truncated:boolean}|null>(null);
  const [downloadProgress,setDownloadProgress]=useState<(MailDownloadProgress&{filename:string})|null>(null);
  const [attachments,setAttachments]=useState<{key:string;items:MailAttachment[]}|null>(null);
+ useEffect(()=>{if(!active){setDraft(emptyDraft());setComposing(false);composerFocus.current=null;}},[active]);
  const attachmentKey=message?messageFolder+':'+message.id+':'+message.sourceVersion:'';
  const [cursors,setCursors]=useState<string[]>([]),[nextCursor,setNextCursor]=useState<string|null>(null);
  const messageHeading=useRef<HTMLHeadingElement>(null),recipientInput=useRef<HTMLInputElement>(null),bodyInput=useRef<HTMLTextAreaElement>(null);
  const messageFocus=useRef<{value:MailMessage;origin:Element|null}|null>(null),composerFocus=useRef<'recipient'|'body'|null>(null);
  useEffect(()=>{
-  if(composing&&composerFocus.current){const target=composerFocus.current==='body'?bodyInput.current:recipientInput.current;composerFocus.current=null;target?.focus();}
+  if(active&&composing&&composerFocus.current){const target=composerFocus.current==='body'?bodyInput.current:recipientInput.current;composerFocus.current=null;target?.focus();}
   const requested=messageFocus.current;
-  if(requested&&requested.value===message){
+  if(active&&requested&&requested.value===message){
    messageFocus.current=null;
    // Disabled launch controls can leave focus on body. Do not interrupt another control or an inactive tab.
    if(document.hasFocus()&&(document.activeElement===requested.origin||document.activeElement===document.body))messageHeading.current?.focus();
@@ -50,10 +51,10 @@ function MailboxSession({onOpenSettings}:{onOpenSettings:()=>void}){
   if(background)pollingRef.current=true;
   else{cancelPoll();busyRef.current=true;setBusy(true);setError('');setNotice('');}
   const generation=++epoch.current,c=new AbortController();controller.current=c;const current=()=>epoch.current===generation&&!c.signal.aborted;
-  try{await fn(c.signal,current);}catch(e){if(current()){
+  try{await fn(c.signal,current);if(background&&current())setError('');}catch(e){if(current()){
    const code=e instanceof MailClientError?e.code:'failed';setError(code);
    if(code==='session'||code==='wallet'||code==='denied'){clearPrivate();setConnection(null);setAuthenticated(false);setPhase(code==='denied'?'denied':'signedOut');}
-   if(code==='unavailable'){clearPrivate();setConnection(null);setPhase('unavailable');}
+   if(code==='unavailable'&&!connection)setPhase('unavailable');
   }}finally{if(epoch.current===generation){setDownloadProgress(null);controller.current=null;if(background)pollingRef.current=false;else{busyRef.current=false;setBusy(false);readReceipt();}}}
  };
  const load=async(target:string,signal:AbortSignal,current:()=>boolean,trail:string[]=[],view=mailView)=>{
@@ -69,8 +70,9 @@ function MailboxSession({onOpenSettings}:{onOpenSettings:()=>void}){
   setConversation({...page,trail});const first=page.messages[0];if(first)await readMessage(first.folder,first.id,signal,current,origin);
  };
  const refresh=()=>run(async(signal,current)=>{
-  clearPrivate();setConnection(null);setPhase('checking');
-  const result=await mailStatus(wallet,signal);if(!current())return;setAuthenticated(true);setConnection(result);setPhase('ready');
+  setDraft(emptyDraft());setComposing(false);
+  if(!connection)setPhase('checking');
+  const result=await mailStatus(wallet,signal);if(!current())return;setAuthenticated(true);setConnection(result);setPhase('ready');if(!result||!result.scopes.includes('read'))clearPrivate();
   if(result?.scopes.includes('read')){const list=await mailFolders(wallet,signal);if(!current())return;setFolders(list);const target=list.includes(folder)?folder:list[0];if(target)await load(target,signal,current);}
  });
  useEffect(()=>{
@@ -88,14 +90,19 @@ function MailboxSession({onOpenSettings}:{onOpenSettings:()=>void}){
  const pending=!!receipt||receiptBroken,canRead=!!connection?.scopes.includes('read'),canSend=!!connection?.scopes.includes('send');
  // Poll without locking controls. Foreground actions invalidate/abort polls; late results cannot replace a newer view.
  useEffect(()=>{
-  if(!canRead||composing||cursors.length)return;
-  const timer=setInterval(()=>{if(document.visibilityState!=='visible'||busyRef.current)return;
+  if(!canRead)return;
+  const sync=()=>{if(document.visibilityState!=='visible'||busyRef.current)return;
    void run(async(signal,current)=>{
+    // Recheck source authority even while drafting or reading an older page.
+    // Keep those views intact; new-mail refresh resumes when they are left.
+    if(composing||cursors.length){await mailFolders(wallet,signal);return;}
     if(mailView==='conversations'){const page=await mailThreadPage(wallet,folder,null,signal);if(current()){setThreads(page.threads);setNextCursor(page.nextCursor);if(conversation&&!page.threads.some(t=>t.id===conversation.id&&t.version===conversation.version)){setConversation(null);setMessage(null);setNotice('conversationChanged');}}}
     else{const page=await mailPage(wallet,folder,null,signal);if(current()){setMessages(page.messages);setNextCursor(page.nextCursor);if(message&&!page.messages.some(m=>m.id===message.id))setMessage(null);}}
    },true);
-  },45000);
-  return()=>{clearInterval(timer);cancelPoll();};
+  };
+  const timer=setInterval(sync,45000);
+  document.addEventListener('visibilitychange',sync);window.addEventListener('online',sync);
+  return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',sync);window.removeEventListener('online',sync);cancelPoll();};
  },[canRead,composing,wallet,folder,message,cursors.length,mailView,conversation]);
  const selectMessage=(id:string)=>void run(async(signal,current)=>{setMessage(null);setComposing(false);await readMessage(folder,id,signal,current);});
  const compose=()=>{composerFocus.current='recipient';cancelPoll();setConversation(null);setDraft(emptyDraft());setMessage(null);setComposing(true);};

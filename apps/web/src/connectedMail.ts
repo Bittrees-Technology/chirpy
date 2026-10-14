@@ -37,7 +37,8 @@ export async function assertMailWallet(wallet:string){
 }
 async function request(action:string,input?:unknown,signal?:AbortSignal){
  signal?.throwIfAborted();
- const response=await fetch('/api/mail/'+action,{method:input===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:input===undefined?undefined:JSON.stringify(input),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(40000)]):AbortSignal.timeout(40000)});
+ const timeout=action==='operation'&&(input as any)?.action==='attachmentFile'?60000:40000;
+ const response=await fetch('/api/mail/'+action,{method:input===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:input===undefined?undefined:JSON.stringify(input),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(timeout)]):AbortSignal.timeout(timeout)});
  let data;try{data=await response.json();}catch{throw new MailClientError('failed');}
  signal?.throwIfAborted();
  if(!response.ok)throw new MailClientError(response.status===401?'session':response.status===403?'denied':response.status===503?'unavailable':'failed',response.status);return data;
