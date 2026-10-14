@@ -12,16 +12,7 @@ const random=()=>randomBytes(32).toString('hex');
 export class ConnectedMailError extends Error{constructor(status,message){super(message);this.status=status;}}
 const denied=()=>new ConnectedMailError(401,'Reconnect your mailbox from Chat.');
 export function exactMailInput(input,keys){if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!keys.includes(k)))throw new ConnectedMailError(400,'Invalid mail request.');}
-export function connectedMailConfig(env=process.env,{allowDisabled=false}={}){
- if((env.CHAT_CONNECTED_MAIL_ENABLED!=='1'&&!allowDisabled)||(env.VERCEL_ENV&&env.VERCEL_ENV!=='production'))return null;
- try{
-  const url=new URL(env.KV_REST_API_URL||env.UPSTASH_REDIS_REST_URL),key=env.CHAT_CONNECTED_MAIL_KEY,kvToken=env.KV_REST_API_TOKEN||env.UPSTASH_REDIS_REST_TOKEN;
-  const testWallets=String(env.CHAT_CONNECTED_MAIL_TEST_WALLETS||'').split(',').map(v=>v.trim().toLowerCase()).filter(Boolean);
-  if(testWallets.some(v=>!address(v)))return null;
-  if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||!hex(key)||!kvToken)return null;
-  return {kvUrl:url.href,kvToken,key:Buffer.from(key,'hex'),prefix:'chat:connected-mail:v1:',testWallets,rpc:env.MAINNET_RPC_URL||''};
- }catch{return null;}
-}
+export { connectedMailConfig } from './connected-mail-config.js';
 export const CONNECTION_CAS=`
 local raw=redis.call('GET',KEYS[1])
 local clock=redis.call('TIME');local now=tonumber(clock[1])*1000+math.floor(tonumber(clock[2])/1000)
