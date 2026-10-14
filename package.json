@@ -40,7 +40,9 @@
       "@pushprotocol/restapi>uuid": "11.1.1",
       "@xmtp/browser-sdk@7.0.0>@xmtp/wasm-bindings": "file:vendor/xmtp-consent/xmtp-wasm-bindings-1.10.0-chat-consent.5-e3bce6f83137.tgz",
       "@xmtp/browser-sdk@7.0.0": "file:vendor/xmtp-browser-recovery/xmtp-browser-sdk-7.0.0-chat-recovery.1-3fed12e468f3.tgz",
-      "axios@>=1.0.0 <1.20.0": "1.20.0"
+      "axios@>=1.0.0 <1.20.0": "1.20.0",
+      "source-map-js@<1.2.2": "1.2.2",
+      "pbkdf2@<3.1.7": "3.1.7"
     },
     "patchedDependencies": {
       "@pushprotocol/restapi@1.7.32": "patches/@pushprotocol__restapi@1.7.32.patch"
