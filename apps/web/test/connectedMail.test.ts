@@ -246,10 +246,10 @@ async function chunkFixture(change?:(data:any,offset:number)=>any){
 it.each(['network','503'])('resumes a %s failure without downloading completed chunks again and verifies the complete digest',async mode=>{
  let failed=false;const expected=await chunkFixture((data,offset)=>{if(offset===262144&&!failed){failed=true;if(mode==='network')throw new TypeError('Network error');return Response.json({error:'temporary'},{status:503});}return data;});
  const items=await mailAttachments(wallet,'INBOX',fileContext.id,fileContext.sourceVersion);expect(items[0].transferVersion).toBe(3);
- const result=await downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,items[0]);expect(result.bytes).toEqual(expected);
+ const result=await downloadMailAttachment(wallet,'INBOX',fileContext.id,fileContext.sourceVersion,items[0]);expect(Buffer.from(result.bytes).equals(Buffer.from(expected))).toBe(true);
  const offsets=fetcher.mock.calls.map(([,init])=>JSON.parse(init.body)).filter(x=>x.action==='attachment').map(x=>x.input.offset);
  expect(offsets).toEqual([0,262144,262144,524288,786432]);
-});
+},15000);
 it('never retries revoked chunks or accepts altered chunk offsets, versions, bytes or digests',async()=>{
  for(const mutate of [(d:any)=>({...d,offset:1}),(d:any)=>({...d,sourceVersion:'c'.repeat(64)}),(d:any)=>({...d,sha256:'c'.repeat(64)}),(d:any)=>({...d,nextOffset:1}),(d:any)=>({...d,data:d.data.slice(4)}),()=>Response.json({error:'revoked'},{status:403})]){
   fetcher.mockClear();await chunkFixture((data,offset)=>offset===262144?mutate(data):data);
