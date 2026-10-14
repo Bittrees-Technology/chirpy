@@ -45,7 +45,7 @@ async function request(action:string,input?:unknown,signal?:AbortSignal){
 }
 function connection(v:any):MailConnection|null{
  if(v===null)return null;
- if(!v||typeof v.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(v.mailbox)||!Array.isArray(v.scopes)||!v.scopes.length||v.scopes.length>3||new Set(v.scopes).size!==v.scopes.length||v.scopes.some((s:unknown)=>!['read','send','read-state'].includes(String(s)))||(v.scopes.includes('read-state')&&!v.scopes.includes('read'))||(v.expiresAt!==null&&(typeof v.expiresAt!=='string'||!Number.isFinite(Date.parse(v.expiresAt)))))throw new MailClientError('failed');
+ if(!v||typeof v.mailbox!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}@bittrees\.org$/.test(v.mailbox)||!Array.isArray(v.scopes)||!v.scopes.length||v.scopes.length>3||new Set(v.scopes).size!==v.scopes.length||v.scopes.some((s:unknown)=>typeof s!=='string'||!['read','send','read-state'].includes(s))||(v.scopes.includes('read-state')&&!v.scopes.includes('read'))||(v.expiresAt!==null&&(typeof v.expiresAt!=='string'||!Number.isFinite(Date.parse(v.expiresAt)))))throw new MailClientError('failed');
  return {mailbox:v.mailbox,scopes:v.scopes,expiresAt:v.expiresAt};
 }
 export async function mailStatus(wallet:string,signal?:AbortSignal){

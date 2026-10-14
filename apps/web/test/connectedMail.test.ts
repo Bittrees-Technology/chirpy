@@ -278,9 +278,9 @@ it('read status updates bind exact selection, validate acknowledgement, and neve
  expect(fetcher).toHaveBeenCalledTimes(3);
 });
 it('accepts opt-in read-state scope only together with read',async()=>{
- for(const scopes of [['read','read-state'],['read-state']]){
+ for(const scopes of [['read','read-state'],['read-state'],[['read'],'read-state']]){
   fetcher.mockResolvedValueOnce(Response.json({enabled:true,wallet,connection:{mailbox:'fixture@bittrees.org',scopes,expiresAt:null}}));
-  if(scopes.length===2)expect((await mailStatus(wallet))?.scopes).toEqual(scopes);
+  if(scopes[0]==='read')expect((await mailStatus(wallet))?.scopes).toEqual(scopes);
   else await expect(mailStatus(wallet)).rejects.toMatchObject({code:'failed'});
  }
 });
