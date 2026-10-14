@@ -1,7 +1,7 @@
 # Connected Mail
 
 Connected Mail is separate from the wallet-to-email forwarding service. It connects
-a user's existing Mail mailbox to Chat with explicit read and/or send permission.
+a user's existing Mail mailbox to Chat with explicit read and/or send permission and a separate optional read/unread permission.
 It does not make email end-to-end encrypted or enable automatic forwarding.
 
 ## Deployment boundary
@@ -35,7 +35,7 @@ raw session tokens never appear in JSON. The preliminary wallet-authenticated se
 5. GET `status?wallet=...` returns mailbox/scopes/expiry only. It is a local session
    snapshot; source revocation is authoritatively enforced on every operation.
 6. POST `operation` with `{wallet,action,input}`; Mail supports folders, message
-   listing, reading and explicit sending. Scope and source authority are rechecked
+   listing, reading, explicit sending and separately authorized read-state updates. Scope and source authority are rechecked
    by Mail's encrypted queue. No mail content is persisted in Chat's server storage.
 7. POST `disconnect` with `{}` immediately deletes Chat's server session and clears
    the cookie. It attempts source revocation. If `sourceRevoked` is false, explain
@@ -56,7 +56,7 @@ idempotency ledger preserves the exact ID and rejects conflicting/uncertain reus
 
 ## Remaining acceptance
 
-The server relay, inbox/folders, conversations, read/compose/reply, bounded attachment sending/downloads and isolated formatted previews are implemented. The approved self-addressed pilot verified consent/callback, read/send/receive/reply, source revocation, read-only access, active Until-revoked access and a byte-exact 256 KiB attachment round trip. Complete-file downloads were accepted on the deployed Chat/Mail/Acer path. These tests cover the approved account and browser, not arbitrary accounts or devices.
+The server relay, inbox/folders, conversations, read/compose/reply, bounded attachment sending/downloads and isolated formatted previews are implemented. The approved self-addressed pilot verified consent/callback, read/send/receive/reply, source revocation, read-only access, active Until-revoked access and a byte-exact 1 MiB attachment round trip and verified version 3 chunk download. Explicit read/unread changes were accepted on 14 October 2026: the existing synthetic message was marked read and restored to unread, with refreshed source headers confirming both states. Opening it did not change its status. These tests cover the approved account and browser, not arbitrary accounts or devices.
 
 Production access remains restricted to configured acceptance wallets. Contract-wallet and native handoffs, account-change/device behavior, natural expiry timing, live multi-page/rich-mail acceptance and larger files remain open. Verified wallet↔email forwarding, operator retention/recovery, monitoring and combined release acceptance are separate requirements; see [REMAINING-WORK.md](REMAINING-WORK.md).
 
@@ -82,7 +82,7 @@ Older/newer page navigation uses source-bound cursors; Refresh returns to newest
 The reader explicitly labels its bounded plain-text preview and links to Mail.
 
 Connect Mail validates the exact scoped SIWE message before asking the selected
-wallet to sign, then navigates to Mail for separate read/send consent. The callback
+wallet to sign, then navigates to Mail for separate read/send and optional read-state consent. The callback
 opens Email. Connection status displays only mailbox, scopes and expiry. Disconnect
 clears local content and the server session, and tells the user if source revocation
 could not be confirmed. Expiry, revoked access and wallet changes discard private
@@ -99,13 +99,19 @@ to the source connector idempotency ledger. This is not cross-device draft or se
 coordination. Live integrated acceptance remains required before launch/forwarding.
 
 
-Attachment downloads use the explicit read grant. Show attachments requests a bounded index; selecting a file requests its complete contents once, bound to the folder, message ID, source version and MIME part. Larger encrypted queue results use private object storage. Current source authority is rechecked, and Chat verifies metadata, decoded byte count and whole-file SHA-256 before an explicit application/octet-stream download. Expiry, disconnect, wallet change or cancellation discards late results. The older 12 KiB chunk API remains for compatible clients. No content opens or fetches remote resources automatically. Limits remain 20 indexed attachments, 1 MiB per download and 2 MiB per source message; unsupported multipart attachments and oversized messages return explicit errors.
+Attachment downloads use the explicit read grant. The current version 3 index selects 256 KiB chunks bound to folder, message, source version and MIME part. Completed chunks remain in memory while a transient failed chunk may retry at most twice. Reloading does not resume a download. Authority, integrity and malformed-response failures never retry. A valid older version 2 index selects the complete-file path. Chat verifies metadata, offsets, decoded byte count and whole-file SHA-256 before saving. Expiry, disconnect, wallet change or cancellation discards late results. No content opens or fetches remote resources automatically. Limits remain 20 indexed attachments, 1 MiB per download and 2 MiB per source message. See [connected-mail-attachments.md](connected-mail-attachments.md).
 
-Outgoing drafts support up to four selected files totaling 1 MiB, including replies. The draft/request-ID snapshot, independent relay/source/connector validation and source receipt bind filenames and bytes to the intended send. Files stay in memory and uncertain sends require Check Sent; no automatic resend is added. See [connected-mail-attachments.md](connected-mail-attachments.md) for deployment order and the complete-file contract.
+Outgoing drafts support up to four selected files totaling 1 MiB, including replies. The draft/request-ID snapshot, independent relay/source/connector validation and source receipt bind filenames and bytes to the intended send. Files stay in memory and uncertain sends require Check Sent; no automatic resend is added. See [connected-mail-attachments.md](connected-mail-attachments.md) for deployment order and the versioned transfer contract.
 
 Formatted preview is an explicit read request bound to the selected folder, message and source version. Mail returns at most 16 KiB UTF-8/24 KiB JSON-escaped HTML plus an explicit shortened flag. Chat uses pinned DOMPurify 3.4.15 with a formatting-only tag allowlist and no email-supplied attributes, then renders the result only in a sandboxed srcdoc frame with no sandbox permissions, no referrer, and default-src none CSP. Email CSS, remote resources, links, forms, scripts, SVG/MathML and custom elements are removed. Plain text remains the default; unsupported sanitization fails closed. No claim of original-layout parity, remote image loading or full-message rendering is made.
 
-Chat now explicitly requests Mail transfer version 2, deployed in Mail v54 and its matching Acer connector before the client opt-in. Legacy clients retain their original 256 KiB file and 512 KiB message contract. Current browser fixtures exercise a complete 1 MiB send/download; live 1 MiB acceptance remains separate from the previously approved 256 KiB round trip.
+Chat uses transfer version 2 for message reads, formatted previews and sends, and version 3 for current attachment indexes/chunks. The matching Mail and Acer readers are deployed. The approved account/browser passed a live 1 MiB transfer; physical-device and larger-file acceptance remain separate.
+
+### Background synchronization and read status
+
+The mailbox remains mounted across Chat views, retaining loaded content for the current wallet session. Visible, idle inbox polling runs every 45 seconds; drafts still clear on leaving Email. Mail's bounded header cache discovers folders and cursor pages, with up to 512 routes per grant, 25 headers and 28,000 UTF-8 bytes per page, and 90-second freshness. Bodies are fetched on demand. This reduces repeated loading; it is not an offline mailbox replica or a zero-latency guarantee.
+
+Read/Unread labels reflect Mail. Updating them requires the separately consented `read-state` scope together with `read`; existing grants gain no permissions automatically. `MAIL_CHAT_READ_STATE_ENABLED=true` enables the source rollout. Disabling it blocks new scope grants and flag writes while ordinary reads remain available. Explicit controls bind updates to the selected source version and preserve other Maildir flags. Opening a message never marks it read, and uncertain writes never retry automatically. Refresh before deciding whether another explicit action is needed.
 
 
 ### Formatted preview browser acceptance
