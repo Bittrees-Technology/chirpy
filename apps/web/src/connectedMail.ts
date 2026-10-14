@@ -37,7 +37,7 @@ export async function assertMailWallet(wallet:string){
 }
 async function request(action:string,input?:unknown,signal?:AbortSignal){
  signal?.throwIfAborted();
- const timeout=action==='operation'&&(input as any)?.action==='attachmentFile'?60000:40000;
+ const timeout=action==='operation'&&((input as any)?.action==='attachmentFile'||(input as any)?.action==='attachment'&&(input as any)?.input?.transferVersion===3)?60000:40000;
  const response=await fetch('/api/mail/'+action,{method:input===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:input===undefined?undefined:JSON.stringify(input),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(timeout)]):AbortSignal.timeout(timeout)});
  let data;try{data=await response.json();}catch{throw new MailClientError('failed');}
  signal?.throwIfAborted();
@@ -122,7 +122,7 @@ export async function mailHtml(wallet:string,folder:string,id:string,version:str
  if(data.id!==id||data.sourceVersion!==version||typeof data.html!=='string'||new TextEncoder().encode(data.html).length>16000||typeof data.bodyAvailable!=='boolean'||typeof data.truncated!=='boolean'||!data.bodyAvailable&&(data.html!==''||data.truncated))throw new MailClientError('failed');
  return {html:data.html,bodyAvailable:data.bodyAvailable,truncated:data.truncated};
 }
-export type MailAttachment={id:string;filename:string;contentType:string;bytes:number|null;downloadable:boolean};
+export type MailAttachment={id:string;filename:string;contentType:string;bytes:number|null;downloadable:boolean;transferVersion?:3};
 const attachmentChunkBytes=12288,attachmentMaxBytes=MAIL_ATTACHMENT_BYTES;
 function attachmentItem(value:any):MailAttachment{
  if(!value||typeof value.id!=='string'||value.id.length>64||!/^1(?:\.[1-9][0-9]*){0,7}$/.test(value.id)||typeof value.filename!=='string'||!value.filename||new TextEncoder().encode(value.filename).length>120||/[\x00-\x1f\x7f/\\:<>"|?*\u202a-\u202e\u2066-\u2069]/u.test(value.filename)||value.filename!==value.filename.trim()||value.filename.startsWith('.')||value.filename.endsWith('.')||typeof value.contentType!=='string'||value.contentType.length>100||typeof value.downloadable!=='boolean'||value.bytes!==null&&(!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>2097152)||value.downloadable&&(value.bytes===null||value.bytes>attachmentMaxBytes))throw new MailClientError('failed');
@@ -130,13 +130,13 @@ function attachmentItem(value:any):MailAttachment{
 }
 async function attachmentOperation(wallet:string,folder:string,id:string,version:string,signal?:AbortSignal){
  if(!validMailFolder(folder)||!messageId(id)||!messageId(version))throw new MailClientError('failed');
- const data=await operation(wallet,'attachments',{folder,id,version,transferVersion:2},signal);
- if(data.id!==id||data.sourceVersion!==version||data.chunkBytes!==attachmentChunkBytes||data.transferVersion!==2||data.maxAttachmentBytes!==attachmentMaxBytes)throw new MailClientError('failed');return data;
+ const data=await operation(wallet,'attachments',{folder,id,version,transferVersion:3},signal);
+ if(data.id!==id||data.sourceVersion!==version||!((data.transferVersion===2&&data.chunkBytes===attachmentChunkBytes)||(data.transferVersion===3&&data.chunkBytes===262144))||data.maxAttachmentBytes!==attachmentMaxBytes)throw new MailClientError('failed');return data;
 }
 export async function mailAttachments(wallet:string,folder:string,id:string,version:string,signal?:AbortSignal){
  const data=await attachmentOperation(wallet,folder,id,version,signal);
  if(!Array.isArray(data.attachments)||data.attachments.length>20)throw new MailClientError('failed');
- const items=data.attachments.map(attachmentItem) as MailAttachment[];
+ const items=data.attachments.map((value:unknown)=>({...attachmentItem(value),...(data.transferVersion===3?{transferVersion:3 as const}:{})})) as MailAttachment[];
  if(new Set(items.map(item=>item.id)).size!==items.length)throw new MailClientError('failed');return items;
 }
 export type MailDownloadProgress={phase:'preparing'|'checking';bytes:number};
@@ -144,6 +144,35 @@ export async function downloadMailAttachment(wallet:string,folder:string,id:stri
  return withMailWalletSession(wallet,signal,async(signal,current)=>{
  const item=attachmentItem(selection);if(!item.downloadable||item.bytes===null||!validMailFolder(folder)||!messageId(id)||!messageId(version))throw new MailClientError('failed');
  signal?.throwIfAborted();onProgress?.({phase:'preparing',bytes:item.bytes});current();
+ if(selection.transferVersion===3){
+  const bytes=new Uint8Array(item.bytes);let offset=0,expectedHash:string|undefined;
+  do{
+   let data:any;
+   for(let attempt=0;;attempt++){
+    current();signal.throwIfAborted();
+    try{data=await operation(wallet,'attachment',{folder,id,version,part:item.id,offset,transferVersion:3},signal);break;}
+    catch(error){
+     const transient=error instanceof TypeError||error instanceof DOMException&&error.name==='TimeoutError'||error instanceof MailClientError&&['unavailable','failed'].includes(error.code)&&(error.status===undefined||error.status>=500);
+     if(signal.aborted||attempt>=2||!transient)throw error;
+     await new Promise<void>((resolve,reject)=>{
+      const abort=()=>{clearTimeout(timer);reject(signal.reason);};
+      const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},500*(attempt+1));
+      signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+     });
+    }
+   }
+   const returned=attachmentItem(data.attachment),length=Math.min(262144,item.bytes-offset),next=offset+length<item.bytes?offset+length:null;
+   if(data.id!==id||data.sourceVersion!==version||data.transfer!=='chunk'||data.transferVersion!==3||data.chunkBytes!==262144||data.maxAttachmentBytes!==attachmentMaxBytes||JSON.stringify(returned)!==JSON.stringify(item)||data.offset!==offset||data.nextOffset!==next||!messageId(data.sha256)||expectedHash!==undefined&&expectedHash!==data.sha256||typeof data.data!=='string'||data.data.length>4*Math.ceil(262144/3))throw new MailClientError('failed');
+   let decoded:string;try{decoded=atob(data.data);if(btoa(decoded)!==data.data)throw Error();}catch{throw new MailClientError('failed');}
+   if(decoded.length!==length)throw new MailClientError('failed');
+   current();signal.throwIfAborted();bytes.set(Uint8Array.from(decoded,c=>c.charCodeAt(0)),offset);expectedHash=data.sha256;offset+=length;
+   onProgress?.({phase:'preparing',bytes:offset});if(next===null)break;
+  }while(offset<item.bytes);
+  onProgress?.({phase:'checking',bytes:item.bytes});
+  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+  await assertMailWallet(wallet);current();signal.throwIfAborted();if(digest!==expectedHash)throw new MailClientError('failed');
+  return {filename:item.filename,bytes};
+ }
  const data=await operation(wallet,'attachmentFile',{folder,id,version,part:item.id,transferVersion:2},signal),returned=attachmentItem(data.attachment);
  if(data.id!==id||data.sourceVersion!==version||data.transfer!=='complete'||data.transferVersion!==2||data.maxAttachmentBytes!==attachmentMaxBytes||JSON.stringify(returned)!==JSON.stringify(item)||!messageId(data.sha256)||typeof data.data!=='string'||data.data.length>4*Math.ceil(attachmentMaxBytes/3))throw new MailClientError('failed');
  let decoded:string;try{decoded=atob(data.data);if(btoa(decoded)!==data.data)throw Error();}catch{throw new MailClientError('failed');}

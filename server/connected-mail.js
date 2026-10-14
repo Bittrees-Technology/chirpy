@@ -57,7 +57,7 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
  async function session(token,wallet){if(!hex(token))throw denied();const k=key('session',token),raw=await kv(['GET',k]);if(!raw)throw denied();const value=decrypt(config,raw,k);if(!address(value.wallet)||!allowed(value.wallet)||!(value.expires===null&&value.connection?.expiresAt===null||Number.isFinite(value.expires)&&value.expires>now())||(wallet!==undefined&&value.wallet!==wallet))throw denied();return {k,raw,value};}
  async function cas(record,value){if(Number(await kv(['EVAL',CONNECTION_CAS,'1',record.k,record.raw,encrypt(config,value,record.k),String(value.expires===null?0:value.expires)]))!==1)throw new ConnectedMailError(409,'Mail connection changed. Refresh Chat.');}
  async function mail(action,input,token){
-  const timeout=action==='operation'&&input?.action==='attachmentFile'&&input?.input?.transferVersion===2?50000:25000;
+  const timeout=action==='operation'&&(input?.action==='attachmentFile'&&input?.input?.transferVersion===2||input?.action==='attachment'&&input?.input?.transferVersion===3)?50000:25000;
   const response=await request(MAIL_ORIGIN+'/api/integrations/chat/'+action,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json','User-Agent':'Chat-Mail-Relay/1.0',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(input),signal:AbortSignal.timeout(timeout)});
   const reader=response.body?.getReader();if(!reader)throw new ConnectedMailError(502,'Mail returned an invalid response.');let size=0;const chunks=[];
   for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>2000000){await reader.cancel();throw new ConnectedMailError(502,'Mail response is too large.');}chunks.push(value);}
