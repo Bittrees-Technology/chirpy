@@ -29,8 +29,8 @@ Require HTTP 200, `ok: true`, `network: production` and `dependencies.ready: tru
 Merge validated changes to main through the linked GitHub/Vercel deployment, or use the reviewed operator deployment procedure. Record the promoted commit and deployment.
 
 ```sh
-curl -fsS https://chirpy.bittrees.org/api/health
-curl -fsS 'https://chirpy.bittrees.org/api/usersync?address=0x0000000000000000000000000000000000000001'
+curl -fsS https://chat.bittrees.org/api/health
+curl -fsS 'https://chat.bittrees.org/api/usersync?address=0x0000000000000000000000000000000000000001'
 ```
 
 Require XMTP and `readiness.releaseReady: true`. The sync read must return v2 authorization, the canonical service and valid revision/epoch; it writes no record. Web health is configuration evidence, so check the external gate separately.

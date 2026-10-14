@@ -152,7 +152,7 @@ export function Settings(
       {recoverySnapshots.length > 0 && <section className="card" aria-label={t("settings.orgRecovery")}>
         <h2>{t("settings.orgRecovery")}</h2>
         <p role="status">{t("settings.orgRecoveryHelp")}</p>
-        <Button variant="ghost" onClick={() => download("chirpy-organization-recovery.json", JSON.stringify({ snapshots: recoverySnapshots }, null, 2))}>
+        <Button variant="ghost" onClick={() => download("chat-organization-recovery.json", JSON.stringify({ snapshots: recoverySnapshots }, null, 2))}>
           {t("settings.orgRecoveryDownload")}
         </Button>
       </section>}

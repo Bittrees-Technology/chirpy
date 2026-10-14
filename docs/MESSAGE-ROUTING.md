@@ -16,7 +16,7 @@ This is a staged start, not a production email service or a unified mailbox.
 | Email → wallet | Share a wallet invitation link in an email; recipient opens Chirpy and explicitly starts wallet chat. This is an invitation, not forwarding |
 | Wallet → email | Signed email composer and encrypted queue/worker implemented for an allowlisted pilot; disabled until provider, verification/consent and scheduler setup |
 
-Invitation format: `https://chirpy.bittrees.org/#to=<wallet-or-ENS>`.
+Invitation format: `https://chat.bittrees.org/#to=<wallet-or-ENS>`.
 The fragment is not sent to the web server. It remains visible to the browser,
 page scripts and anyone given the link; it is not a secret. Only a single `to`
 parameter is accepted; body, auto-send, email and duplicate recipient parameters

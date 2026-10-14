@@ -1,6 +1,6 @@
 :root {
-  /* Chirpy public preview theme. The current palette retains Bittrees provenance
-     while product copy and org presets keep Chirpy community-first and reusable. */
+  /* Chat public preview theme. The current palette retains Bittrees provenance
+     while product copy and org presets keep Chat community-first and reusable. */
   --accent: #F7931A;        /* primary — Bitcoin orange */
   --accent-hover: #E07E00;
   --accent-text: #1A1A1A;   /* ink on orange (brand spec; accessible, white is not) */

@@ -39,7 +39,7 @@ Record date, release/image digest, environment, reviewer and evidence for each a
 ## Chat domain coexistence
 
 During the move to `chat.bittrees.org`, keep the existing signed API identity and
-storage. Set production `VITE_API_ORIGIN=https://chirpy.bittrees.org` so both web
+storage. Set production `VITE_API_ORIGIN=https://chat.bittrees.org` so both web
 hosts use the canonical sync service directly. Preserve `CHIRPY_SYNC_SERVICE_URL`.
 Set `CHIRPY_SYNC_MIGRATION_ORIGINS=https://chat.bittrees.org` to add the new exact
 browser origin without replacing existing `CHIRPY_SYNC_ALLOWED_ORIGINS` (including

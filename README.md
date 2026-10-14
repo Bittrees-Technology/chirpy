@@ -2,7 +2,7 @@
 
 **Wallet-native community chat: encrypted 1:1 DMs, token-gated rooms, and portable org spaces across web, macOS, and iOS (Tauri 2).**
 
-🌐 **Live preview:** [chirpy.bittrees.org](https://chirpy.bittrees.org)
+🌐 **Live preview:** [chat.bittrees.org](https://chat.bittrees.org)
 
 Chat is the new product name. The move to `chat.bittrees.org` is being prepared;
 existing URLs and internal compatibility identifiers remain in use during the transition.

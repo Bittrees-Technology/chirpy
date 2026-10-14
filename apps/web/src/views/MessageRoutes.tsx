@@ -11,7 +11,7 @@ export function MessageRoutes({ onCompose }: { onCompose: () => void }) {
   const { identity } = useIdentity();
   const { transportId, transportStatus } = useChat();
   const link = transportId === "xmtp" && transportStatus === "ready" && import.meta.env.VITE_XMTP_ENV !== "dev"
-    ? walletChatLink("https://chirpy.bittrees.org/", identity.address) : null;
+    ? walletChatLink("https://chat.bittrees.org/", identity.address) : null;
   return <section className="settings" aria-label={t("routing.title")}>
     <h1>{t("routing.title")}</h1>
     <p>{t("routing.intro")}</p>

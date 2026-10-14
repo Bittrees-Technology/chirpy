@@ -381,7 +381,7 @@
   "status.syncWriteConflict": "La sincronización cambió mientras se guardaba. Inténtalo de nuevo.",
   "status.ensFailed": "No se pudo consultar el nombre ENS. Inténtalo de nuevo.",
   "settings.historyRecovery": "Historial de mensajes",
-  "settings.historyRecoveryHelp": "¿Te mudas a este navegador o dispositivo? Usa la misma cartera y mantén abierto, con la mensajería activada, el navegador o dispositivo que ya contiene tus mensajes. Si era chirpy.bittrees.org, conserva esa sesión original. Activar otra sesión vacía no recuperará el historial perdido. Solicita aquí tu historial XMTP y revisa los mensajes anteriores, Solicitudes y Bloqueados antes de retirar la sesión anterior. Esto no transfiere ajustes locales ni salas Push.",
+  "settings.historyRecoveryHelp": "¿Te mudas a este navegador o dispositivo? Usa la misma cartera y mantén abierto, con la mensajería activada, el navegador o dispositivo que ya contiene tus mensajes. Si estaba en otra dirección web, conserva esa sesión original. Activar otra sesión vacía no recuperará el historial perdido. Solicita aquí tu historial XMTP y revisa los mensajes anteriores, Solicitudes y Bloqueados antes de retirar la sesión anterior. Esto no transfiere ajustes locales ni salas Push.",
   "settings.historyRequest": "Solicitar historial de mensajes",
   "settings.historyRequesting": "Solicitando historial…",
   "settings.historyRequested": "Historial solicitado. Mantén abierta la sesión anterior mientras se sincronizan los mensajes y el consentimiento de las conversaciones. Una solicitud no confirma que haya llegado todo el historial; comprueba tus conversaciones antes de salir de la sesión anterior.",
