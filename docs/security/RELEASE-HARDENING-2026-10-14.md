@@ -1,0 +1,15 @@
+# Release hardening — 14 October 2026
+
+Main requires successful `test`, `gate-container`, `native-audit` and `xmtp-consent-storage` checks from GitHub Actions, with the branch up to date and conversations resolved. The restriction applies to administrators; force pushes and branch deletion are disabled. These four jobs run on every pull request. Path-filtered Apple jobs are not unconditional required contexts, because they do not run on documentation-only changes; Apple checks remain necessary for native release acceptance.
+
+The native lockfile updates rustls 0.23.45 to 0.23.46, addressing RUSTSEC-2026-0346 through RUSTSEC-2026-0349. No audit exception was added. Local locked Cargo check and web production build passed; hosted native audit and Apple validation provide the remaining platform evidence.
+
+## Remaining elliptic advisory
+
+The installed dependency graph includes elliptic 6.6.1 through browserify-sign/create-ecdh, crypto-browserify, node-stdlib-browser and the Vite Node polyfill build plugin. The advisory has no published patched version. It remains visible in the dependency audit; the moderate-or-higher failure threshold is unchanged.
+
+Chat configures only buffer, process, util, stream and events polyfills, not crypto. Inspection of the production build's emitted chunk module graph on this revision found no elliptic, crypto-browserify, browserify-sign or create-ecdh modules. This bounds observed web runtime exposure; it does not establish that the dependency is secure or remove build-environment exposure. Reassess when dependencies or polyfill configuration change. Prefer upstream replacement over an incompatible cryptography override.
+
+## Operational boundaries
+
+These changes do not enable forwarding, create room authority or accept a native release. The Acer gate installation, live email/device acceptance, independent monitoring, standby fencing and recovery drills remain separate requirements. A standby must never start the bridge or gate identity concurrently with the primary.
