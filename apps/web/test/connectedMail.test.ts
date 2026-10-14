@@ -225,3 +225,12 @@ it('a provider replacement after reservation prevents dispatch and preserves its
  vi.spyOn(navigator.locks,'request').mockImplementation((async(name:string,options:any,fn:()=>unknown)=>{const value=await real(name,options,fn);mocks.provider={request:async()=>[wallet]};return value;}) as any);
  await expect(sendMail(wallet,draft)).rejects.toMatchObject({code:'wallet'});expect(mailReceipt(wallet)).not.toBeNull();expect(fetcher).not.toHaveBeenCalled();
 });
+it('preserves source read flags, retains unknown state for older sources and rejects malformed flags',async()=>{
+ const m={id:'a'.repeat(64),from:'fixture',subject:'subject',date:'today'};
+ for(const read of [true,false,undefined]){
+  const row={...m,...(read===undefined?{}:{read})};fetcher.mockResolvedValueOnce(Response.json({messages:[row],nextCursor:null}));
+  expect((await mailPage(wallet,'INBOX',null)).messages[0]).toEqual(row);
+ }
+ fetcher.mockResolvedValueOnce(Response.json({messages:[{...m,read:'true'}],nextCursor:null}));
+ await expect(mailPage(wallet,'INBOX',null)).rejects.toMatchObject({code:'failed'});
+});
