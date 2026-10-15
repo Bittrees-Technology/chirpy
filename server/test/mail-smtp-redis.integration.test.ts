@@ -100,7 +100,8 @@ describe.skipIf(!container)('SMTP queue, journal and TLS wire recovery',{timeout
  async function lateOutcome(reply='250 2.0.0 Accepted synthetic'){
   wire.state.mode='hold-ack';await service().execute(c);
   const first=service().drain().then(()=>null,error=>error);
-  await vi.waitFor(()=>expect(wire.state.messages).toHaveLength(1));
+  // Docker-backed transport can exceed the default one-second fixture wait.
+  await vi.waitFor(()=>expect(wire.state.messages).toHaveLength(1),{timeout:5000});
   expect((await service().workerStatus()).journalUncertainCount).toBe(1);
   await ready();expect(await service().drain()).toEqual({processed:1,uncertain:1});
   wire.state.ack(reply);expect(await first).toBeInstanceOf(Error);
