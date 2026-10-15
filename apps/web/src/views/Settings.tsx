@@ -385,7 +385,7 @@ export function Settings(
       </section>
 
       <section className="card">
-        <h2>{t("settings.activeOrg")}</h2>
+        <h2>{t("settings.activeOrg")}</h2><p><a href="https://chat.bittrees.org/administration" target="_blank" rel="noopener noreferrer">Project administration and roles</a></p>
         <div className="org-detail">
           <div><strong>{activeOrg.branding.name}</strong> <span className="muted">({shortAddr(activeOrg.id)})</span></div>
           <div className="muted">{t("settings.orgDetails", undefined, { accent: activeOrg.branding.accent ?? "", namespace: activeOrg.namespace })}</div>
