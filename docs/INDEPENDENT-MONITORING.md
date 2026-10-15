@@ -1,0 +1,7 @@
+# Independent availability monitoring
+
+The `production-availability` GitHub workflow probes Chat and Mail from hosted runners every 15 minutes, and can be run manually. It has read-only repository permission and no application credentials. Failures produce a failed Actions run; repository Actions notification preferences control who receives those notifications. Delivery to the two operator email addresses is not established by this workflow.
+
+Chat must return bounded, valid health JSON with sync configuration ready. Gate and release readiness are reported separately: the currently incomplete room gate does not become a false host-outage alarm. Mail's public page must return HTTP 200. Redirects, timeouts and malformed Chat health fail closed. Only fixed endpoints are contacted, and private response bodies and error strings are omitted.
+
+This provides an external public-availability signal, not live mailbox, Wallet, provider, queue or worker health. Chat health reflects configuration. A successful public response does not prove Acer is reachable. Independent heartbeat/missed-schedule monitoring, alert delivery and escalation acceptance remain required. Disabled forwarding schedules are intentional and must not be reported as missed runs. GitHub schedules may be delayed or disabled; monitor their own last-run time through an independent service before claiming continuous coverage.
