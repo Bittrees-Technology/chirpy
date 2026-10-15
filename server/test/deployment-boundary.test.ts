@@ -1,3 +1,4 @@
+import projectAdministration from '../../api/project-admin.js';
 import { afterEach, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import handler from "../../api/room-join.js";
@@ -6,7 +7,7 @@ import { resetRateLimits } from "../server-utils.js";
 afterEach(() => { vi.restoreAllMocks(); resetRateLimits(); });
 it("ships only the intended API entrypoints", () => {
   expect(readdirSync(new URL('../../api/', import.meta.url)).filter(name => name !== 'node_modules').sort()).toEqual([
-    'health.js', 'mail', 'mail-events.js', 'mail-inbound.js', 'mail-optout.js', 'mail-worker.js', 'mail.js', 'package.json', 'profile.js', 'room-join.js', 'usersync.js', 'workflow-event.js',
+    'health.js', 'mail', 'mail-events.js', 'mail-inbound.js', 'mail-optout.js', 'mail-worker.js', 'mail.js', 'package.json', 'profile.js', 'project-admin.js', 'room-join.js', 'usersync.js', 'workflow-event.js',
   ]);
   expect(readdirSync(new URL('../../api/mail/', import.meta.url))).toEqual(['[action].js']);
   const route = readFileSync(new URL('../../api/room-join.js', import.meta.url), 'utf8');
@@ -24,4 +25,10 @@ it("responds without starting the gatekeeper even if credentials are configured"
   const report = buildHealthReport({ VITE_TRANSPORT: 'xmtp', XMTP_GATEKEEPER_PRIVATE_KEY: 'configured', MAINNET_RPC_URL: 'https://rpc.example' });
   expect(report.readiness.embeddedGateReady).toBe(false);
   expect(report.readiness.gateReady).toBe(false);
+});
+
+it('staff administration rejects local organization claims and requires a server-verified shared session',async()=>{
+ const response={statusCode:0,headers:{},body:'',setHeader(k,v){this.headers[k]=v;},end(body){this.body=body;}};
+ await projectAdministration({method:'GET',url:'/api/project-admin/access?identity=0x1111111111111111111111111111111111111111',headers:{cookie:'org-admin=1; bt_session=unverified-owner'}},response);
+ expect(response.statusCode).toBe(401);expect(JSON.parse(response.body).error).toContain('Sign in');expect(response.headers['cache-control']).toContain('no-store');
 });
