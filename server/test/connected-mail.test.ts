@@ -109,7 +109,7 @@ it('HTTP disconnect can clear access while disabled; failures never expose upstr
  const res:any={headers:{},code:0,setHeader(k,v){this.headers[k]=v;},status(n){this.code=n;return this;},json(body){this.body=body;return this;}};
  f.response(()=>{throw Error('private-token-and-body');});
  await handler({method:'POST',query:{action:'disconnect'},headers:{host:'chat.bittrees.org',origin:CHAT_ORIGIN,'content-type':'application/json',cookie:'__Host-chat_mail_session='+p.session.token},body:{}},res);
- expect(config).toHaveBeenCalledWith('disconnect');expect(res.code).toBe(200);expect(res.body.sourceRevoked).toBe(false);expect(res.headers['Set-Cookie']).toContain('Max-Age=0');expect(JSON.stringify(res)).not.toContain('private-token');
+ expect(config).toHaveBeenCalledWith('disconnect');expect(res.code).toBe(200);expect(res.body.sourceRevoked).toBe(false);expect(res.headers['Set-Cookie'][0]).toContain('Max-Age=0');expect(JSON.stringify(res)).not.toContain('private-token');
 });
 
  it('acceptance allowlist gates challenges, verification and existing sessions without preventing disconnect',async()=>{
@@ -125,7 +125,7 @@ it('HTTP disconnect clears an absent or malformed session for a fresh connection
  for(const cookie of ['', '__Host-chat_mail_session=expired']){
   const response=await call('disconnect',{}, {cookie});
   expect(response.code).toBe(200);expect(response.body).toEqual({ok:true,sourceRevoked:true});
-  expect(response.headers['Set-Cookie']).toContain('Max-Age=0');
+  expect(response.headers['Set-Cookie'][0]).toContain('Max-Age=0');expect(response.headers['Set-Cookie'][1]).toContain('__Host-bt-sso-chat-skip=1');expect(response.headers['Set-Cookie'][1]).toContain('Max-Age=604800');
  }
 });
 
