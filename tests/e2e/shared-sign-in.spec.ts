@@ -11,3 +11,7 @@ for(const response of [{configured:false},{configured:true,action:null}])test('s
  await page.route('**/api/sso/status',r=>r.fulfill({json:response}));
  await page.goto('/');await expect(page.locator('.brand-name')).toHaveText('Chat');expect(new URL(page.url()).pathname).toBe('/');
 });
+test('issuer status outage leaves local Chat available',async({page})=>{
+ await page.route('**/api/sso/status',r=>r.fulfill({status:503,json:{error:'unavailable'}}));
+ await page.goto('/');await expect(page.locator('.brand-name')).toHaveText('Chat');expect(new URL(page.url()).pathname).toBe('/');
+});
