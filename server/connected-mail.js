@@ -71,8 +71,21 @@ export function createConnectedMail(config,{kv=connectionKv(config),request=fetc
    exactMailInput(input,['wallet','message','signature']);if(!hex(token)||!address(input.wallet)||!allowed(input.wallet))throw denied();
    const k=key('challenge',token),raw=await kv(['GETDEL',k]);if(!raw)throw denied();const challenge=decrypt(config,raw,k);
    if(challenge.expires<=now()||challenge.wallet!==input.wallet||challenge.message!==input.message||!await verify(input.wallet,challenge.message,input.signature)||challenge.expires<=now())throw denied();
-   const sessionToken=random(),value={wallet:input.wallet,expires:now()+3600000,connection:null,pending:null};
+   const sessionToken=random(),value={wallet:input.wallet,expires:now()+3600000,authTime:now(),connection:null,pending:null};
    await put('session',sessionToken,value,3600000);return {token:sessionToken,wallet:value.wallet,expiresAt:value.expires};
+  },
+  // Server-only SSO adapter methods. No mailbox grant or messaging installation is created.
+  async sharedIdentity(token){
+   const {value}=await session(token);
+   if(!Number.isFinite(value.authTime)||value.authTime>now()||value.authTime<=now()-604800000)return null;
+   return {key:token,identity:value.wallet,authTime:value.authTime};
+  },
+  async establishSharedIdentity(wallet,authTime,existingToken){
+   if(!address(wallet)||!allowed(wallet)||!Number.isFinite(authTime)||authTime>now()||authTime<=now()-604800000)throw denied();
+   if(existingToken){try{await session(existingToken);throw new ConnectedMailError(409,'Keep or explicitly disconnect your existing Mail connection before switching accounts.');}catch(error){if(!(error instanceof ConnectedMailError)||error.status!==401)throw error;}}
+   const token=random(),expires=Math.min(now()+3600000,authTime+604800000);
+   await put('session',token,{wallet,authTime,expires,connection:null,pending:null},expires-now());
+   return {token,wallet,expiresAt:expires};
   },
   async status(token,wallet){const {value}=await session(token,wallet);return {wallet:value.wallet,connection:publicConnection(liveGrant(value.connection,now())?value.connection:null)};},
   async start(token,wallet){

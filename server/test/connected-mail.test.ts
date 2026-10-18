@@ -245,3 +245,17 @@ it('relay permits read-status writes only with the separately granted scope',asy
  }
  const f=fixture();f.grant.scopes=['read-state'];const pending=await f.pending();await expect(f.api.callback(pending.session.token,pending.input)).rejects.toMatchObject({status:502});
 });
+
+describe('Shared sign-in establishes identity only',()=>{
+ it('retains original proof time and creates no Mail permission',async()=>{
+  const f=fixture(),time=Date.now()-1000,s=await f.api.establishSharedIdentity(wallet,time,'');
+  expect(await f.api.sharedIdentity(s.token)).toEqual({key:s.token,identity:wallet,authTime:time});
+  expect((await f.api.status(s.token,wallet)).connection).toBeNull();
+  await expect(f.api.operation(s.token,{wallet,action:'folders',input:{}})).rejects.toMatchObject({status:401});
+ });
+ it('rejects stale/future/email identities and preserves existing connected sessions',async()=>{
+  const f=fixture();for(const [identity,time]of [['person@example.org',Date.now()], [wallet,Date.now()-604800001],[wallet,Date.now()+60000]])await expect(f.api.establishSharedIdentity(identity,time,'')).rejects.toMatchObject({status:401});
+  const original=await f.connected();await expect(f.api.establishSharedIdentity(wallet,Date.now()-1000,original.session.token)).rejects.toMatchObject({status:409});
+  expect((await f.api.status(original.session.token,wallet)).connection).not.toBeNull();
+ });
+});
