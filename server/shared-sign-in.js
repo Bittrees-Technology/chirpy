@@ -7,7 +7,7 @@ export function chatMailSsoAdapter(service){return {
  },
  async establish(wallet,authTime,req){
   const result=await service.establishSharedIdentity(wallet,authTime,readCookie(req,'chat_mail_session',CHAT_ORIGIN));
-  return {key:result.token,cookies:[`__Host-chat_mail_session=${result.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${Math.max(0,Math.floor((result.expiresAt-Date.now())/1000))}`]};
+  return {key:result.token,cookies:[`__Host-chat_mail_session=${result.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${result.expiresAt===null?31536000:Math.max(0,Math.floor((result.expiresAt-Date.now())/1000))}`]};
  }
 };}
 export function chatSsoHandler({env=process.env,service,fetcher=fetch}={}){

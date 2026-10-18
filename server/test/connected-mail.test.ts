@@ -255,7 +255,16 @@ describe('Shared sign-in establishes identity only',()=>{
  });
  it('rejects stale/future/email identities and preserves existing connected sessions',async()=>{
   const f=fixture();for(const [identity,time]of [['person@example.org',Date.now()], [wallet,Date.now()-604800001],[wallet,Date.now()+60000]])await expect(f.api.establishSharedIdentity(identity,time,'')).rejects.toMatchObject({status:401});
-  const original=await f.connected();await expect(f.api.establishSharedIdentity(wallet,Date.now()-1000,original.session.token)).rejects.toMatchObject({status:409});
+  const original=await f.connected();await expect(f.api.establishSharedIdentity('0x'+'2'.repeat(40),Date.now()-1000,original.session.token)).rejects.toMatchObject({status:409});
   expect((await f.api.status(original.session.token,wallet)).connection).not.toBeNull();
  });
+});
+
+it('refreshes only the matching wallet proof while preserving durable Mail consent and token',async()=>{
+ const f=fixture();f.grant.expiresAt=null;const original=await f.connected();
+ const before=await f.api.status(original.session.token,wallet),time=Date.now()-1000;
+ const result=await f.api.establishSharedIdentity(wallet,time,original.session.token);
+ expect(result.token).toBe(original.session.token);expect(result.expiresAt).toBeNull();
+ expect(await f.api.status(result.token,wallet)).toEqual(before);expect((await f.api.sharedIdentity(result.token)).authTime).toBe(time);
+ expect(f.calls).toHaveLength(1);
 });
