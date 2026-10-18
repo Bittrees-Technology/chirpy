@@ -1,3 +1,4 @@
+import {LoginPanel,EthereumSignIn} from '../../../../shared/login/LoginPanel.jsx';
 import {formattedMailDocument} from '../mailHtml';
 import React,{useEffect,useRef,useState,useSyncExternalStore} from 'react';
 import {useIdentity} from '../state';
@@ -131,8 +132,7 @@ function MailboxSession({onOpenSettings,active}:{onOpenSettings:()=>void;active:
    <Button disabled={busy||!checkedSent} onClick={()=>{try{clearMailReceipt(wallet);setReceipt(null);setReceiptBroken(false);setCheckedSent(false);setDraft(emptyDraft());setNotice('newDraft');}catch{setError('storage');}}}>{t('mailbox.clearPending')}</Button>
   </div>}
   {!canonical?<div className="mailbox-empty"><h2>{t('mailbox.canonicalTitle')}</h2><p>{t('mailbox.canonicalHint')}</p><a className="btn btn-primary" href="https://chat.bittrees.org/?mail=connected">{t('mailbox.openChat')}</a></div>:mode!=='wallet'?<div className="mailbox-empty"><h2>{t('mailbox.walletTitle')}</h2><p>{t('mailbox.walletHint')}</p><Button onClick={onOpenSettings}>{t('mailbox.settings')}</Button></div>:!connection&&!busy?<div className="mailbox-empty">
-   <h2>{t(phase==='denied'?'mailbox.deniedTitle':phase==='unavailable'?'mailbox.unavailable':'mailbox.connectTitle')}</h2><p>{t(phase==='denied'?'mailbox.deniedHint':phase==='unavailable'?'mailbox.unavailableHint':'mailbox.connectHint')}</p>
-   {phase!=='unavailable'&&phase!=='denied'&&<Button variant="primary" onClick={()=>void run(async(signal,current)=>{const url=await connectMail(wallet,authenticated,signal);if(current())window.location.assign(url);})}>{t('mailbox.connect')}</Button>}
+   <LoginPanel product="Chat" title={t(phase==='denied'?'mailbox.deniedTitle':phase==='unavailable'?'mailbox.unavailable':'mailbox.connectTitle')} description={t(phase==='denied'?'mailbox.deniedHint':phase==='unavailable'?'mailbox.unavailableHint':'mailbox.connectHint')} wallet={phase!=='unavailable'&&phase!=='denied'?<EthereumSignIn label={authenticated?t('mailbox.connect'):'Sign in with Ethereum'} onClick={()=>void run(async(signal,current)=>{const url=await connectMail(wallet,authenticated,signal);if(current())window.location.assign(url);})}/>:undefined}/>
    {(authenticated||phase==='denied')&&<Button onClick={()=>void run(async(signal,current)=>{await disconnectMail(signal);if(current()){setAuthenticated(false);setPhase('signedOut');}})}>{t('mailbox.resetConnection')}</Button>}
   </div>:connection?<div className="mailbox-content">
    {canRead?<aside className="mailbox-list"><Field label={t('mailbox.folder')}><select className="input" value={folder} disabled={busy} onChange={e=>{const target=e.target.value;void run(async(signal,current)=>{setComposing(false);await load(target,signal,current);});}}>{folders.map(f=><option key={f} value={f}>{t('mailbox.folder.'+f,f)}</option>)}</select></Field>
