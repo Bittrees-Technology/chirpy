@@ -64,7 +64,7 @@ it('revoked connections offer an explicit reset before reconnecting',async()=>{
  vi.mocked(mail.mailStatus).mockRejectedValue(new mail.MailClientError('denied'));vi.mocked(mail.disconnectMail).mockResolvedValue(true);await render();
  expect(container.textContent).toContain('does not have permission');
  await click('Clear this connection attempt');expect(mail.disconnectMail).toHaveBeenCalledTimes(1);
- expect([...container.querySelectorAll('button')].some(b=>b.textContent==='Connect Mail')).toBe(true);
+ expect([...container.querySelectorAll('button')].some(b=>b.textContent==='Sign in with Ethereum')).toBe(true);
 });
 it('pages older and newer mail, pauses polling on older pages and resets on folder changes',async()=>{
  vi.useFakeTimers();Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});

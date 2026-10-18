@@ -37,7 +37,9 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias },
+        // Shared canonical UI lives outside apps/web; resolve its React imports
+        // through the web package so clean pnpm installs use one React instance.
+        resolve: { alias: { ...alias, react: r("./apps/web/node_modules/react"), "react-dom": r("./apps/web/node_modules/react-dom") } },
         test: {
           name: "web",
           setupFiles: [r("./apps/web/test/locksSetup.ts")],
