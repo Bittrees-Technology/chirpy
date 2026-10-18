@@ -1,3 +1,4 @@
+import {useSharedSignIn} from '../../../shared/sso/useSharedSignIn.jsx';
 import { useForumFollow } from "./forumFollow";
 import { ForumUpdates } from "./views/ForumUpdates";
 import React, { useState, useEffect, createContext, useContext } from "react";
@@ -116,6 +117,7 @@ export function App() {
   const { t } = useI18n();
   const { transportId, transportStatus } = useChat();
   const { identity, mode } = useIdentity();
+  useSharedSignIn(identity.address);
   const forum = useForumFollow(identity.address, mode === "wallet");
   const { activeOrg } = useOrgs();
   const navigation = useContext(AppViewContext);

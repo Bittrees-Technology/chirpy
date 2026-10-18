@@ -1,5 +1,5 @@
 // Display data only. Never pass this object into authorization or account linking.
-export const profileApps=['roles','insights','workflow','mercado','crm','autonote','news','wallet','ai','mail','bounties','tld','mcp','chat'];
+export const profileApps=['roles','insights','workflow','mercado','crm','autonote','news','wallet','ai','mail','bounties','tld','mcp','chat','nftfactory','agent','verse'];
 export function profileFields(value){
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['name','avatar','bio','website'].includes(k)))throw Error('Only name, avatar, bio and website can be shared');
  const out={};for(const [key,max] of Object.entries({name:120,avatar:2048,bio:1000,website:2048})){
@@ -20,4 +20,4 @@ export function profileEnvelope(value){
 }
 
 // Only these registered staff clients share their parent app’s explicit consent.
-export const profileAppForClient=id=>new Map([['ai-admin','ai'],['mcp-admin','mcp'],['chat-admin','chat'],['wallet-admin','wallet']]).get(id)||id;
+export const profileAppForClient=id=>new Map([['ai-admin','ai'],['mcp-admin','mcp'],['chat-admin','chat'],['wallet-admin','wallet'],['agent-admin','agent'],['verse-admin','verse']]).get(id)||id;

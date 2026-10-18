@@ -109,7 +109,7 @@ it('HTTP disconnect can clear access while disabled; failures never expose upstr
  const res:any={headers:{},code:0,setHeader(k,v){this.headers[k]=v;},status(n){this.code=n;return this;},json(body){this.body=body;return this;}};
  f.response(()=>{throw Error('private-token-and-body');});
  await handler({method:'POST',query:{action:'disconnect'},headers:{host:'chat.bittrees.org',origin:CHAT_ORIGIN,'content-type':'application/json',cookie:'__Host-chat_mail_session='+p.session.token},body:{}},res);
- expect(config).toHaveBeenCalledWith('disconnect');expect(res.code).toBe(200);expect(res.body.sourceRevoked).toBe(false);expect(res.headers['Set-Cookie']).toContain('Max-Age=0');expect(JSON.stringify(res)).not.toContain('private-token');
+ expect(config).toHaveBeenCalledWith('disconnect');expect(res.code).toBe(200);expect(res.body.sourceRevoked).toBe(false);expect(res.headers['Set-Cookie'][0]).toContain('Max-Age=0');expect(JSON.stringify(res)).not.toContain('private-token');
 });
 
  it('acceptance allowlist gates challenges, verification and existing sessions without preventing disconnect',async()=>{
@@ -125,7 +125,7 @@ it('HTTP disconnect clears an absent or malformed session for a fresh connection
  for(const cookie of ['', '__Host-chat_mail_session=expired']){
   const response=await call('disconnect',{}, {cookie});
   expect(response.code).toBe(200);expect(response.body).toEqual({ok:true,sourceRevoked:true});
-  expect(response.headers['Set-Cookie']).toContain('Max-Age=0');
+  expect(response.headers['Set-Cookie'][0]).toContain('Max-Age=0');expect(response.headers['Set-Cookie'][1]).toContain('__Host-bt-sso-chat-skip=1');expect(response.headers['Set-Cookie'][1]).toContain('Max-Age=604800');
  }
 });
 
@@ -244,4 +244,27 @@ it('relay permits read-status writes only with the separately granted scope',asy
   else {await f.api.operation(session.token,input);expect(f.calls.at(-1).body).toEqual(input);}
  }
  const f=fixture();f.grant.scopes=['read-state'];const pending=await f.pending();await expect(f.api.callback(pending.session.token,pending.input)).rejects.toMatchObject({status:502});
+});
+
+describe('Shared sign-in establishes identity only',()=>{
+ it('retains original proof time and creates no Mail permission',async()=>{
+  const f=fixture(),time=Date.now()-1000,s=await f.api.establishSharedIdentity(wallet,time,'');
+  expect(await f.api.sharedIdentity(s.token)).toEqual({key:s.token,identity:wallet,authTime:time});
+  expect((await f.api.status(s.token,wallet)).connection).toBeNull();
+  await expect(f.api.operation(s.token,{wallet,action:'folders',input:{}})).rejects.toMatchObject({status:401});
+ });
+ it('rejects stale/future/email identities and preserves existing connected sessions',async()=>{
+  const f=fixture();for(const [identity,time]of [['person@example.org',Date.now()], [wallet,Date.now()-604800001],[wallet,Date.now()+60000]])await expect(f.api.establishSharedIdentity(identity,time,'')).rejects.toMatchObject({status:401});
+  const original=await f.connected();await expect(f.api.establishSharedIdentity('0x'+'2'.repeat(40),Date.now()-1000,original.session.token)).rejects.toMatchObject({status:409});
+  expect((await f.api.status(original.session.token,wallet)).connection).not.toBeNull();
+ });
+});
+
+it('refreshes only the matching wallet proof while preserving durable Mail consent and token',async()=>{
+ const f=fixture();f.grant.expiresAt=null;const original=await f.connected();
+ const before=await f.api.status(original.session.token,wallet),time=Date.now()-1000;
+ const result=await f.api.establishSharedIdentity(wallet,time,original.session.token);
+ expect(result.token).toBe(original.session.token);expect(result.expiresAt).toBeNull();
+ expect(await f.api.status(result.token,wallet)).toEqual(before);expect((await f.api.sharedIdentity(result.token)).authTime).toBe(time);
+ expect(f.calls).toHaveLength(1);
 });

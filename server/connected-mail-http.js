@@ -1,3 +1,4 @@
+import {cookie as ssoCookie} from '../shared/sso/client.mjs';
 import {connectedMailConfig,createConnectedMail,ConnectedMailError,exactMailInput,connectionCookieAge,CHAT_ORIGIN,MAIL_ORIGIN} from './connected-mail.js';
 import {checkRateLimit} from './server-utils.js';
 const cookieName=kind=>'__Host-chat_mail_'+kind;
@@ -46,7 +47,7 @@ export function createConnectedMailHandler({config=action=>connectedMailConfig(p
    }
    if(action==='operation'){const result=await api.operation(session,input);const status=await api.status(session,input.wallet);if(status.connection)res.setHeader('Set-Cookie',setCookie('session',session,connectionCookieAge(status.connection)));return res.status(200).json(result);}
    exactMailInput(input,[]);const result=/^[a-f0-9]{64}$/.test(session)?await api.disconnect(session):{ok:true,sourceRevoked:true};
-   res.setHeader('Set-Cookie',setCookie('session','',0));return res.status(200).json(result);
+   res.setHeader('Set-Cookie',[setCookie('session','',0),ssoCookie('bt-sso-chat-skip','1',604800,CHAT_ORIGIN),ssoCookie('bt-sso-chat-published','',0,CHAT_ORIGIN)]);return res.status(200).json(result);
   }catch(e){return res.status(e instanceof ConnectedMailError?e.status:503).json({error:e instanceof ConnectedMailError?e.message:'Mail connection is unavailable. If sending, check Sent before retrying.'});}
  };
 }

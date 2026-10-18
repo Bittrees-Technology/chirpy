@@ -15,7 +15,7 @@
     "@app/core": "workspace:*",
     "@app/transport": "workspace:*",
     "@tauri-apps/plugin-process": "^2",
-    "@tauri-apps/plugin-updater": "^2",
+    "@tauri-apps/plugin-updater": "^2.14.0",
     "@walletconnect/ethereum-provider": "^2.23.9",
     "dompurify": "3.4.16",
     "react": "^19.0.0",
