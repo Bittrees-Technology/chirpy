@@ -17,7 +17,7 @@ jobs:
           version: 10.32.1
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.22.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Verify mail sender provisioning and backup recovery on XMTP dev
@@ -68,7 +68,7 @@ jobs:
           version: 10.32.1
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.22.1
           cache: pnpm
       - name: Select the official pinned browser artifact in this disposable job
         run: |
