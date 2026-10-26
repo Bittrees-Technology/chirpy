@@ -1,0 +1,12 @@
+# Chat
+
+> Bittrees public-preview app for wallet messaging and an optional connected Mail inbox.
+
+## Public information
+- [About Chat](https://chat.bittrees.org/about): capabilities and preview limitations.
+- [Support](https://chat.bittrees.org/support): help and safe bug reporting.
+- [Security](https://chat.bittrees.org/security): private vulnerability reporting guidance.
+- [Spanish support](https://chat.bittrees.org/es/support/): ayuda.
+- [Spanish security](https://chat.bittrees.org/es/security/): informes de seguridad.
+
+Messages, mailboxes, accounts, wallet actions and administration are private. This file grants no access to them. Mail requires explicit connection permission; room access depends on membership and service configuration. Automatic forwarding and a stable native release are not generally available.

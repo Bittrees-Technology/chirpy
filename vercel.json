@@ -60,8 +60,8 @@
       "destination": "/security.html"
     },
     {
-      "source": "/((?!api/|mail/optout/?$|(?:es/)?support/?$|(?:es/)?security/?$|privacy/?$|terms/?$).*)",
-      "destination": "/index.html"
+      "source": "/about",
+      "destination": "/about.html"
     }
   ],
   "headers": [
@@ -85,6 +85,51 @@
           "value": "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
         }
       ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/administration/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/mail/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
     }
   ],
   "functions": {
@@ -103,5 +148,37 @@
     "api/profile.js": {
       "maxDuration": 30
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/about/",
+      "destination": "/about",
+      "permanent": true
+    },
+    {
+      "source": "/about.html",
+      "destination": "/about",
+      "permanent": true
+    },
+    {
+      "source": "/support.html",
+      "destination": "/support",
+      "permanent": true
+    },
+    {
+      "source": "/security.html",
+      "destination": "/security",
+      "permanent": true
+    },
+    {
+      "source": "/support/",
+      "destination": "/support",
+      "permanent": true
+    },
+    {
+      "source": "/security/",
+      "destination": "/security",
+      "permanent": true
+    }
+  ]
 }

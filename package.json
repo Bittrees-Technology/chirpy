@@ -9,7 +9,7 @@
     "rollout:proof": "node scripts/rollout-proof.mjs",
     "typecheck": "tsc -p tsconfig.base.json --noEmit && pnpm --filter @app/web typecheck:config",
     "typecheck:api": "tsc -p tsconfig.api.json --noEmit",
-    "test": "node --test tests/project-authority.test.mjs && vitest run",
+    "test": "node --test tests/project-authority.test.mjs tests/public-discovery.test.mjs && vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test --grep-invert @xmtp",
     "e2e:xmtp": "XMTP_E2E=1 VITE_TRANSPORT=xmtp VITE_XMTP_ENV=dev playwright test --grep @xmtp",
