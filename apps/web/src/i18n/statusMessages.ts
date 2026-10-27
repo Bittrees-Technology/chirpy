@@ -1,5 +1,8 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "Wallet changed. Reconnect the selected wallet before enabling messaging.": "status.messagingWalletChanged",
+  "Unable to confirm the saved messaging installation.": "status.messagingRegistrationUncertain",
+  "The saved messaging installation is unavailable. Check its recovery status before trying again.": "status.messagingInstallationUnavailable",
   "Room authority changed. Refresh before changing ownership.": "ownership.changed",
   "Gate-managed room ownership must be managed by its operator.": "ownership.managed",
   "Native room ownership is unavailable.": "ownership.unavailable",

@@ -90,7 +90,7 @@
   "settings.mockMessaging": "Messaging runs locally in mock mode.",
   "settings.connectMessaging": "Connect a wallet above to enable encrypted messaging.",
   "settings.messagingReady": "✓ Messaging enabled on this device.",
-  "settings.messagingSignature": "One-time signature to create your encrypted inbox. No gas, no transaction.",
+  "settings.messagingSignature": "Uses saved messaging on this device when available. A new installation needs a gas-free signature.",
   "settings.revoking": "Revoking…",
   "settings.revokeEnable": "Revoke old sessions & enable",
   "settings.enabling": "Enabling...",
@@ -893,5 +893,8 @@
   "settings.section.rooms": "Rooms",
   "settings.section.mail": "Email",
   "settings.section.routes": "Channels",
-  "settings.section.forum": "Forum"
+  "settings.section.forum": "Forum",
+  "status.messagingWalletChanged": "Wallet changed. Reconnect the selected wallet before enabling messaging.",
+  "status.messagingRegistrationUncertain": "Unable to confirm the saved messaging installation.",
+  "status.messagingInstallationUnavailable": "The saved messaging installation is unavailable. Check its recovery status before trying again."
 }
