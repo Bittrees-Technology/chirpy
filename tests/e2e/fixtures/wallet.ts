@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { test as base, expect, type BrowserContext, type Page } from "@playwright/test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
@@ -22,14 +21,6 @@ export async function injectSyntheticWallet(target: WalletInjectionTarget, priva
       if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({rooms:true,mail:true,routes:true,forum:true}));
     }
   }, account.address);
-  if (process.env.CHIRPY_TEST_NATIVE_CSP === "1") {
-    const policy = JSON.parse(readFileSync("apps/web/src-tauri/tauri.conf.json", "utf8")).app.security.csp;
-    await target.route("http://127.0.0.1:*/**", async route => {
-      const response = await route.fetch();
-      await route.fulfill({ response, headers: { ...response.headers(), "content-security-policy": policy } });
-    });
-  }
-
   await target.exposeFunction("__walletSign", (params: unknown[] = []) => {
     const rawHex = params.find(isHex);
     if (!rawHex) throw new Error("personal_sign requires a raw hex message.");

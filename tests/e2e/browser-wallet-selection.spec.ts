@@ -1,21 +1,13 @@
-import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
 const a = '0x000000000000000000000000000000000000000a';
 const b = '0x000000000000000000000000000000000000000b';
 const c = '0x000000000000000000000000000000000000000c';
 
-// Drain native-CSP response rewrites before Playwright disposes the context.
+// Drain synthetic network handlers before Playwright disposes the context.
 test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: 'wait' }); });
 
 test.beforeEach(async ({ page }) => {
-  if (process.env.CHIRPY_TEST_NATIVE_CSP === '1') {
-    const policy = JSON.parse(readFileSync('apps/web/src-tauri/tauri.conf.json', 'utf8')).app.security.csp;
-    await page.route('http://127.0.0.1:*/**', async route => {
-      const response = await route.fetch();
-      await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': policy } });
-    });
-  }
   await page.route(/^https:\/\//, route => route.abort());
   await page.addInitScript(({ a, b }) => {
     const providers = [a, b].map(address => {
