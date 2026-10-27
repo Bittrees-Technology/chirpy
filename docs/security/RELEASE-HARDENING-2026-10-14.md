@@ -37,3 +37,10 @@ This is a build/runtime update, not a deployment or an identity migration. Acer 
 The dependency audit now reports GHSA-6pq8-jhm2-2vcw for qs 6.16.0, reached through the browser URL polyfill. The narrow override selects upstream 6.16.1 and leaves the rest of the lockfile unchanged. No advisory exception or audit-threshold change is introduced.
 
 Five regressions exercise the actual transitive serializer: non-callable conversion methods and null-prototype array elements under both comma serialization modes, plus normal strings and callable conversion. Four cases fail on 6.16.0; all five pass on 6.16.1. The local audit retains only the previously tracked low elliptic finding. Production bundles change, so the web patch requires deployment after exact-head validation. [Upstream advisory](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw).
+
+
+## Messaging recovery binding checks — 27 October
+
+The explicit all-installation recovery action previously caught network lookup failures and substituted a derived nonce-zero inbox. It now requires the validated public inventory and a matching current network binding. Malformed device metadata, a missing binding or an unavailable lookup stop before signing or registration. Wallet and inbox checks also surround wallet approval; a changed account/binding prevents signature submission and replacement registration. No automatic retry, local-storage reset or additional revocation is introduced.
+
+Eleven synthetic regression cases retain the valid explicitly authorized recovery path, reject nine unsafe lookup, metadata and approval-change cases, and hold replacement registration if a wallet change is detected after submission. The existing all-device action remains deliberate and does not recover missing local history. Targeted device retirement, original-browser history recovery and real-device acceptance remain separate work; no production installation was revoked for these tests.
