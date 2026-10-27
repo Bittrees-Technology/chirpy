@@ -90,7 +90,7 @@
   "settings.mockMessaging": "La mensajería funciona localmente en modo de prueba.",
   "settings.connectMessaging": "Conecta una cartera arriba para activar la mensajería cifrada.",
   "settings.messagingReady": "✓ Mensajería activada en este dispositivo.",
-  "settings.messagingSignature": "Una firma para crear tu bandeja cifrada. Sin comisión de gas ni transacción.",
+  "settings.messagingSignature": "Usa la mensajería guardada en este dispositivo cuando está disponible. Una instalación nueva necesita una firma sin coste de gas.",
   "settings.revoking": "Revocando…",
   "settings.revokeEnable": "Revocar sesiones anteriores y activar",
   "settings.enabling": "Activando...",
@@ -893,5 +893,8 @@
   "settings.section.rooms": "Salas",
   "settings.section.mail": "Correo",
   "settings.section.routes": "Canales",
-  "settings.section.forum": "Foro"
+  "settings.section.forum": "Foro",
+  "status.messagingWalletChanged": "La cartera cambió. Vuelve a conectar la cartera seleccionada antes de activar la mensajería.",
+  "status.messagingRegistrationUncertain": "No se puede confirmar la instalación de mensajería guardada.",
+  "status.messagingInstallationUnavailable": "La instalación de mensajería guardada no está disponible. Comprueba su estado de recuperación antes de volver a intentarlo."
 }

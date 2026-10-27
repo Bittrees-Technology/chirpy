@@ -482,6 +482,42 @@ export class XmtpTransport implements Transport {
     const sdk = await this.loadSdk();
     this.status = "enabling";
     try {
+      // A failed automatic resume can be a temporary network/storage error.
+      // Reopen the saved installation first rather than registering another one.
+      // An uncertain lookup must not turn into a new authorization request.
+      if (!opts?.revokeStale && wasEnabled(this.myAddress)) {
+        const checkWallet = async () => {
+          const accounts = await this.provider!.request({ method: "eth_accounts" });
+          if (!Array.isArray(accounts) || typeof accounts[0] !== "string"
+            || accounts[0].toLowerCase() !== this.myAddress) {
+            throw new Error("Wallet changed. Reconnect the selected wallet before enabling messaging.");
+          }
+        };
+        await checkWallet();
+        const existing = await sdk.Client.build(
+          await this.identifier(),
+          xmtpOptions(sdk) as Parameters<typeof sdk.Client.build>[1],
+        );
+        let adopted = false;
+        try {
+          const registered = await existing.isRegistered();
+          if (typeof registered !== "boolean") throw new Error("Unable to confirm the saved messaging installation.");
+          await checkWallet();
+          if (registered) {
+            await this.adopt(existing);
+            if (this.client !== existing) throw new Error("The saved messaging installation is unavailable. Check its recovery status before trying again.");
+            await checkWallet();
+            sharedXmtp = { address: this.myAddress, client: existing };
+            adopted = true;
+            return;
+          }
+        } finally {
+          if (!adopted) {
+            if (this.client === existing) this.client = null;
+            existing.close();
+          }
+        }
+      }
       // Recovery path: if the inbox is at XMTP's 10-installation limit, revoke the
       // existing installations (one wallet signature) so a fresh one can register.
       if (opts?.revokeStale) await this.revokeStaleInstallations(sdk);
