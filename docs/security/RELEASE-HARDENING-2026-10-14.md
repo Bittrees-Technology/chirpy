@@ -13,3 +13,13 @@ Chat configures only buffer, process, util, stream and events polyfills, not cry
 ## Operational boundaries
 
 These changes do not enable forwarding, create room authority or accept a native release. The Acer gate installation, live email/device acceptance, independent monitoring, standby fencing and recovery drills remain separate requirements. A standby must never start the bridge or gate identity concurrently with the primary.
+
+## Validation runtime correction — 27 October
+
+Native-policy browser tests now receive the canonical Tauri CSP from the owned Vite preview server when `CHIRPY_TEST_NATIVE_CSP=1`. This replaces asynchronous response rewriting in the common wallet fixtures, which could race reload/teardown. Existing native flows remain covered. An additional browser case checks the exact response header and an enforced external-script violation; native runs cannot reuse a preview with an unknown policy. The actual Tauri and Vercel policies are unchanged. The separate previous-build migration proxy is retained.
+
+Development-only aliases resolve the existing buffer/global/process ESM shims from the web app for linked workspace packages. No new polyfills or packages are introduced; the obsolete forced `@xmtp/proto` optimization is removed. `node scripts/check-web-dev.mjs` transforms the affected workspace entry points without a browser, protocol client or listening port. A scoped isolated-browser read also exercised the real public SDK metadata API without client construction, signing or revocation. It does not establish user-profile/history continuity.
+
+The before/after production build comparison produced 73 byte-identical outputs. These development and preview-test corrections do not change the deployed frontend or application API behavior. Live service, recovery, device and launch acceptance remain separate gates.
+
+Hosted validation also found that both isolated Push harnesses merged the old static configuration. They now evaluate the callback with Vite’s environment and load as ESM. The development probe loads both harnesses for build and preview; the pinned polyfill’s ESM exports resolve relative to the web app even when another harness bundles its configuration. Local Push runtime and all67Push UI cases pass; all73production outputs remain byte-identical. A separate real XMTP-dev consent-recovery failure remains under investigation; its bounded archive diagnostic now preserves the error and uses the SDK’s numeric cutoff type. No recovery assertion is skipped or relaxed.

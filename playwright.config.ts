@@ -15,7 +15,7 @@ export default defineConfig({
   webServer: {
     command: `pnpm --filter @app/web build && pnpm --filter @app/web preview --host 127.0.0.1 --port ${port}`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI && transport !== "xmtp",
+    reuseExistingServer: !process.env.CI && transport !== "xmtp" && process.env.CHIRPY_TEST_NATIVE_CSP !== "1",
     timeout: 120_000,
     env: {
       VITE_TRANSPORT: transport,
