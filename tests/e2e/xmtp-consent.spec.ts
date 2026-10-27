@@ -45,7 +45,7 @@ test.describe('XMTP consent ordering @xmtp', () => {
         }
         postMessage(...args: any[]) {
           const message = args[0];
-          if (['conversations.sync', 'conversations.syncAll', 'preferences.sync', 'conversation.consentState', 'conversation.updateConsentState', 'client.sendSyncRequest', 'conversations.list', 'dm.peerInboxId', 'preferences.getInboxStates', 'preferences.fetchInboxStates'].includes(message?.action)) {
+          if (['conversations.sync', 'conversations.syncAll', 'preferences.sync', 'conversation.consentState', 'conversation.updateConsentState', 'client.sendSyncRequest', 'client.syncAllDeviceSyncGroups', 'conversations.list', 'dm.peerInboxId', 'preferences.getInboxStates', 'preferences.fetchInboxStates'].includes(message?.action)) {
             if (['conversations.sync', 'conversations.syncAll', 'client.sendSyncRequest'].includes(message.action)) add({ action: message.action, phase: 'requested' });
             pending.set(message.id, { action: message.action, conversation: message.data?.id, state: message.data?.state, inboxIds: message.data?.inboxIds });
             if (pending.size > 100) pending.delete(pending.keys().next().value!);
@@ -162,10 +162,10 @@ async function archiveEvidence(page: Page) {
     function receive(event: MessageEvent) {
       if (event.data?.id !== id) return;
       clearTimeout(timeout); worker!.removeEventListener('message', receive);
-      resolve({ failed: Boolean(event.data.error), archiveCount: Array.isArray(event.data.result) ? event.data.result.length : null,
+      resolve({ failed: Boolean(event.data.error), error: event.data.error ? String(event.data.error).slice(0, 500) : undefined, archiveCount: Array.isArray(event.data.result) ? event.data.result.length : null,
         visibility: document.visibilityState });
     }
     worker.addEventListener('message', receive);
-    worker.postMessage({ id, action: 'client.listAvailableArchives', data: { daysCutoff: 1n } });
+    worker.postMessage({ id, action: 'client.listAvailableArchives', data: { daysCutoff: 1 } });
   })).catch(() => ({ unavailable: true }));
 }

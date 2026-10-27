@@ -10,10 +10,12 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 export default defineConfig(({ command, isPreview }) => {
   // The plugin injects bare shim imports into linked workspace packages. Resolve
   // its ESM exports from this app instead of requiring every package to install it.
+  const polyfillRoot = new URL("./node_modules/vite-plugin-node-polyfills/", import.meta.url);
+  const shimExports = command === "serve" ? JSON.parse(readFileSync(new URL("package.json", polyfillRoot), "utf8")).exports : {};
   const shims = command === "serve" ? Object.fromEntries(
     ["buffer", "global", "process"].map(name => [
       `vite-plugin-node-polyfills/shims/${name}`,
-      fileURLToPath(import.meta.resolve(`vite-plugin-node-polyfills/shims/${name}`)),
+      fileURLToPath(new URL(shimExports[`./shims/${name}`].import, polyfillRoot)),
     ]),
   ) : {};
   // A server header applies before the document executes and survives reloads.
