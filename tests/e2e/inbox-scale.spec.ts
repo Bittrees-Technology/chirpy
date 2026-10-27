@@ -11,6 +11,7 @@ test('a 10,000-conversation inbox keeps rows and profile requests bounded while 
     localStorage.setItem('inbox-scale-seeded', '1');
     const address = '0x0000000000000000000000000000000000000001';
     localStorage.setItem('chat:identity:v1', JSON.stringify({ address, handle: 'you' }));
+    localStorage.setItem(`chat:sections:v1:stub:${address}`, JSON.stringify({rooms:true}));
     const conversations = Array.from({ length: 10_000 }, (_, index) => ({
       id: `dm-${index}`, kind: 'dm', title: `Peer ${String(index).padStart(5, '0')}`,
       peers: [address, `0x${(index + 2).toString(16).padStart(40, '0')}`], unread: 0,

@@ -35,7 +35,7 @@ test('wallet email signs scoped requests, retries with the same ID and recovers 
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 test('unconfigured forwarding does not offer an active send form',async({page})=>{
-  await page.route('**/api/mail',route=>route.fulfill({status:503,json:{enabled:false}}));await page.goto('/');await page.locator('.nav-item',{hasText:'Channels'}).click();
+  await page.route('**/api/mail',route=>route.fulfill({status:503,json:{enabled:false}}));await page.goto('/');await page.locator('.nav-item',{hasText:'Settings'}).click();await page.getByRole('switch',{name:'Channels',exact:true}).click();await page.locator('.nav-item',{hasText:'Channels'}).click();
   await expect(page.getByText('Forwarding is not activated on this service yet.')).toBeVisible();await expect(page.getByRole('button',{name:'Sign and queue email'})).toHaveCount(0);
 });
 test('two tabs cannot replace an unresolved request reservation',async({context})=>{

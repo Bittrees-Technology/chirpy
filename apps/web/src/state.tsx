@@ -1,3 +1,4 @@
+import { useSectionPreferences } from "./featurePreferences";
 import type { MessagingDiagnostics } from '@app/transport';
 import { discoverBrowserWallets, type BrowserWallet } from './browserWallets';
 import { prepareSyncMigration, SyncMigrationChoiceError, type SyncMigrationChoice } from './syncMigration';
@@ -915,9 +916,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setMessages([]); setHistoryError(null); setHistoryLoading(false); resetHistory();
     }
   }, [resetHistory]);
-  const push = usePushRooms(identity.address, mode === 'wallet', activeOrg.id, invalidatePushView);
+  const { sections } = useSectionPreferences(identity.address, mode);
+  const push = usePushRooms(identity.address, mode === 'wallet', activeOrg.id, invalidatePushView, sections.rooms);
   const { getAdapter: getPushAdapter } = push;
   const conversations = useMemo(() => [...nativeConversations, ...push.snapshot.rooms], [nativeConversations, push.snapshot.rooms]);
+  useEffect(() => {
+    if (!sections.rooms && conversations.some(c => c.id === activeIdRef.current && c.kind === 'room')) {
+      messageLoadRef.current++; activeIdRef.current = null; setActiveId(null); setMessages([]); resetHistory();
+    }
+  }, [sections.rooms, conversations, resetHistory]);
   const reloadConversations = useCallback(async () => {
     const request = ++conversationLoadRef.current;
     const t = transportRef.current; if (!t) return;

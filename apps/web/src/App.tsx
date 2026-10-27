@@ -17,6 +17,8 @@ import { Mailbox } from "./views/Mailbox";
 import { MessageRoutes } from "./views/MessageRoutes";
 import { recipientFromFragment } from "./messageRouting";
 
+import { useSectionPreferences } from "./featurePreferences";
+
 type View = "chats" | "rooms" | "settings" | "routes" | "mail" | "forum";
 const AppViewContext = createContext<{ view: View; setView: (view: View) => void } | null>(null);
 /** Keep navigation stable while wallet-owned state is discarded on account changes. */
@@ -52,7 +54,8 @@ function OrgRail({ onCreateOrg }: { onCreateOrg: () => void }) {
 function Sidebar(
   { view, setView, onCreateOrg, unread = 0 }: { view: View; setView: (v: View) => void; onCreateOrg: () => void; unread?: number },
 ) {
-  const { identity } = useIdentity();
+  const { identity, mode } = useIdentity();
+  const { sections } = useSectionPreferences(identity.address, mode);
   const { activeOrg } = useOrgs();
   const { t } = useI18n();
   const nav: { id: View; label: string; icon: string }[] = [
@@ -72,7 +75,7 @@ function Sidebar(
           <div className="brand-org">{activeOrg.branding.name}</div>
         </div>
         <nav className="nav" aria-label={t("nav.primary")}>
-          {nav.map((n) => (
+          {nav.filter(n => n.id === "chats" || n.id === "settings" || sections[n.id]).map((n) => (
             <button key={n.id} className={`nav-item ${view === n.id ? "active" : ""}`} onClick={() => setView(n.id)}>
               <span className="nav-icon">{n.icon}</span> {n.label}
             </button>
@@ -91,6 +94,8 @@ function Sidebar(
 }
 
 function MobileNav({ view, setView, unread = 0 }: { view: View; setView: (v: View) => void; unread?: number }) {
+  const { identity, mode } = useIdentity();
+  const { sections } = useSectionPreferences(identity.address, mode);
   const { t } = useI18n();
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chats", label: t("nav.chats"), icon: "💬" },
@@ -102,7 +107,7 @@ function MobileNav({ view, setView, unread = 0 }: { view: View; setView: (v: Vie
   ];
   return (
     <nav className="mobile-nav" aria-label={t("nav.primary")}>
-      {nav.map((n) => (
+      {nav.filter(n => n.id === "chats" || n.id === "settings" || sections[n.id]).map((n) => (
         <button key={n.id} className={`mobile-nav-item ${view === n.id ? "active" : ""}`} onClick={() => setView(n.id)}>
           <span className="nav-icon">{n.icon}</span>
           <span>{n.label}</span>
@@ -118,11 +123,16 @@ export function App() {
   const { transportId, transportStatus } = useChat();
   const { identity, mode } = useIdentity();
   useSharedSignIn(identity.address);
-  const forum = useForumFollow(identity.address, mode === "wallet");
+  const { sections, error: sectionError } = useSectionPreferences(identity.address, mode);
+  const available = (next: View) => next === "chats" || next === "settings" || (!storageError && !recoveryPaused && !sectionError && sections[next]);
+  const forum = useForumFollow(identity.address, mode === "wallet" && available("forum"));
   const { activeOrg } = useOrgs();
   const navigation = useContext(AppViewContext);
   if (!navigation) throw new Error("App requires AppViewProvider");
-  const { view, setView } = navigation;
+  const { setView } = navigation;
+  const requestedAvailable = available(navigation.view);
+  const view = requestedAvailable ? navigation.view : "settings";
+  useEffect(() => { if (!requestedAvailable) setView("settings"); }, [requestedAvailable, setView]);
   const [mobilePane, setMobilePane] = useState<MobilePane>("list");
   const [contactLabel, setContactLabel] = useState("");
   const [linkedRecipient, setLinkedRecipient] = useState<string | null>(() => recipientFromFragment(window.location.hash));
@@ -130,7 +140,7 @@ export function App() {
   const close = () => { setDialog(null); setLinkedRecipient(null); setContactLabel(""); };
   const needsConnect = transportId === "xmtp" && transportStatus !== "ready";
   const openView = (next: View) => {
-    setView(next);
+    setView(available(next) ? next : "settings");
     if (next === "chats" || next === "rooms") setMobilePane("list");
   };
 
@@ -169,7 +179,7 @@ export function App() {
           </div>
         )}
         {view === "forum" && <ForumUpdates forum={forum} />}
-        <div hidden={view !== "mail"} style={{display:view === "mail" ? "contents" : "none"}}><Mailbox key={`${identity.address}:${mode}`} active={view === "mail"} onOpenSettings={() => openView("settings")} /></div>
+        {available("mail") && <div hidden={view !== "mail"} style={{display:view === "mail" ? "contents" : "none"}}><Mailbox key={`${identity.address}:${mode}`} active={view === "mail"} onOpenSettings={() => openView("settings")} /></div>}
         {view === "routes" && <MessageRoutes onCompose={() => { setLinkedRecipient(null); setDialog("newDm"); }} />}
         {view === "settings" && (
           <Settings onCreateOrg={() => setDialog("createOrg")} onImportOrg={() => setDialog("importOrg")} />
@@ -179,7 +189,7 @@ export function App() {
 
       {dialog === "newDm" && <NewDmDialog key={linkedRecipient ?? "manual"} initialRecipient={linkedRecipient ?? ""} initialLabel={contactLabel} onContacts={() => setDialog("contacts")} onClose={close} onCreated={() => { setView("chats"); setMobilePane("thread"); }} />}
       {(dialog === "contacts" || dialog === "notes") && <LocalLibrary key={`${identity.address}:${dialog}`} kind={dialog} onClose={close} onPick={contact => { setLinkedRecipient(contact.address); setContactLabel(contact.label); setDialog("newDm"); }} />}
-      {dialog === "newRoom" && <NewRoomDialog onClose={close} onCreated={() => setMobilePane("thread")} />}
+      {dialog === "newRoom" && available("rooms") && <NewRoomDialog onClose={close} onCreated={() => setMobilePane("thread")} />}
       {dialog === "createOrg" && <CreateOrgDialog onClose={close} />}
       {dialog === "importOrg" && <ImportOrgDialog onClose={close} />}
     </div>

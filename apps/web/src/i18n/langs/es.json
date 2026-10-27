@@ -886,5 +886,12 @@
   "settings.recoverConversationDone": "Conversación recuperada. Revisa la bandeja de entrada, las solicitudes o los bloqueados; se conservan tus decisiones de consentimiento.",
   "settings.recoverConversationFailed": "No se pudo confirmar la recuperación. Revisa tus conversaciones y los detalles de la sesión antes de volver a intentarlo. No reenvíes el mensaje.",
   "dialog.governanceRole": "Rol de Governance",
-  "dialog.chooseGovernanceRole": "Elige un rol de Governance"
+  "dialog.chooseGovernanceRole": "Elige un rol de Governance",
+  "settings.sectionsTitle": "Secciones opcionales",
+  "settings.sectionsHelp": "Elige qué secciones aparecen en Chat en este navegador, para este perfil. Desactivarlas conserva los datos y permisos. Activarlas no concede acceso ni conecta servicios.",
+  "settings.sectionsError": "No se pudieron guardar o leer las preferencias. Se conservaron tus datos. Restablece el almacenamiento del navegador y recarga.",
+  "settings.section.rooms": "Salas",
+  "settings.section.mail": "Correo",
+  "settings.section.routes": "Canales",
+  "settings.section.forum": "Foro"
 }
