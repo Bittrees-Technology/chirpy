@@ -37,6 +37,7 @@ async function openRoom(page: Page) {
   await page.goto('/'); await page.locator('.nav-item', { hasText: 'Settings' }).click();
   await page.getByRole('button', { name: 'Connect wallet', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Address', exact: true })).toHaveValue(owner);
+  await page.getByRole('switch', { name: 'Rooms', exact: true }).click();
   await page.locator('.nav-item', { hasText: 'Rooms' }).click();
   await page.getByLabel('Include existing rooms').selectOption('governance');
   await page.locator('.list-item', { hasText: 'shareholders' }).click();

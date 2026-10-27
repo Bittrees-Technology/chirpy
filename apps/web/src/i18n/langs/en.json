@@ -886,5 +886,12 @@
   "settings.recoverConversationDone": "Conversation recovered. Check Inbox, Requests or Blocked; your existing consent choices still apply.",
   "settings.recoverConversationFailed": "Recovery could not be confirmed. Check your conversations and session details before trying again. Do not resend the message.",
   "dialog.governanceRole": "Governance role",
-  "dialog.chooseGovernanceRole": "Choose a Governance role"
+  "dialog.chooseGovernanceRole": "Choose a Governance role",
+  "settings.sectionsTitle": "Optional sections",
+  "settings.sectionsHelp": "Choose which sections appear in Chat on this browser, for this profile. Turning a section off preserves its data and permissions. Enabling it does not grant access or connect a service.",
+  "settings.sectionsError": "Section choices could not be saved or read. Your existing data was preserved. Restore browser storage and reload.",
+  "settings.section.rooms": "Rooms",
+  "settings.section.mail": "Email",
+  "settings.section.routes": "Channels",
+  "settings.section.forum": "Forum"
 }

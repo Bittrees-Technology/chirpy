@@ -1,3 +1,4 @@
+import { optionalSections, useSectionPreferences } from "../featurePreferences";
 import { ConversationRecoveryView } from "./ConversationRecovery";
 import React, { useEffect, useMemo, useState } from "react";
 import { serializeOrg } from "@app/core";
@@ -24,6 +25,7 @@ export function Settings(
     identity, mode, hasInjectedWallet, browserWallets, walletConnectAvailable, isConnecting, ensProfile, walletError,
     setHandle, resetHandle, reset, connectWallet, connectWalletConnect, disconnectWallet,
   } = useIdentity();
+  const { sections, setSection, error: sectionError } = useSectionPreferences(identity.address, mode);
   const { orgs, recoverySnapshots, organizationStorageError, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, storageError, storageBusy, recoveryPaused, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices, legacySavedItems = [], removeLegacySavedItem, removeLegacyBlockedAddress } = useSettingsPrefs();
   const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging, requestHistorySync, inspectMessaging, recoverMissingConversation } = useChat();
@@ -148,6 +150,16 @@ export function Settings(
   return (
     <div className="settings">
       <h1>{t("nav.settings")}</h1>
+      <section className="card" aria-label={t("settings.sectionsTitle")}>
+        <h2>{t("settings.sectionsTitle")}</h2>
+        <p className="muted">{t("settings.sectionsHelp")}</p>
+        {sectionError && <p role="alert">{t("settings.sectionsError")}</p>}
+        {optionalSections.map(section => <div className="pref-row" key={section}>
+          <div className="pref-title">{t(`settings.section.${section}`)}</div>
+          <Toggle checked={sections[section]} disabled={storageBusy || !!storageError || recoveryPaused || sectionError}
+            label={t(`settings.section.${section}`)} onChange={enabled => setSection(section, enabled)} />
+        </div>)}
+      </section>
       {organizationStorageError && <p role="alert">{t("settings.orgStorageError")}</p>}
       {recoverySnapshots.length > 0 && <section className="card" aria-label={t("settings.orgRecovery")}>
         <h2>{t("settings.orgRecovery")}</h2>

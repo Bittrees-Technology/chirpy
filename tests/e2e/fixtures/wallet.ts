@@ -11,8 +11,17 @@ type WalletInjectionTarget = Page | BrowserContext;
 const isHex = (value: unknown): value is `0x${string}` =>
   typeof value === "string" && /^0x[0-9a-fA-F]*$/.test(value);
 
-export async function injectSyntheticWallet(target: WalletInjectionTarget, privateKey = generatePrivateKey()): Promise<string> {
+export async function injectSyntheticWallet(target: WalletInjectionTarget, privateKey = generatePrivateKey(), activateSections = true): Promise<string> {
   const account = privateKeyToAccount(privateKey);
+  // Existing feature-specific suites explicitly run with all optional sections enabled.
+  if (activateSections) await target.addInitScript(address => {
+    if (!localStorage.getItem('chat:identity:v1')) localStorage.setItem('chat:identity:v1', JSON.stringify({address, handle:'you'}));
+    const stub = JSON.parse(localStorage.getItem('chat:identity:v1')!).address;
+    for (const [mode, owner] of [['wallet', address], ['stub', stub]]) {
+      const key = `chat:sections:v1:${mode}:${owner.toLowerCase()}`;
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({rooms:true,mail:true,routes:true,forum:true}));
+    }
+  }, account.address);
   if (process.env.CHIRPY_TEST_NATIVE_CSP === "1") {
     const policy = JSON.parse(readFileSync("apps/web/src-tauri/tauri.conf.json", "utf8")).app.security.csp;
     await target.route("http://127.0.0.1:*/**", async route => {

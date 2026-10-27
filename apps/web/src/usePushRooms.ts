@@ -3,19 +3,19 @@ import { PushRoomSession, PushRooms, type PushRoomsSnapshot, type PushSource, ty
 import { getActiveKind, getActiveProvider, getProviderRevision, subscribeProvider } from './walletProviders';
 const empty = (): PushRoomsSnapshot => ({ rooms: [], status: 'idle', revision: 0, loading: false });
 /** The adapter belongs to one live wallet/provider/org/source binding, even if the address stays the same. */
-export function usePushRooms(owner: string, walletMode: boolean, organization: string, onInvalidate: (available?: ReadonlySet<string>) => void) {
+export function usePushRooms(owner: string, walletMode: boolean, organization: string, onInvalidate: (available?: ReadonlySet<string>) => void, enabled = true) {
   const connectionRevision = useSyncExternalStore(subscribeProvider, getProviderRevision);
   const [source, setSource] = useState<PushSource | null>(null);
   const [snapshot, setSnapshot] = useState<PushRoomsSnapshot>(empty);
   const [error, setError] = useState<string | null>(null);
-  const binding = useMemo(() => ({ owner, walletMode, organization, source, connectionRevision }), [owner, walletMode, organization, source, connectionRevision]);
+  const binding = useMemo(() => ({ owner, walletMode, organization, source, connectionRevision, enabled }), [owner, walletMode, organization, source, connectionRevision, enabled]);
   const live = useRef(binding); live.current = binding;
   const adapter = useRef<PushRooms | null>(null);
   const adapterBinding = useRef(binding);
   useEffect(() => {
     let disposed = false;
     onInvalidate(); setSnapshot(empty()); setError(null); adapter.current = null;
-    if (!source) return;
+    if (!source || !enabled) return;
     const provider = walletMode ? getActiveProvider() : null;
     let session: PushRoomSession | null = null;
     try {

@@ -17,6 +17,8 @@ for (const mobile of [false, true]) {
     await page.goto('/');
     const decline = page.getByRole('button', { name: 'Decline', exact: true });
     if (await decline.isVisible()) await decline.click();
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: /Settings/ }).click();
+    await page.getByRole('switch', { name: 'Rooms', exact: true }).click();
     if (mobile) {
       const navigation = page.getByRole('navigation', { name: 'Primary' });
       const control = page.getByRole('button', { name: 'Analytics preferences', exact: true });
