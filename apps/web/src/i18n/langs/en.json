@@ -896,5 +896,21 @@
   "settings.section.forum": "Forum",
   "status.messagingWalletChanged": "Wallet changed. Reconnect the selected wallet before enabling messaging.",
   "status.messagingRegistrationUncertain": "Unable to confirm the saved messaging installation.",
-  "status.messagingInstallationUnavailable": "The saved messaging installation is unavailable. Check its recovery status before trying again."
+  "status.messagingInstallationUnavailable": "The saved messaging installation is unavailable. Check its recovery status before trying again.",
+  "settings.messagingDevices": "Messaging devices",
+  "settings.messagingDevicesHelp": "View the messaging devices registered to your wallet, including other apps using the same inbox. This public metadata check needs no signature.",
+  "settings.devicesReading": "Checking devices…",
+  "settings.devicesRead": "Check messaging devices",
+  "settings.devicesFailed": "Could not check messaging devices. Check your connection and selected wallet, then try again.",
+  "settings.devicesNoInbox": "No registered messaging inbox was found for this wallet.",
+  "settings.devicesCount": "Registered devices: {count}",
+  "settings.devicesDates": "Creation dates come from device clocks and do not show last activity. Keep devices with your message history available before changing access.",
+  "settings.devicesLocalUnknown": "This browser could not be identified in this check.",
+  "settings.devicesLocalMissing": "This browser’s installation is not in the registered list.",
+  "settings.devicesEmpty": "No devices are registered to this inbox.",
+  "settings.deviceNumber": "Device {count}",
+  "settings.deviceThisBrowser": "This browser",
+  "settings.deviceCreated": "Created:",
+  "settings.deviceDateUnknown": "Date unavailable",
+  "settings.deviceId": "Device ID"
 }

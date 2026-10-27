@@ -896,5 +896,21 @@
   "settings.section.forum": "Foro",
   "status.messagingWalletChanged": "La cartera cambió. Vuelve a conectar la cartera seleccionada antes de activar la mensajería.",
   "status.messagingRegistrationUncertain": "No se puede confirmar la instalación de mensajería guardada.",
-  "status.messagingInstallationUnavailable": "La instalación de mensajería guardada no está disponible. Comprueba su estado de recuperación antes de volver a intentarlo."
+  "status.messagingInstallationUnavailable": "La instalación de mensajería guardada no está disponible. Comprueba su estado de recuperación antes de volver a intentarlo.",
+  "settings.messagingDevices": "Dispositivos de mensajería",
+  "settings.messagingDevicesHelp": "Consulta los dispositivos de mensajería registrados en tu cartera, incluidas otras apps que usan la misma bandeja. Esta consulta de metadatos públicos no necesita una firma.",
+  "settings.devicesReading": "Consultando dispositivos…",
+  "settings.devicesRead": "Consultar dispositivos de mensajería",
+  "settings.devicesFailed": "No se pudieron consultar los dispositivos de mensajería. Comprueba tu conexión y la cartera seleccionada, y vuelve a intentarlo.",
+  "settings.devicesNoInbox": "No se encontró una bandeja de mensajería registrada para esta cartera.",
+  "settings.devicesCount": "Dispositivos registrados: {count}",
+  "settings.devicesDates": "Las fechas de creación proceden del reloj de cada dispositivo y no indican su última actividad. Conserva disponibles los dispositivos que contienen tu historial antes de cambiar el acceso.",
+  "settings.devicesLocalUnknown": "No se pudo identificar este navegador en esta consulta.",
+  "settings.devicesLocalMissing": "La instalación de este navegador no figura en la lista de dispositivos registrados.",
+  "settings.devicesEmpty": "No hay dispositivos registrados en esta bandeja.",
+  "settings.deviceNumber": "Dispositivo {count}",
+  "settings.deviceThisBrowser": "Este navegador",
+  "settings.deviceCreated": "Creado:",
+  "settings.deviceDateUnknown": "Fecha no disponible",
+  "settings.deviceId": "Identificador del dispositivo"
 }
