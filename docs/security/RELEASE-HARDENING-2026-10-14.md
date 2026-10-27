@@ -30,3 +30,10 @@ Hosted validation also found that both isolated Push harnesses merged the old st
 The current pinned minimal gate base runs Node 24.21.0; an older locally cached gate image runs Node 24.20.0. Both are below the reviewed 24.22.1 target. Its dependency stage now pins the official multi-platform Node 24.22.1 image by digest, and the final image copies only its Node executable and license into the existing minimal Debian 13 runtime. No shell or package manager is added. The image test checks the actual executable version before service startup, checks the running service version and license, and retains the existing native SDK, nonroot, read-only root, capability, ingress and persistence checks.
 
 This is a build/runtime update, not a deployment or an identity migration. Acer gate preparation, authority, recovery and managed-room acceptance remain separate. A cached older gate image is not an accepted standby package: source comparison found older gate/core files even where dependency manifests matched.
+
+
+## Query serializer patch — 27 October
+
+The dependency audit now reports GHSA-6pq8-jhm2-2vcw for qs 6.16.0, reached through the browser URL polyfill. The narrow override selects upstream 6.16.1 and leaves the rest of the lockfile unchanged. No advisory exception or audit-threshold change is introduced.
+
+Five regressions exercise the actual transitive serializer: non-callable conversion methods and null-prototype array elements under both comma serialization modes, plus normal strings and callable conversion. Four cases fail on 6.16.0; all five pass on 6.16.1. The local audit retains only the previously tracked low elliptic finding. Production bundles change, so the web patch requires deployment after exact-head validation. [Upstream advisory](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw).
