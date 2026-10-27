@@ -118,3 +118,24 @@ it('does not report success if inbox loading invalidates the saved installation'
   expect(f.existing.close).toHaveBeenCalledOnce(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
   expect(f.transport.status).toBe('error');
 });
+
+it('reuses the already-open saved client when startup failed during inbox loading', async () => {
+  const f = await setup();
+  const list = vi.fn(async () => []); list.mockRejectedValueOnce(new Error('temporary inbox failure'));
+  Object.assign(f.transport, { listConversations: list });
+  await f.transport.init(); expect(f.transport.status).toBe('idle');
+  f.sdk.Client.build.mockRejectedValueOnce(new Error('OPFS is already open'));
+  await f.transport.enable();
+  expect(f.sdk.Client.build).toHaveBeenCalledTimes(1);
+  expect(f.sdk.Client.create).not.toHaveBeenCalled(); expect(f.transport.status).toBe('ready');
+});
+it('does not reuse a cached failed candidate on a later explicit reconnect', async () => {
+  const f = await setup();
+  const list = vi.fn(async () => []); list.mockRejectedValueOnce(new Error('temporary inbox failure'));
+  Object.assign(f.transport, { listConversations: list }); await f.transport.init();
+  f.existing.isRegistered.mockRejectedValueOnce(new Error('lookup unavailable'));
+  await expect(f.transport.enable()).rejects.toThrow('lookup unavailable');
+  expect(f.existing.close).toHaveBeenCalledOnce();
+  await f.transport.enable();
+  expect(f.sdk.Client.build).toHaveBeenCalledTimes(2); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+});

@@ -494,10 +494,14 @@ export class XmtpTransport implements Transport {
           }
         };
         await checkWallet();
-        const existing = await sdk.Client.build(
-          await this.identifier(),
-          xmtpOptions(sdk) as Parameters<typeof sdk.Client.build>[1],
-        );
+        // Startup can fail after opening the database but before listing inboxes.
+        // Reuse that client; a second build would compete for its OPFS lock.
+        const existing = sharedXmtp?.address.toLowerCase() === this.myAddress
+          ? sharedXmtp.client
+          : await sdk.Client.build(
+            await this.identifier(),
+            xmtpOptions(sdk) as Parameters<typeof sdk.Client.build>[1],
+          );
         let adopted = false;
         try {
           const registered = await existing.isRegistered();
@@ -514,6 +518,7 @@ export class XmtpTransport implements Transport {
         } finally {
           if (!adopted) {
             if (this.client === existing) this.client = null;
+            if (sharedXmtp?.client === existing) sharedXmtp = null;
             existing.close();
           }
         }
