@@ -105,3 +105,8 @@ Health includes this dependency whenever the registry contains a role rule.
 This code does not create a group or grant gatekeeper authority. Provision the actual
 room, namespace, isolated identity and recovery before configuring the registry.
 Existing Push rooms continue using their original protocol and authority.
+
+
+### Gate diagnostic log rotation
+
+The shipped gate Compose profile uses Docker’s `json-file` driver with `max-size: "10m"` and `max-file: "3"`. These limits rotate the container’s diagnostic stdout/stderr; they do not change the persistent MLS store, membership state, delivery journals or backup retention. Existing containers receive the settings only when recreated through the reviewed release procedure. Do not remove a data volume to apply a logging change, and preserve operator customizations when reviewing an existing deployment. See [Docker’s logging options](https://docs.docker.com/engine/logging/drivers/json-file/) for the driver’s rotation behavior.

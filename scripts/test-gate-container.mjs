@@ -42,6 +42,10 @@ try {
   assert.equal(String(rendered.environment.GATE_PORT), '8788');
   assert.equal(rendered.environment.GATE_BIND_HOST, '0.0.0.0');
   run();
+  const logger = JSON.parse(docker('inspect', '--format', '{{json .HostConfig.LogConfig}}', name));
+  assert.equal(logger.Type, 'json-file');
+  assert.equal(logger.Config['max-size'], '10m');
+  assert.equal(logger.Config['max-file'], '3');
   const bindings = JSON.parse(docker('inspect', '--format', '{{json .NetworkSettings.Ports}}', name));
   assert.deepEqual(Object.keys(bindings), ['8788/tcp']);
   assert.equal(bindings['8788/tcp'].length, 1);
@@ -73,7 +77,7 @@ try {
   node(`import fs from 'node:fs'; if (!fs.existsSync('/etc/ssl/certs/ca-certificates.crt')) throw new Error('System TLS CA bundle missing');`);
   docker('stop', name); docker('rm', name); run();
   node(`import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(fs.readFileSync('/data/persistence-probe','utf8'), 'synthetic persistence check');`);
-  console.log('Gate Compose: Node24.22.1 with license, loopback-only published port, independent host port, non-root, read-only root, no capabilities, no privilege escalation, native SDK, HTTP rejection, persistent volume and absence of shell/package managers passed.');
+  console.log('Gate Compose: Node24.22.1 with license, bounded diagnostic logs, loopback-only published port, independent host port, non-root, read-only root, no capabilities, no privilege escalation, native SDK, HTTP rejection, persistent volume and absence of shell/package managers passed.');
 } finally {
   try { compose('down', '--volumes', '--remove-orphans'); }
   finally { rmSync(directory, { recursive: true, force: true }); }
