@@ -19,7 +19,7 @@ import { isAddress, isEnsName, resolveEns, type EnsRecord } from "../ens";
 
 
 export function Settings(
-  { onCreateOrg, onImportOrg }: { onCreateOrg: () => void; onImportOrg: () => void },
+  { onCreateOrg, onImportOrg, onSectionChange }: { onCreateOrg: () => void; onImportOrg: () => void; onSectionChange?: () => void },
 ) {
   const {
     identity, mode, hasInjectedWallet, browserWallets, walletConnectAvailable, isConnecting, ensProfile, walletError,
@@ -157,7 +157,7 @@ export function Settings(
         {optionalSections.map(section => <div className="pref-row" key={section}>
           <div className="pref-title">{t(`settings.section.${section}`)}</div>
           <Toggle checked={sections[section]} disabled={storageBusy || !!storageError || recoveryPaused || sectionError}
-            label={t(`settings.section.${section}`)} onChange={enabled => setSection(section, enabled)} />
+            label={t(`settings.section.${section}`)} onChange={enabled => { onSectionChange?.(); setSection(section, enabled); }} />
         </div>)}
       </section>
       {organizationStorageError && <p role="alert">{t("settings.orgStorageError")}</p>}

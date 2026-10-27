@@ -132,7 +132,9 @@ export function App() {
   const { setView } = navigation;
   const requestedAvailable = available(navigation.view);
   const view = requestedAvailable ? navigation.view : "settings";
-  useEffect(() => { if (!requestedAvailable) setView("settings"); }, [requestedAvailable, setView]);
+  // Keep incoming destinations while the wallet-owned profile restores. A
+  // disabled destination renders Settings without changing its activation.
+  // Explicit switch edits below settle navigation on Settings instead.
   const [mobilePane, setMobilePane] = useState<MobilePane>("list");
   const [contactLabel, setContactLabel] = useState("");
   const [linkedRecipient, setLinkedRecipient] = useState<string | null>(() => recipientFromFragment(window.location.hash));
@@ -182,7 +184,7 @@ export function App() {
         {available("mail") && <div hidden={view !== "mail"} style={{display:view === "mail" ? "contents" : "none"}}><Mailbox key={`${identity.address}:${mode}`} active={view === "mail"} onOpenSettings={() => openView("settings")} /></div>}
         {view === "routes" && <MessageRoutes onCompose={() => { setLinkedRecipient(null); setDialog("newDm"); }} />}
         {view === "settings" && (
-          <Settings onCreateOrg={() => setDialog("createOrg")} onImportOrg={() => setDialog("importOrg")} />
+          <Settings onSectionChange={() => setView("settings")} onCreateOrg={() => setDialog("createOrg")} onImportOrg={() => setDialog("importOrg")} />
         )}
       </main>
       <MobileNav unread={forum.unread} view={view} setView={openView} />

@@ -57,3 +57,27 @@ test('invalid section storage fails closed and preserves the original record',as
  await expect(page.locator('.sidebar .nav').getByRole('button',{name:/Email|Forum|Rooms|Channels/})).toHaveCount(0);
  expect(await page.evaluate(key=>localStorage.getItem(key),key)).toBe(raw);
 });
+
+for (const section of ['mail','forum'] as const) test(`an already enabled ${section} link survives asynchronous wallet restoration`,async({page})=>{
+ const wallet=await injectSyntheticWallet(page,undefined,false);
+ await page.addInitScript(({wallet,section})=>{
+  localStorage.setItem('chat:walletConnected:v1','true');
+  localStorage.setItem('chat:walletProviderKind:v1',JSON.stringify('injected'));
+  localStorage.setItem(`chat:sections:v1:wallet:${wallet.toLowerCase()}`,JSON.stringify({[section]:true}));
+  const original=(window as any).ethereum.request;
+  (window as any).__restoreRequests=[];
+  (window as any).ethereum.request=async(input:any)=>{
+   (window as any).__restoreRequests.push(input.method);
+   if(input.method==='eth_accounts')await new Promise(resolve=>setTimeout(resolve,250));
+   return original(input);
+  };
+ },{wallet,section});
+ await page.route('**/api/mail/**',route=>route.fulfill({json:{enabled:true,wallet:wallet.toLowerCase(),connection:{mailbox:'fixture@bittrees.org',scopes:['read'],expiresAt:null}}}));
+ await page.goto(section==='mail'?'/?mail=connected':'/?forum=governance');
+ await dismissAnalyticsConsent(page);
+ await expect(page.locator('.sidebar .foot-addr')).toContainText(wallet.slice(0,6));
+ await expect(page.getByRole('heading',{name:section==='mail'?'Email':'Governance forum',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Optional sections',exact:true})).toHaveCount(0);
+ const requests=await page.evaluate(()=>(window as any).__restoreRequests);
+ expect(requests).not.toContain('eth_requestAccounts');expect(requests).not.toContain('personal_sign');
+});
