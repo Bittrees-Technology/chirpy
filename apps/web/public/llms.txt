@@ -3,6 +3,8 @@
 > Bittrees public-preview app for wallet messaging and an optional connected Mail inbox.
 
 ## Public information
+- [Privacy information](https://chat.bittrees.org/privacy): data handling and user controls.
+- [Service information](https://chat.bittrees.org/service): operator, access and preview limits.
 - [About Chat](https://chat.bittrees.org/about): capabilities and preview limitations.
 - [Support](https://chat.bittrees.org/support): help and safe bug reporting.
 - [Security](https://chat.bittrees.org/security): private vulnerability reporting guidance.

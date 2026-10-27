@@ -62,6 +62,14 @@
     {
       "source": "/about",
       "destination": "/about.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/service",
+      "destination": "/service.html"
     }
   ],
   "headers": [
@@ -178,6 +186,26 @@
     {
       "source": "/security/",
       "destination": "/security",
+      "permanent": true
+    },
+    {
+      "source": "/privacy/",
+      "destination": "/privacy",
+      "permanent": true
+    },
+    {
+      "source": "/privacy.html",
+      "destination": "/privacy",
+      "permanent": true
+    },
+    {
+      "source": "/service/",
+      "destination": "/service",
+      "permanent": true
+    },
+    {
+      "source": "/service.html",
+      "destination": "/service",
       "permanent": true
     }
   ]
