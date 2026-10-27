@@ -10,7 +10,7 @@
     "@xmtp/node-sdk": "6.0.0",
     "viem": "2.53.1",
     "svix": "2.5.0",
-    "nodemailer": "10.0.9"
+    "nodemailer": "10.1.4"
   },
   "overrides": {
     "ws": "8.21.0"

@@ -29,6 +29,14 @@ See [REMAINING-WORK.md](REMAINING-WORK.md) for the consolidated unfinished backl
 | 23 | Wallet-email request recovery | PRs #105–107 provide cancellation, durable receipt recovery and reviewed encrypted receipt backup; actual cross-origin/device acceptance remains |
 | Later | Voice, presence, optional relays | Product expansion, after core production readiness |
 
+## 27 October release candidate
+
+Public `/about`, `/support`, `/security`, `/privacy`, `/service` and Spanish help pages have canonical metadata and a public-only sitemap. The app workspace, API, mailbox and administration routes remain excluded from indexing. Unknown paths no longer fall back to the app with HTTP200. Lightweight AI discovery guidance grants no access to private features. Chat Admin and chat@bittrees.org are the confirmed public operator/contact; the service remains a preview until external acceptance is complete.
+
+Patched DOMPurify3.4.17, Nodemailer10.1.4 (including the isolated worker lock), Undici7.30.1 and Zod4.6.6 clear all moderate/high/critical JavaScript findings without exclusions. One low unpatched elliptic advisory remains via browser crypto polyfills. Wallet frame compatibility and malformed-payload rejection are checked against the installed consumer. SMTP corruption tests traverse Redis SCAN pages and force an empty nonterminal first page while preserving held state and no-resend assertions.
+
+Deployment, managed-room service/authority, independent monitoring cadence, full fenced recovery, forwarding activation and physical-device/native signing acceptance must still be recorded separately. See the remaining-work ledger; passing a build or source check does not certify those operations.
+
 ## HTTP hardening acceptance
 
 The real HTTP suite covers malformed and scalar JSON, unsupported content types and methods, compressed bodies, rejected origins/preflights, both declared and streamed oversized payloads, handler exceptions, forged forwarding headers, and bounded server timeout settings. Existing room authorization tests cover signature replay, expiration, incorrect identity/inbox, altered rules, and removed registry entries.

@@ -151,7 +151,25 @@ describe.skipIf(!container)('SMTP queue, journal and TLS wire recovery',{timeout
   if(kind==='wrong-reference')j.smtpReference.digest='00'.repeat(32);
   if(kind==='wrong-receipt')j.providerId='smtp_'+'00'.repeat(16);
   await redis(['SET',key,JSON.stringify(j),'KEEPTTL']);const before=await redis(['GET',key]);
-  if(['wallet-shape','id-shape'].includes(kind))await expect(service().indexHolds({apply:true})).rejects.toThrow();
+  if(['wallet-shape','id-shape'].includes(kind)){
+   // SCAN may return an empty nonterminal page in a shared Redis keyspace.
+   // Force that case, then traverse the real cursor instead of assuming page one.
+   let scans=0;
+   const paged=service(async args=>{
+    if(args[0]==='SCAN'){
+     scans++;
+     if(scans===1)return ['1',[]];
+     if(scans===2)return redis([args[0],'0',...args.slice(2)]);
+    }
+    return redis(args);
+   });
+   const inspectAll=async()=>{let cursor='0';for(let page=0;page<4096;page++){
+    const result=await paged.indexHolds({apply:true,cursor});cursor=result.cursor;
+    if(cursor==='0')return;
+   }throw Error('Fixture scan did not complete');};
+   await expect(inspectAll()).rejects.toThrow('Invalid SMTP reconciliation state');
+   expect(scans).toBeGreaterThan(1);
+  }
   if(['provider','missing-reference'].includes(kind))expect(await service().reconcile({apply:true})).toMatchObject({conflicts:1,reconciled:0});else await expect(service().reconcile({apply:true})).rejects.toThrow();
   expect(await redis(['GET',key])).toBe(before);expect(await redis(['ZCARD',queue+':uncertain'])).toBe(1);expect(wire.state.messages).toHaveLength(1);
  });

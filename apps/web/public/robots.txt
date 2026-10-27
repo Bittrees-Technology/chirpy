@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /administration
+Disallow: /mail/
+Disallow: /account
+Disallow: /settings
+Disallow: /login
+Disallow: /connect
+Disallow: /wallet
+Disallow: /session
+Disallow: /?
+
+Sitemap: https://chat.bittrees.org/sitemap.xml
