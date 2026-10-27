@@ -24,7 +24,9 @@ class UpgradeTests(unittest.TestCase):
         self.assertEqual(os.geteuid(), 0, 'Use disposable Linux CI/container root')
         self.assertEqual(sys.platform, 'linux')
         self.assertTrue(os.environ.get('GITHUB_ACTIONS') == 'true' or Path('/.dockerenv').exists())
-        self.temp = tempfile.TemporaryDirectory(prefix='.chat-node-upgrade-test-', dir='/opt')
+        # Hosted runners may make /opt writable by runner accounts. Keep the
+        # real ancestor-ownership checks and isolate fixtures below protected /root.
+        self.temp = tempfile.TemporaryDirectory(prefix='.chat-node-upgrade-test-', dir='/root')
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         spec = importlib.util.spec_from_file_location('node_upgrade_fixture', SCRIPT)
