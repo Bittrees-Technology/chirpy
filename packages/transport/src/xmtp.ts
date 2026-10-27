@@ -624,39 +624,46 @@ export class XmtpTransport implements Transport {
    *  uses the static revoke path, which works even at the 10/10 limit). */
   private async revokeStaleInstallations(sdk: Sdk): Promise<number> {
     if (!this.provider) throw new Error("Connect a wallet to revoke installations.");
+    const provider = this.provider;
+    const checkWallet = async () => {
+      if (this.provider !== provider) throw new Error("Wallet changed. Reopen messaging recovery.");
+      const accounts = await provider.request({ method: "eth_accounts" });
+      if (this.provider !== provider || !Array.isArray(accounts) || typeof accounts[0] !== "string"
+        || accounts[0].toLowerCase() !== this.myAddress) throw new Error("Wallet changed. Reopen messaging recovery.");
+    };
+    await checkWallet();
+    // Reuse the public inventory's wallet/inbox binding and device validation.
+    // A failed lookup is uncertainty, never permission to derive another inbox.
+    const devices = await this.inspectMessagingDevices();
+    if (!devices.inboxId) throw new Error("No verified messaging inbox. Reopen messaging recovery.");
+    const inboxId = devices.inboxId;
     const identifier = await this.identifier();
-    // Resolve the inbox the network actually associates with this wallet — the same lookup
-    // Client.create performs via getInboxIdForIdentifier. generateInboxId() only yields the
-    // deterministic nonce-0 inbox, which is wrong for wallets registered at a non-zero nonce
-    // or with a reassigned recovery address: we'd fetch/revoke the wrong inbox, find nothing,
-    // and strand the user on a red error. Fall back to the nonce-0 id only when the wallet has
-    // no on-network inbox yet (nothing to revoke either way).
-    const helpers = sdk as unknown as {
-      createBackend: (options?: { env?: string }) => Promise<unknown>;
-      getInboxIdForIdentifier: (backend: unknown, id: typeof identifier) => Promise<string | undefined>;
-      generateInboxId: (id: typeof identifier, nonce?: bigint) => Promise<string>;
+    const backend = await sdk.createBackend({ env: xmtpEnv() });
+    const checkBinding = async () => {
+      await checkWallet();
+      if (await sdk.getInboxIdForIdentifier(backend, identifier) !== inboxId) {
+        throw new Error("Messaging inbox binding changed. Reopen messaging recovery.");
+      }
+      await checkWallet();
     };
-    let inboxId: string | undefined;
-    try {
-      const backend = await helpers.createBackend({ env: xmtpEnv() });
-      inboxId = await helpers.getInboxIdForIdentifier(backend, identifier);
-    } catch {
-      inboxId = undefined;
-    }
-    if (!inboxId) inboxId = await helpers.generateInboxId(identifier);
-    const ClientStatic = sdk.Client as unknown as {
-      fetchInboxStates: (inboxIds: string[], env?: unknown) => Promise<Array<{ installations?: Array<{ bytes: Uint8Array }> }>>;
-      revokeInstallations: (signer: unknown, inboxId: string, ids: Uint8Array[], env?: unknown) => Promise<void>;
-    };
-    const states = await ClientStatic.fetchInboxStates([inboxId], xmtpEnv());
-    const ids = (states?.[0]?.installations ?? []).map((i) => i.bytes).filter(Boolean);
+    await checkBinding();
+    const ids = devices.installations.map(device => Uint8Array.from(
+      device.id.match(/../g)!, byte => parseInt(byte, 16),
+    ));
     if (!ids.length) return 0;
-    await ClientStatic.revokeInstallations(
-      makeInjectedSigner(this.provider, this.myAddress, sdk.IdentifierKind.Ethereum),
-      inboxId,
-      ids,
-      xmtpEnv(),
-    );
+    const signer = makeInjectedSigner(provider, this.myAddress, sdk.IdentifierKind.Ethereum);
+    await sdk.Client.revokeInstallations({ ...signer, signMessage: async (message: string) => {
+      await checkBinding();
+      const signature = await signer.signMessage(message);
+      // Wallet approval can outlive a profile/account change. Do not submit that
+      // signature or continue registration for a now-different binding.
+      await checkBinding();
+      return signature;
+    } }, inboxId, ids, backend);
+    // Submission may finish after the active wallet changes. Preserve that
+    // outcome for inspection rather than registering a replacement immediately.
+    try { await checkBinding(); }
+    catch { throw new Error("Device recovery was submitted. Check messaging devices before trying again."); }
     return ids.length;
   }
 
