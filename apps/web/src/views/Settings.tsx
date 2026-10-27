@@ -1,3 +1,4 @@
+import { MessagingDevicesView } from "./MessagingDevices";
 import { optionalSections, useSectionPreferences } from "../featurePreferences";
 import { ConversationRecoveryView } from "./ConversationRecovery";
 import React, { useEffect, useMemo, useState } from "react";
@@ -28,7 +29,7 @@ export function Settings(
   const { sections, setSection, error: sectionError } = useSectionPreferences(identity.address, mode);
   const { orgs, recoverySnapshots, organizationStorageError, activeOrg, activeOrgId, setActiveOrg, removeOrg } = useOrgs();
   const { prefs, storageError, storageBusy, recoveryPaused, syncState, setReadReceiptsDefault, enableSyncAcrossDevices, disableSyncAcrossDevices, revokeAllSyncDevices, legacySavedItems = [], removeLegacySavedItem, removeLegacyBlockedAddress } = useSettingsPrefs();
-  const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging, requestHistorySync, inspectMessaging, recoverMissingConversation } = useChat();
+  const { transportId, transportStatus, transportError, transportNeedsRevoke, enableMessaging, requestHistorySync, inspectMessaging, inspectMessagingDevices, recoverMissingConversation } = useChat();
   const { lang, setLang, t } = useI18n();
   const gateSummary = (rules: unknown[]) => rules.length === 0 ? t("settings.open") : rules.length === 1 ? t("settings.oneRule") : t("settings.rules", undefined, { count: rules.length });
   const [selectedBrowserWallet, setSelectedBrowserWallet] = useState("");
@@ -289,6 +290,7 @@ export function Settings(
         </div>
       </section>
 
+      {transportId === 'xmtp' && mode === 'wallet' && <MessagingDevicesView key={`devices:${identity.address.toLowerCase()}:${activeOrgId}`} inspect={inspectMessagingDevices} initiallyOpen={transportNeedsRevoke} />}
       {transportId === 'xmtp' && mode === 'wallet' && transportStatus === 'ready' &&
         <HistoryRecovery key={`history:${identity.address.toLowerCase()}:${activeOrgId}`} request={requestHistorySync} />}
       {transportId === 'xmtp' && transportStatus === 'ready' && <MessagingDiagnosticsView key={`diagnostics:${identity.address.toLowerCase()}:${activeOrgId}`} inspect={inspectMessaging} />}

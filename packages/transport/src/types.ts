@@ -94,6 +94,8 @@ export interface Transport {
   /** Ask an existing online installation for history; resolution only confirms the request. */
   requestHistorySync?(): Promise<void>;
   inspectMessaging?(conversationId?: string): Promise<MessagingDiagnostics>;
+  /** Explicit public metadata lookup; never opens a client or signs/revokes. */
+  inspectMessagingDevices?(): Promise<MessagingDevices>;
   /** Recover a selected skipped invitation in the current installation, without resending. */
   recoverMissingConversation?(conversationId: string, invitationId: string): Promise<void>;
   getDisplayWalletContext?(): Promise<DisplayWalletContext>;
@@ -127,4 +129,11 @@ export type MessagingDiagnostics = {
   listedConversations: number; listLimit: number; cachedConversations: number;
   lastRecovery?: { stage: string; outcome: "running" | "succeeded" | "failed"; errorCode?: string };
   conversation?: { id: string; found: boolean; active?: boolean; consent?: number; messageCount?: string };
+};
+
+/** Public installation metadata only; creation dates are not last activity. */
+export type MessagingDevices = {
+  inboxId: string | null;
+  localInstallationId: string | null;
+  installations: Array<{ id: string; createdAtMs: number | null }>;
 };

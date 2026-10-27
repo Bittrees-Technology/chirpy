@@ -21,6 +21,7 @@ import {
 import type { DecodedMessage, EnrichedReply, Reaction } from "@xmtp/browser-sdk";
 import type {
   MessagingDiagnostics,
+  MessagingDevices,
   ChatMessage,
   Conversation,
   StartRoomInput,
@@ -551,6 +552,72 @@ export class XmtpTransport implements Transport {
       }
       throw new Error(humanError(error));
     }
+  }
+
+  async inspectMessagingDevices(): Promise<MessagingDevices> {
+    let expired = false;
+    const checkDeadline = () => { if (expired) throw new Error("Messaging device lookup timed out."); };
+    const read = async (): Promise<MessagingDevices> => {
+      if (!ETH_ADDRESS.test(this.myAddress)) throw new Error("Choose a valid wallet to inspect messaging devices.");
+      const checkWallet = async () => {
+        checkDeadline();
+        // Public metadata remains available to a shared signed-in profile without
+        // demanding a wallet connection. An attached provider must still match.
+        if (!this.provider) return;
+        const accounts = await this.provider!.request({ method: "eth_accounts" });
+        checkDeadline();
+        if (!Array.isArray(accounts) || typeof accounts[0] !== "string" || accounts[0].toLowerCase() !== this.myAddress) {
+          throw new Error("Wallet changed. Reopen messaging devices for the selected wallet.");
+        }
+      };
+      await checkWallet();
+      const sdk = await this.loadSdk();
+      checkDeadline();
+      const backend = await sdk.createBackend({ env: xmtpEnv() });
+      checkDeadline();
+      const inboxId = await sdk.getInboxIdForIdentifier(backend, await this.identifier());
+      if (!inboxId) {
+        await checkWallet();
+        return { inboxId: null, localInstallationId: null, installations: [] };
+      }
+      if (!/^[a-f0-9]{64}$/.test(inboxId)) throw new Error("Invalid messaging device metadata.");
+      await checkWallet();
+      const states = await sdk.Client.fetchInboxStates([inboxId], backend);
+      if (!Array.isArray(states) || states.length !== 1 || states[0].inboxId !== inboxId
+        || !Array.isArray(states[0].accountIdentifiers) || !states[0].accountIdentifiers.some(id =>
+          id.identifierKind === sdk.IdentifierKind.Ethereum && typeof id.identifier === "string" && id.identifier.toLowerCase() === this.myAddress)) {
+        throw new Error("Messaging inbox binding changed.");
+      }
+      const entries = states[0].installations;
+      if (!Array.isArray(entries) || entries.length > 32) throw new Error("Invalid messaging device metadata.");
+      const seen = new Set<string>();
+      const installations = entries.map(entry => {
+        if (!(entry.bytes instanceof Uint8Array) || entry.bytes.length !== 32) throw new Error("Invalid messaging device metadata.");
+        const id = Array.from(entry.bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+        if (entry.id !== id || seen.has(id)) throw new Error("Invalid messaging device metadata.");
+        seen.add(id);
+        const ns = entry.clientTimestampNs;
+        if (ns !== undefined && (typeof ns !== "bigint" || ns < 0n)) throw new Error("Invalid messaging device metadata.");
+        const createdAtMs = ns === undefined ? null : Number(ns / 1_000_000n);
+        if (createdAtMs !== null && (!Number.isSafeInteger(createdAtMs) || createdAtMs > 8_640_000_000_000_000)) throw new Error("Invalid messaging device metadata.");
+        return { id, createdAtMs };
+      });
+      await checkWallet();
+      // Get only an already-open client's public ID. Never build a client or read keys.
+      let localInstallationId: string | null = null;
+      try {
+        const client = this.client ?? (sharedXmtp?.address.toLowerCase() === this.myAddress ? sharedXmtp.client : null);
+        const id = client?.installationId;
+        if (typeof id === "string" && /^[a-f0-9]{64}$/.test(id)) localInstallationId = id;
+      } catch { /* A closed or unavailable local client gives no identity evidence. */ }
+      return { inboxId, localInstallationId, installations };
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([read(), new Promise<never>((_, reject) => {
+        timer = setTimeout(() => { expired = true; reject(new Error("Messaging device lookup timed out.")); }, 15_000);
+      })]);
+    } finally { expired = true; clearTimeout(timer); }
   }
 
   /** Revoke every installation currently registered on this inbox (no client needed —

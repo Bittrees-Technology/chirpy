@@ -1,5 +1,5 @@
 import { useSectionPreferences } from "./featurePreferences";
-import type { MessagingDiagnostics } from '@app/transport';
+import type { MessagingDiagnostics, MessagingDevices } from '@app/transport';
 import { discoverBrowserWallets, type BrowserWallet } from './browserWallets';
 import { prepareSyncMigration, SyncMigrationChoiceError, type SyncMigrationChoice } from './syncMigration';
 import { readVersionedSync, decryptVersionedSync, authorizeVersionedSync, writeVersionedSync, VersionedSyncError } from './versionedSyncTransport';
@@ -864,6 +864,7 @@ interface ChatCtx {
   enableMessaging: (opts?: { revokeStale?: boolean }) => Promise<void>;
   requestHistorySync: () => Promise<void>;
   inspectMessaging: (conversationId?: string) => Promise<MessagingDiagnostics>;
+  inspectMessagingDevices: () => Promise<MessagingDevices>;
   recoverMissingConversation: (conversationId: string, invitationId: string) => Promise<void>;
   getDisplayWalletContext: () => Promise<DisplayWalletContext>;
   select: (id: string | null) => void;
@@ -1052,6 +1053,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (!transport?.inspectMessaging || transport.status !== 'ready') throw new Error('Messaging is not ready.');
     const result = await transport.inspectMessaging(conversationId);
     if (transportRef.current !== transport) throw new Error('Wallet or organization changed.');
+    return result;
+  }, []);
+
+  const inspectMessagingDevices = useCallback(async () => {
+    const transport = transportRef.current;
+    const provider = getActiveProvider();
+    if (!transport?.inspectMessagingDevices) throw new Error('Messaging devices are unavailable.');
+    const result = await transport.inspectMessagingDevices();
+    if (transportRef.current !== transport || getActiveProvider() !== provider) throw new Error('Wallet or organization changed.');
     return result;
   }, []);
 
@@ -1249,8 +1259,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     pushError: push.error ?? push.snapshot.error ?? null, enablePushRooms, refreshPushRooms: push.refresh, leavePushRoom, managePushMember, loadPushMembers, historyError,
     transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages: pushReadDenied ? [] : messages,
     historyLoading, isHistory: history.before !== undefined, hasOlderMessages: !pushReadDenied && olderCursor !== undefined, navigateHistory,
-    enableMessaging, requestHistorySync, inspectMessaging, recoverMissingConversation, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent,
-  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, pushReadDenied, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, inspectMessaging, recoverMissingConversation, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent]);
+    enableMessaging, requestHistorySync, inspectMessaging, inspectMessagingDevices, recoverMissingConversation, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent,
+  }), [push.source, push.changeSource, push.snapshot, push.error, push.refresh, enablePushRooms, leavePushRoom, managePushMember, loadPushMembers, historyError, pushReadDenied, transportId, transportStatus, transportError, transportNeedsRevoke, conversations, activeId, activeConversation, messages, historyLoading, history, olderCursor, navigateHistory, enableMessaging, requestHistorySync, inspectMessaging, inspectMessagingDevices, recoverMissingConversation, getDisplayWalletContext, select, markRead, send, react, startDm, createRoom, addRoomMember, requestRoomLeave, updateRoomOwnership, requestRoomJoin, setRoomPolicy, setConversationConsent]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
