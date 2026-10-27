@@ -1,5 +1,5 @@
 # Build dependencies separately; package managers and shell tools do not ship.
-FROM node:22-trixie-slim@sha256:7b8a0c89c54499bee567618f96578e1a12a800f062fbdbfd1fb6a443fa6f6284 AS dependencies
+FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS dependencies
 WORKDIR /app
 COPY selfhost/gate.package.json ./package.json
 COPY selfhost/gate.package-lock.json ./package-lock.json
@@ -9,6 +9,10 @@ RUN mkdir -p /data && chown 65532:65532 /data
 # Debian 13 supplies the glibc and CA bundle required by the native XMTP SDK.
 # Node 24 runs the shared erasable TypeScript directly, without a runtime compiler.
 FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e
+# Keep the minimal runtime base, replacing its older Node with the reviewed
+# release used by the dependency stage. No shell or package manager is copied.
+COPY --from=dependencies /usr/local/bin/node /nodejs/bin/node
+COPY --from=dependencies /usr/local/LICENSE /nodejs/LICENSE
 WORKDIR /app
 COPY --from=dependencies /app/package.json /app/package-lock.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
