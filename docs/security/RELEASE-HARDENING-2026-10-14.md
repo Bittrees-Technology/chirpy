@@ -23,3 +23,10 @@ Development-only aliases resolve the existing buffer/global/process ESM shims fr
 The before/after production build comparison produced 73 byte-identical outputs. These development and preview-test corrections do not change the deployed frontend or application API behavior. Live service, recovery, device and launch acceptance remain separate gates.
 
 Hosted validation also found that both isolated Push harnesses merged the old static configuration. They now evaluate the callback with Vite’s environment and load as ESM. The development probe loads both harnesses for build and preview; the pinned polyfill’s ESM exports resolve relative to the web app even when another harness bundles its configuration. Local Push runtime and all67Push UI cases pass; all73production outputs remain byte-identical. A separate real XMTP-dev consent-recovery failure remains under investigation; its bounded archive diagnostic now preserves the error and uses the SDK’s numeric cutoff type. No recovery assertion is skipped or relaxed.
+
+
+## Gate runtime release — 27 October
+
+The current pinned minimal gate base runs Node 24.21.0; an older locally cached gate image runs Node 24.20.0. Both are below the reviewed 24.22.1 target. Its dependency stage now pins the official multi-platform Node 24.22.1 image by digest, and the final image copies only its Node executable and license into the existing minimal Debian 13 runtime. No shell or package manager is added. The image test checks the actual executable version before service startup, checks the running service version and license, and retains the existing native SDK, nonroot, read-only root, capability, ingress and persistence checks.
+
+This is a build/runtime update, not a deployment or an identity migration. Acer gate preparation, authority, recovery and managed-room acceptance remain separate. A cached older gate image is not an accepted standby package: source comparison found older gate/core files even where dependency manifests matched.

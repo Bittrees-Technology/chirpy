@@ -33,6 +33,7 @@ async function request(url, options = {}) {
 }
 const run = () => { compose('up', '-d', '--no-build'); name = compose('ps', '-q', 'gate'); assert.ok(name); };
 try {
+  assert.equal(docker('run', '--rm', '--network=none', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--entrypoint=/nodejs/bin/node', image, '--version'), 'v24.22.1');
   const rendered = JSON.parse(compose('config', '--format', 'json')).services.gate;
   assert.equal(rendered.ports.length, 1);
   assert.equal(rendered.ports[0].host_ip, '127.0.0.1');
@@ -66,12 +67,13 @@ try {
     assert.equal(fs.statSync('/home/nonroot').uid, 65532);
     assert.throws(() => fs.writeFileSync('/home/nonroot/forbidden-test-write', 'no'), error => error.code === 'EROFS');
     fs.writeFileSync('/data/persistence-probe', 'synthetic persistence check');`);
+  node(`import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(process.version, 'v24.22.1'); assert.ok(fs.readFileSync('/nodejs/LICENSE', 'utf8').includes('MIT'));`);
   assert.throws(() => docker('exec', name, 'npm', '--version'));
   assert.throws(() => docker('exec', name, 'sh', '-c', 'true'));
   node(`import fs from 'node:fs'; if (!fs.existsSync('/etc/ssl/certs/ca-certificates.crt')) throw new Error('System TLS CA bundle missing');`);
   docker('stop', name); docker('rm', name); run();
   node(`import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(fs.readFileSync('/data/persistence-probe','utf8'), 'synthetic persistence check');`);
-  console.log('Gate Compose: loopback-only published port, independent host port, non-root, read-only root, no capabilities, no privilege escalation, native SDK, HTTP rejection, persistent volume and absence of shell/package managers passed.');
+  console.log('Gate Compose: Node24.22.1 with license, loopback-only published port, independent host port, non-root, read-only root, no capabilities, no privilege escalation, native SDK, HTTP rejection, persistent volume and absence of shell/package managers passed.');
 } finally {
   try { compose('down', '--volumes', '--remove-orphans'); }
   finally { rmSync(directory, { recursive: true, force: true }); }
