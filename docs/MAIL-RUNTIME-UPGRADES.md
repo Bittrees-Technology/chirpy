@@ -30,6 +30,11 @@ installation locks, process inspection and storage reserve before changing files
 It refuses unavailable process inspection rather than treating it as no process.
 For both components, every preflight finishes before either runtime is replaced.
 Service-owned state is hashed and retained with its original ownership.
+Missing temporary installation locks are created exclusively with mode0600 after
+verifying root-protected parent directories. Existing lock files are never
+replaced: unsafe ownership, permissions, links or concurrent holders stop the
+update. A failed preflight may leave a new empty lock, but never licenses replay
+of a durable attempt or partial package/runtime update.
 
 It stages independently verified candidate bytes, records a durable attempt, and
 moves each original binary into a protected backup alongside its original manifest

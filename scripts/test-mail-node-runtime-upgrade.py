@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Disposable Linux root filesystem fixtures. Never use production roots/services."""
 import copy
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -119,6 +120,43 @@ class UpgradeTests(unittest.TestCase):
         held = self.filesystem()
         with self.assertRaises(ValueError): self.run_upgrade()
         self.assertEqual(self.filesystem(), held)
+
+    def test_missing_locks_are_created_without_changing_state(self):
+        for c in self.components.values(): c['lock'].unlink()
+        before = self.m.snapshot(self.components['inbound']['state'], root_owned=False)
+        self.assertTrue(self.run_upgrade()['upgraded'])
+        for c in self.components.values():
+            info = c['lock'].lstat()
+            self.assertTrue(stat.S_ISREG(info.st_mode))
+            self.assertEqual((info.st_uid, info.st_nlink, stat.S_IMODE(info.st_mode)), (0, 1, 0o600))
+        self.assertEqual(self.m.snapshot(self.components['inbound']['state'], root_owned=False), before)
+
+    def test_unsafe_lock_permissions(self):
+        self.components['inbound']['lock'].chmod(0o666)
+        self.refuses_without_change()
+
+    def test_symlink_lock(self):
+        lock = self.components['inbound']['lock']; lock.unlink(); lock.symlink_to(self.license)
+        self.refuses_without_change(OSError)
+
+    def test_hardlinked_lock(self):
+        lock = self.components['inbound']['lock']; os.link(lock, self.base/'extra-lock-link')
+        self.refuses_without_change()
+
+    def test_fifo_lock(self):
+        lock = self.components['inbound']['lock']; lock.unlink(); os.mkfifo(lock, 0o600)
+        self.refuses_without_change()
+
+    def test_busy_lock(self):
+        with self.components['inbound']['lock'].open('r+b') as held:
+            fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.refuses_without_change(BlockingIOError)
+
+    def test_unsafe_lock_parent(self):
+        parent = self.base/'unsafe-lock-directory'; parent.mkdir(mode=0o777); parent.chmod(0o777)
+        lock = parent/'install.lock'; lock.write_bytes(b''); lock.chmod(0o600)
+        self.components['inbound']['lock'] = lock
+        self.refuses_without_change()
 
     def test_tampered_candidate(self):
         self.candidate.write_bytes(b'wrong'); self.refuses_without_change()
