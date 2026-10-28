@@ -6,10 +6,10 @@ if (!image || process.env.XMTP_MEMBERSHIP_DRILL !== '1') throw new Error('Set XM
 const name = `chirpy-membership-${randomUUID()}`; const volume = `${name}-data`;
 const docker = args => execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 });
 const script = `import assert from 'node:assert/strict'; import { randomBytes } from 'node:crypto';
-import { createGateClientGetter } from './server/gate-client.js';
+import { provisionGateInstallation } from './server/gate-client.js';
 import { createMembershipRevalidator } from './server/gate-membership.js';
 import { createGateProbe } from './server/gate-health.js';
-const make = name => createGateClientGetter({ env: { XMTP_GATEKEEPER_PRIVATE_KEY: '0x' + randomBytes(32).toString('hex'), GATE_DB_ENCRYPTION_KEY: randomBytes(32).toString('hex'), GATE_DATA_DIR: '/data/' + name, GATE_XMTP_ENV: 'dev' } })();
+const make = name => provisionGateInstallation({ env: { XMTP_GATEKEEPER_PRIVATE_KEY: '0x' + randomBytes(32).toString('hex'), GATE_DB_ENCRYPTION_KEY: randomBytes(32).toString('hex'), GATE_DATA_DIR: '/data/' + name, GATE_XMTP_ENV: 'dev' } });
 const bot = await make('bot'); const alice = await make('alice');
 const group = await bot.conversations.createGroup([alice.inboxId]);
 const rooms = [{ id: group.id, namespace: 'synthetic', title: 'Recovery drill', chainId: 1, gate: { combine: 'all', rules: [{ kind: 'token', standard: 'erc721', token: '0x' + '1'.repeat(40), min: '1' }] } }];

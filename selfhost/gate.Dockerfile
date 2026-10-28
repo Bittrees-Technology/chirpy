@@ -4,7 +4,7 @@ WORKDIR /app
 COPY selfhost/gate.package.json ./package.json
 COPY selfhost/gate.package-lock.json ./package-lock.json
 RUN npm ci --omit=dev --no-fund && npm audit --omit=dev --audit-level=moderate
-RUN mkdir -p /data && chown 65532:65532 /data
+RUN mkdir -p /data && chown 65532:65532 /data && chmod 700 /data
 
 # Debian 13 supplies the glibc and CA bundle required by the native XMTP SDK.
 # Node 24 runs the shared erasable TypeScript directly, without a runtime compiler.
@@ -18,8 +18,8 @@ COPY --from=dependencies /app/package.json /app/package-lock.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies --chown=65532:65532 /data /data
 COPY packages/core ./packages/core
-COPY server/room-join.js server/server-utils.js server/ops-utils.js server/gate-client.js server/gate-config.js server/gate-queue.js server/gate-membership.js server/gate-membership-worker.js server/native-origins.js server/gate-health.js server/gate-role-authority.js ./server/
-COPY selfhost/gate-server.mjs selfhost/gate-snapshot.mjs ./selfhost/
+COPY server/room-join.js server/server-utils.js server/ops-utils.js server/gate-client.js server/gate-storage.js server/gate-config.js server/gate-queue.js server/gate-membership.js server/gate-membership-worker.js server/native-origins.js server/gate-health.js server/gate-role-authority.js ./server/
+COPY selfhost/gate-server.mjs selfhost/gate-snapshot.mjs selfhost/register-gate-once.mjs ./selfhost/
 ENV GATE_PORT=8788 GATE_BIND_HOST=0.0.0.0 GATE_DATA_DIR=/data NODE_ENV=production PATH=/nodejs/bin
 EXPOSE 8788
 VOLUME ["/data"]

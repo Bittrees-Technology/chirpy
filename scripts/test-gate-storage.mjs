@@ -25,13 +25,14 @@ function run(volume, script, input, extra = []) {
   }
 }
 const prelude = `import assert from 'node:assert/strict'; import fs from 'node:fs';
-import { createGateClientGetter } from './server/gate-client.js';
-const data = JSON.parse(fs.readFileSync(0, 'utf8'));
-const get = createGateClientGetter({ env: { XMTP_GATEKEEPER_PRIVATE_KEY: data.key, GATE_DB_ENCRYPTION_KEY: data.databaseKey, GATE_DATA_DIR: '/data', GATE_XMTP_ENV: 'dev' } });`;
+import { createGateClientGetter, provisionGateInstallation } from './server/gate-client.js';
+const data = JSON.parse(fs.readFileSync(0, 'utf8')); fs.chmodSync('/data', 0o700);
+const env = { XMTP_GATEKEEPER_PRIVATE_KEY: data.key, GATE_DB_ENCRYPTION_KEY: data.databaseKey, GATE_DATA_DIR: '/data', GATE_XMTP_ENV: 'dev' };
+const get = createGateClientGetter({ env });`;
 try {
   for (const volume of volumes) docker(['volume', 'create', volume]);
   const result = run(volumes[0], `${prelude}
-const client = await get(); const group = await client.conversations.createGroup([]); await group.sendText(data.message);
+const client = await provisionGateInstallation({ env }); const group = await client.conversations.createGroup([]); await group.sendText(data.message);
 console.log(JSON.stringify({ inbox: client.inboxId, installation: client.installationId, group: group.id })); process.exit(0);`, { key, databaseKey, message });
   const identity = JSON.parse(result.split('\n').at(-1));
   // Each writer process has exited before sealing or copying its snapshot.

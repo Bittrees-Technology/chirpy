@@ -65,12 +65,33 @@ try {
   response = await request(`${url}/api/room-join`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://chirpy.test' }, body: '{' });
   assert.equal(response.status, 400);
   node(`import assert from 'node:assert/strict'; import fs from 'node:fs'; import { Client } from '@xmtp/node-sdk';
-    assert.equal(process.getuid(), 65532); assert.equal(typeof Client.create, 'function');
+    assert.equal(process.getuid(), 65532); assert.equal(typeof Client.create, 'function'); assert.equal(typeof Client.build, 'function');
+    assert.equal(fs.statSync('/data').mode & 0o777, 0o700);
     assert.match(fs.readFileSync('/proc/self/status','utf8'), /CapEff:\\s+0+\\n/);
     assert.match(fs.readFileSync('/proc/self/status','utf8'), /NoNewPrivs:\\s+1/);
     assert.equal(fs.statSync('/home/nonroot').uid, 65532);
     assert.throws(() => fs.writeFileSync('/home/nonroot/forbidden-test-write', 'no'), error => error.code === 'EROFS');
     fs.writeFileSync('/data/persistence-probe', 'synthetic persistence check');`);
+  // Verify the shipped resume/provision modules under actual nonroot/read-only
+  // container boundaries, with a synthetic SDK and absolutely no messaging calls.
+  node(`import assert from 'node:assert/strict'; import fs from 'node:fs';
+    import { createGateClientGetter, provisionGateInstallation } from './server/gate-client.js';
+    const env = { XMTP_GATEKEEPER_PRIVATE_KEY: '0x'+'1'.repeat(64), GATE_DB_ENCRYPTION_KEY: '2'.repeat(64), GATE_DATA_DIR: '/data/synthetic-registration', GATE_XMTP_ENV: 'dev' };
+    let registers = 0, builds = 0;
+    const client = { isRegistered: false, inboxId: 'a'.repeat(64), installationId: 'b'.repeat(64), register: async () => { registers++; client.isRegistered = true; } };
+    const loadSdk = async () => ({ IdentifierKind: { Ethereum: 0 }, LogLevel: { Off: 0 }, Client: {
+      create: async (_signer, options) => { assert.equal(options.disableAutoRegister, true); fs.writeFileSync(options.dbPath(client.inboxId), 'synthetic encrypted store', { mode: 0o600 }); return client; },
+      build: async (identifier, options) => { builds++; assert.equal(identifier.signMessage, undefined); options.dbPath(client.inboxId); return client; }
+    }});
+    await assert.rejects(createGateClientGetter({env, loadSdk})());
+    assert.equal(fs.existsSync(env.GATE_DATA_DIR), false);
+    await provisionGateInstallation({env, loadSdk});
+    await createGateClientGetter({env, loadSdk})();
+    await assert.rejects(provisionGateInstallation({env, loadSdk}));
+    assert.equal(registers, 1); assert.equal(builds, 1);
+    fs.unlinkSync(env.GATE_DATA_DIR+'/chirpy-xmtp-gatekeeper-'+client.inboxId+'.db3');
+    await assert.rejects(createGateClientGetter({env, loadSdk})());
+    assert.equal(builds, 1); assert.equal(registers, 1);`);
   node(`import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(process.version, 'v24.22.1'); assert.ok(fs.readFileSync('/nodejs/LICENSE', 'utf8').includes('MIT'));`);
   assert.throws(() => docker('exec', name, 'npm', '--version'));
   assert.throws(() => docker('exec', name, 'sh', '-c', 'true'));
