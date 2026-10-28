@@ -63,3 +63,37 @@ systemd, service-account command results and free space. Linux runtime imports
 and disabled-worker behavior are also covered by the isolated-runtime CI check;
 actual installed-host checks remain necessary. No test is permission to activate
 forwarding.
+
+## Already-armed operator alerts
+
+The two-component updater above deliberately excludes the notifier. Use the
+separately reviewed `selfhost/upgrade-alert-node.py` for the original accepted
+Chat operator-alert installation. Stage its exact companion
+`upgrade-mail-node.py` beside it: the notifier updater verifies the companion's
+source hash before loading only its filesystem/candidate primitives. Both
+scripts and the operator launcher must be verified against the accepted release.
+It takes `--candidate` and `--license` using the same pinned binary and license.
+
+This update requires idle workers, disabled delivery timers, idle notifier
+instances, the original reviewed notifier/unit bytes, the accepted activation
+and provider-configuration receipts, and root-protected credentials. It refuses
+unknown instances, software drift, unsafe state, unavailable process inspection,
+or any prior upgrade attempt. It preserves the armed configuration and failure
+hooks; it does not stop, mask, restart or reload any service or invoke a failure
+hook. The original test delivery state and all credentials stay intact.
+
+The original executable is copied to an independent verified rollback file.
+The verified candidate atomically replaces the existing path, so no missing
+executable interval is introduced. An already-started process retains its old
+inode; a newly started process opens the new runtime. Failure hooks remain armed
+throughout. Concurrent activity detected during the checks holds the operation
+for reconciliation; it never causes an automatic rollback or retry.
+
+The new runtime is probed as the notifier's existing unprivileged account with a
+minimal environment and sending explicitly disabled, without loading its real
+environment file. A success receipt covers the runtime, preserved hooks, settings
+and delivery state. It does not replace live notification acceptance or establish
+that no unrelated service sent mail concurrently. Failed/interrupted operations
+retain the original binary and durable attempt for operator review. Never rerun
+on uncertainty. Root-filesystem fixtures mock systemd and command execution; an
+actual host installation and disabled-runtime receipt are still required.
