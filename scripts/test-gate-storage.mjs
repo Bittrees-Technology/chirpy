@@ -28,12 +28,13 @@ const prelude = `import assert from 'node:assert/strict'; import fs from 'node:f
 import { createGateClientGetter, provisionGateInstallation } from './server/gate-client.js';
 const data = JSON.parse(fs.readFileSync(0, 'utf8')); fs.chmodSync('/data', 0o700);
 const env = { XMTP_GATEKEEPER_PRIVATE_KEY: data.key, GATE_DB_ENCRYPTION_KEY: data.databaseKey, GATE_DATA_DIR: '/data', GATE_XMTP_ENV: 'dev' };
-const get = createGateClientGetter({ env });`;
+const resumeEnv = { ...env, XMTP_GATEKEEPER_ADDRESS: data.address, XMTP_GATEKEEPER_PRIVATE_KEY: '' };
+const get = createGateClientGetter({ env: resumeEnv });`;
 try {
   for (const volume of volumes) docker(['volume', 'create', volume]);
   const result = run(volumes[0], `${prelude}
 const client = await provisionGateInstallation({ env }); const group = await client.conversations.createGroup([]); await group.sendText(data.message);
-console.log(JSON.stringify({ inbox: client.inboxId, installation: client.installationId, group: group.id })); process.exit(0);`, { key, databaseKey, message });
+console.log(JSON.stringify({ inbox: client.inboxId, installation: client.installationId, group: group.id, address: (await import('./server/gate-resume-config.js')).readGateResumeConfig(env).address })); process.exit(0);`, { key, databaseKey, message });
   const identity = JSON.parse(result.split('\n').at(-1));
   // Each writer process has exited before sealing or copying its snapshot.
   const sealed = run(volumes[0], `import { sealSnapshot, verifySnapshot } from './selfhost/gate-snapshot.mjs';
@@ -61,7 +62,7 @@ assert.ok((await group.messages()).some(item => item.content === data.message));
 console.log('restored identity and local messages'); process.exit(0);`, { key, databaseKey, message, ...identity });
   assert.ok(restored.includes('restored identity'));
   const rejected = run(volumes[2], `${prelude}
-await assert.rejects(get()); console.log('wrong key rejected'); process.exit(0);`, { key, databaseKey: randomBytes(32).toString('hex') });
+await assert.rejects(get()); console.log('wrong key rejected'); process.exit(0);`, { key, address: identity.address, databaseKey: randomBytes(32).toString('hex') });
   assert.ok(rejected.includes('wrong key rejected'));
   console.log('XMTP dev storage drill passed: encrypted bytes, offline snapshot integrity, fresh-volume restore, same installation and local message, wrong-key rejection.');
 } finally {

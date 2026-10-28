@@ -19,7 +19,7 @@ The production web configuration inspected on 9 September has XMTP and KV sync c
 
 On the **external gate host**, configure:
 
-- `XMTP_GATEKEEPER_PRIVATE_KEY`: existing gatekeeper wallet key, in secret storage.
+- `XMTP_GATEKEEPER_ADDRESS`: recorded public gatekeeper identity for normal resume. Keep the existing wallet signing key separately in secret storage for explicit one-time provisioning; legacy private-key configurations remain compatible.
 - `GATE_DB_ENCRYPTION_KEY`: separate persistent 32-byte database key, backed up independently.
 - `GATE_XMTP_ENV=production`: use the same network across restarts and restores.
 - `MAINNET_RPC_URL`: server-side mainnet RPC.

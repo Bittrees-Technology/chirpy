@@ -3,8 +3,8 @@
 set -euo pipefail
 umask 077
 cd "$(dirname "$0")"
-if [ -e gate.env ] || [ -L gate.env ] || [ -e rooms.json ] || [ -L rooms.json ]; then
-  echo 'Existing gate.env or rooms.json found. Preserve its keys and edit it deliberately; the installer will not overwrite it.' >&2
+if [ -e gate.env ] || [ -L gate.env ] || [ -e gate-registration.env ] || [ -L gate-registration.env ] || [ -e rooms.json ] || [ -L rooms.json ]; then
+  echo 'Existing gate configuration or room registry found. Preserve its keys and edit it deliberately; the installer will not overwrite it.' >&2
   exit 1
 fi
 command -v node >/dev/null || { echo 'Node 24 or newer is required.' >&2; exit 1; }
@@ -20,7 +20,8 @@ if [ -z "$KEY" ]; then
 fi
 GATE_SETUP_DOMAIN="$DOMAIN" GATE_SETUP_ORIGIN="$ORIGIN" GATE_SETUP_RPC="$RPC" GATE_SETUP_REGISTRY="$REGISTRY" XMTP_GATEKEEPER_PRIVATE_KEY="$KEY" node configure-gate.mjs
 unset KEY
-printf '\nBack up both keys separately from the database before starting.\n'
+printf '\nBack up gate-registration.env separately; normal gate.env contains no wallet signing key.\n'
+printf 'Initial registration is a separate reviewed one-time action. Starting the server cannot register a missing installation.\n'
 read -rp 'Start the configured gate with Docker Compose? [y/N]: ' GO
 if [[ "${GO:-N}" =~ ^[Yy]$ ]]; then
   docker compose --env-file gate.env up -d --build

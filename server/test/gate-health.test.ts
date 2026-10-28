@@ -1,3 +1,5 @@
+import { readGateResumeConfig } from '../gate-resume-config.js';
+import { buildGateHealthReport } from '../ops-utils.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createGateDependencyMonitor, createGateProbe, probeMainnet, gateRegistryHash } from '../gate-health.js';
 import { createGateServer, gateListenConfig } from '../../selfhost/gate-server.mjs';
@@ -65,4 +67,17 @@ it('marks the gate unready when role authority is down despite healthy RPC and X
   vi.useFakeTimers();
   const monitor = createGateDependencyMonitor({ probe: async () => ({ rpc: true, xmtp: true, roles: false }), report: vi.fn() });
   monitor.start(); await vi.advanceTimersByTimeAsync(1); expect(monitor.snapshot().ready).toBe(false); monitor.stop();
+});
+
+it('probes a public-only identity and rejects conflicts before loading the client', async () => {
+  const address = readGateResumeConfig(env).address;
+  const publicEnv = { ...env, XMTP_GATEKEEPER_ADDRESS: address, XMTP_GATEKEEPER_PRIVATE_KEY: '' };
+  const group = { sync: vi.fn(), isSuperAdmin: () => true };
+  const getClient = vi.fn(async () => ({ inboxId: 'bot', conversations: { sync: vi.fn(), getConversationById: async () => group } }));
+  expect(buildGateHealthReport(publicEnv).ok).toBe(true);
+  const probe = createGateProbe({ env: publicEnv, getClient, getRooms: async () => [{id:'one'}], fetcher: rpc(), now: () => 1000000 });
+  expect(await probe()).toMatchObject({ rpc:true, xmtp:true, roles:true });
+  getClient.mockClear();
+  await expect(createGateProbe({ env:{...env, XMTP_GATEKEEPER_ADDRESS:'0x'+'3'.repeat(40)}, getClient })()).rejects.toThrow('conflicts');
+  expect(getClient).not.toHaveBeenCalled();
 });

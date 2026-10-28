@@ -1,7 +1,7 @@
 import { probeGovernanceRoles } from './gate-role-authority.js';
 import { createHash } from 'node:crypto';
 import { buildGateHealthReport } from './ops-utils.js';
-import { readGateClientConfig } from './gate-config.js';
+import { readGateResumeConfig } from './gate-resume-config.js';
 import { getGatekeeperClient } from './gate-client.js';
 import { gateWorkQueue } from './gate-queue.js';
 import { loadRooms } from './room-join.js';
@@ -26,7 +26,7 @@ export function createGateProbe({ env = process.env, getClient = getGatekeeperCl
   workQueue = gateWorkQueue, fetcher = fetch, now = Date.now } = {}) {
   return async signal => {
     if (!buildGateHealthReport(env).ok) throw new Error('Gate configuration is incomplete.');
-    readGateClientConfig(env);
+    readGateResumeConfig(env);
     const rooms = await getRooms();
     if (!rooms.length) throw new Error('No managed rooms are configured.');
     const registryHash = gateRegistryHash(rooms);

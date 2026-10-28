@@ -5,13 +5,19 @@ export function validGatekeeperKey(value) {
 export function validDatabaseKey(value) {
   return typeof value === 'string' && /^(?:0x)?[0-9a-fA-F]{64}$/.test(value) && !/^(?:0x)?0{64}$/.test(value);
 }
-export function readGateClientConfig(env = process.env) {
-  if (!validGatekeeperKey(env.XMTP_GATEKEEPER_PRIVATE_KEY)) throw new Error('A valid gatekeeper key is required.');
+export function validGatekeeperAddress(value) {
+  return typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value) && !/^0x0{40}$/.test(value);
+}
+export function readGateStorageConfig(env = process.env) {
   if (!validDatabaseKey(env.GATE_DB_ENCRYPTION_KEY)) throw new Error('A persistent 32-byte database encryption key is required.');
   const databaseKeyHex = env.GATE_DB_ENCRYPTION_KEY.replace(/^0x/, '').toLowerCase();
-  if (databaseKeyHex === env.XMTP_GATEKEEPER_PRIVATE_KEY.slice(2).toLowerCase()) throw new Error('Use separate wallet and database encryption keys.');
+  if (databaseKeyHex === String(env.XMTP_GATEKEEPER_PRIVATE_KEY || '').replace(/^0x/, '').toLowerCase()) throw new Error('Use separate wallet and database encryption keys.');
   if (!isAbsolute(env.GATE_DATA_DIR || '')) throw new Error('An explicit persistent database directory is required.');
   const network = env.GATE_XMTP_ENV || 'production';
   if (!['production', 'dev'].includes(network)) throw new Error('Invalid gate XMTP network.');
-  return { privateKey: env.XMTP_GATEKEEPER_PRIVATE_KEY, databaseKey: new Uint8Array(Buffer.from(databaseKeyHex, 'hex')), dataDir: env.GATE_DATA_DIR, network };
+  return { databaseKey: new Uint8Array(Buffer.from(databaseKeyHex, 'hex')), dataDir: env.GATE_DATA_DIR, network };
+}
+export function readGateClientConfig(env = process.env) {
+  if (!validGatekeeperKey(env.XMTP_GATEKEEPER_PRIVATE_KEY)) throw new Error('A valid gatekeeper key is required.');
+  return { privateKey: env.XMTP_GATEKEEPER_PRIVATE_KEY, ...readGateStorageConfig(env) };
 }

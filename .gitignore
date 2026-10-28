@@ -8,6 +8,7 @@ build/
 !.env.example
 # Self-hosted gate secrets (holds the gatekeeper private key)
 selfhost/gate.env
+selfhost/gate-registration.env
 .turbo/
 # Tauri native build artifacts
 apps/web/src-tauri/target/

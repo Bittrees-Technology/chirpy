@@ -20,9 +20,15 @@ describe('gate installer', () => {
     expect(contents).toContain("GATE_DATA_DIR='/data'");
     expect(contents).toContain("CHIRPY_GATE_ROOMS_FILE='/config/rooms.json'");
     expect(contents).toContain("GATE_PUBLIC_URL='https://gate.example.org/api/room-join'");
-    const wallet = contents.match(/XMTP_GATEKEEPER_PRIVATE_KEY='0x([a-f0-9]{64})'/)?.[1];
+    const registration = await readFile(join(dir, 'gate-registration.env'), 'utf8');
+    expect(contents).not.toContain('XMTP_GATEKEEPER_PRIVATE_KEY');
+    expect(contents).toContain('XMTP_GATEKEEPER_ADDRESS=');
+    expect((await stat(join(dir, 'gate-registration.env'))).mode & 0o777).toBe(0o600);
+    const wallet = registration.match(/XMTP_GATEKEEPER_PRIVATE_KEY='0x([a-f0-9]{64})'/)?.[1];
     const database = contents.match(/GATE_DB_ENCRYPTION_KEY='([a-f0-9]{64})'/)?.[1];
     expect(wallet).toBeTruthy(); expect(database).toBeTruthy(); expect(wallet).not.toBe(database);
+    expect(contents).not.toContain(wallet);
+    expect(registration).toContain(`GATE_DB_ENCRYPTION_KEY='${database}'`);
     expect((await stat(join(dir, 'gate.env'))).mode & 0o777).toBe(0o600);
     expect((await stat(join(dir, 'rooms.json'))).mode & 0o777).toBe(0o644);
     await expect(configureGate(env, dir)).rejects.toThrow('overwritten');
@@ -40,4 +46,12 @@ describe('gate installer', () => {
     await symlink(join(dir, 'missing'), join(dir, 'gate.env'));
     await expect(configureGate(env, dir)).rejects.toThrow('overwritten');
   });
+});
+
+it('preserves an existing registration configuration before generating or writing keys', async () => {
+  const { dir, env } = await setup();
+  await writeFile(join(dir, 'gate-registration.env'), 'preserve prior signing configuration', {mode:0o600});
+  await expect(configureGate(env, dir)).rejects.toThrow('overwritten');
+  expect(await readFile(join(dir, 'gate-registration.env'), 'utf8')).toBe('preserve prior signing configuration');
+  await expect(stat(join(dir, 'gate.env'))).rejects.toMatchObject({code:'ENOENT'});
 });

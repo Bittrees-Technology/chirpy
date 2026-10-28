@@ -86,11 +86,12 @@ try {
     await assert.rejects(createGateClientGetter({env, loadSdk})());
     assert.equal(fs.existsSync(env.GATE_DATA_DIR), false);
     await provisionGateInstallation({env, loadSdk});
-    await createGateClientGetter({env, loadSdk})();
+    const resumeEnv = { ...env, XMTP_GATEKEEPER_ADDRESS: '0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a', XMTP_GATEKEEPER_PRIVATE_KEY: '' };
+    await createGateClientGetter({env:resumeEnv, loadSdk})();
     await assert.rejects(provisionGateInstallation({env, loadSdk}));
     assert.equal(registers, 1); assert.equal(builds, 1);
     fs.unlinkSync(env.GATE_DATA_DIR+'/chirpy-xmtp-gatekeeper-'+client.inboxId+'.db3');
-    await assert.rejects(createGateClientGetter({env, loadSdk})());
+    await assert.rejects(createGateClientGetter({env:resumeEnv, loadSdk})());
     assert.equal(builds, 1); assert.equal(registers, 1);`);
   node(`import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(process.version, 'v24.22.1'); assert.ok(fs.readFileSync('/nodejs/LICENSE', 'utf8').includes('MIT'));`);
   assert.throws(() => docker('exec', name, 'npm', '--version'));

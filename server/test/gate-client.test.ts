@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, lstat, stat, writeFile, readFile, chmod, symlink, link, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { readGateResumeConfig } from '../gate-resume-config.js';
 import { readGateClientConfig } from '../gate-config.js';
 import { createGateClientGetter, provisionGateInstallation } from '../gate-client.js';
 import { buildGateHealthReport } from '../ops-utils.js';
@@ -50,6 +51,39 @@ describe('persistent encrypted gate client', () => {
     const loadSdk = vi.fn(async () => ({ Client: { create, build }, IdentifierKind: { Ethereum: 0 }, LogLevel: { Off: 0 } }));
     return { dataDir, env, client, create, build, loadSdk, options: () => options };
   }
+
+  it('resumes the recorded installation with public address and database key only', async () => {
+    const f = await fixture(); await provisionGateInstallation(f);
+    const address = readGateResumeConfig(f.env).address;
+    const env = { ...f.env, XMTP_GATEKEEPER_ADDRESS: address.toUpperCase().replace('0X', '0x'), XMTP_GATEKEEPER_PRIVATE_KEY: '' };
+    const parsed = readGateResumeConfig(env);
+    expect(parsed.address).toBe(address); expect(parsed).not.toHaveProperty('privateKey');
+    expect(await createGateClientGetter({ env, loadSdk: f.loadSdk })()).toBe(f.client);
+    expect(f.build).toHaveBeenCalledTimes(1); expect(f.client.register).toHaveBeenCalledTimes(1);
+    await expect(provisionGateInstallation({ env, loadSdk: f.loadSdk })).rejects.toThrow('key');
+    expect(f.create).toHaveBeenCalledTimes(1);
+    expect(readGateResumeConfig({ ...f.env, XMTP_GATEKEEPER_ADDRESS: address }).address).toBe(address);
+  });
+
+  it.each(['missing', 'zero', 'malformed', 'wrong', 'invalid-key'])('rejects %s public/legacy identity before SDK access', async kind => {
+    const f = await fixture(); await provisionGateInstallation(f); f.loadSdk.mockClear();
+    const env = { ...f.env, XMTP_GATEKEEPER_ADDRESS: readGateResumeConfig(f.env).address, XMTP_GATEKEEPER_PRIVATE_KEY: '' };
+    if (kind === 'missing') env.XMTP_GATEKEEPER_ADDRESS = '';
+    if (kind === 'zero') env.XMTP_GATEKEEPER_ADDRESS = '0x' + '0'.repeat(40);
+    if (kind === 'malformed') env.XMTP_GATEKEEPER_ADDRESS += '\n';
+    if (kind === 'wrong') env.XMTP_GATEKEEPER_ADDRESS = '0x' + '3'.repeat(40);
+    if (kind === 'invalid-key') env.XMTP_GATEKEEPER_PRIVATE_KEY = 'invalid';
+    await expect(createGateClientGetter({ env, loadSdk: f.loadSdk })()).rejects.toThrow();
+    expect(f.loadSdk).not.toHaveBeenCalled(); expect(f.client.register).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects explicit public/signing disagreement before reserving bootstrap state', async () => {
+    const f = await fixture(); const env = { ...f.env, XMTP_GATEKEEPER_ADDRESS: '0x' + '3'.repeat(40) };
+    await expect(provisionGateInstallation({ env, loadSdk: f.loadSdk })).rejects.toThrow('conflicts');
+    expect(f.loadSdk).not.toHaveBeenCalled();
+    await expect(lstat(join(f.dataDir, 'chat-gate-registration-attempt.json'))).rejects.toThrow();
+    expect(readGateResumeConfig(f.env)).not.toHaveProperty('privateKey');
+  });
 
   it('provisions deliberately once, then resumes the same recorded installation without a signer', async () => {
     const f = await fixture();

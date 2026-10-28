@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { validDatabaseKey, validGatekeeperKey } from "./gate-config.js";
+import { validDatabaseKey, validGatekeeperKey, validGatekeeperAddress } from "./gate-config.js";
 const DEFAULT_RELEASE_CHANNEL = "local";
 
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
@@ -55,17 +55,17 @@ function validWebOrigin(value) {
 }
 
 export function buildGateHealthReport(env = process.env) {
-  const privateKeyConfigured = validGatekeeperKey(env.XMTP_GATEKEEPER_PRIVATE_KEY);
+  const identityConfigured = validGatekeeperAddress(env.XMTP_GATEKEEPER_ADDRESS) || validGatekeeperKey(env.XMTP_GATEKEEPER_PRIVATE_KEY);
   const serverRpcConfigured = nonEmpty(env.MAINNET_RPC_URL);
   const allowOrigin = firstNonEmpty(env.GATE_ALLOW_ORIGIN, "*");
   const warnings = [];
   const blockingIssues = [];
   const checks = [];
 
-  if (privateKeyConfigured) {
-    checks.push(healthCheck("gatekeeper-key", "ok", "Gatekeeper private key is configured."));
+  if (identityConfigured) {
+    checks.push(healthCheck("gatekeeper-key", "ok", "Gatekeeper public identity is configured."));
   } else {
-    const summary = "XMTP_GATEKEEPER_PRIVATE_KEY is not configured.";
+    const summary = "A valid XMTP_GATEKEEPER_ADDRESS or legacy signing identity is required.";
     checks.push(healthCheck("gatekeeper-key", "degraded", summary));
     blockingIssues.push(summary);
   }
@@ -98,17 +98,17 @@ export function buildGateHealthReport(env = process.env) {
   }
 
   if (!validWebOrigin(allowOrigin)) {
-    const summary = "GATE_ALLOW_ORIGIN must be an exact HTTPS Chirpy origin.";
+    const summary = "GATE_ALLOW_ORIGIN must be an exact HTTPS Chat origin.";
     checks.push(healthCheck("cors-origin", "info", summary));
     blockingIssues.push(summary);
   } else {
-    checks.push(healthCheck("cors-origin", "ok", "Gate CORS origin is pinned to an explicit Chirpy origin."));
+    checks.push(healthCheck("cors-origin", "ok", "Gate CORS origin is pinned to an explicit Chat origin."));
   }
 
   return {
     ok: blockingIssues.length === 0,
     status: blockingIssues.length > 0 ? "degraded" : "ok",
-    gatekeeper: privateKeyConfigured,
+    gatekeeper: identityConfigured,
     network: env.GATE_XMTP_ENV || "production",
     serverRpcConfigured,
     allowOriginMode: allowOrigin === "*" ? "wildcard" : "exact",

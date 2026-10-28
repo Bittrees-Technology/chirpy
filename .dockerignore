@@ -11,4 +11,5 @@ test-results
 playwright-report
 uploads
 selfhost/gate.env
+selfhost/gate-registration.env
 apps/web/src-tauri/.tauri

@@ -49,7 +49,7 @@ Then:
 
 | Var | Required | Notes |
 |---|---|---|
-| `XMTP_GATEKEEPER_PRIVATE_KEY` | ✅ | 0x EOA key for the bot; must be a room super-admin. Generate with `gen-gatekeeper-key.mjs`. |
+| `XMTP_GATEKEEPER_ADDRESS` | ✅ | Recorded public gatekeeper address. Resume uses the accepted installation and database key, without its wallet signing key. |
 | `MAINNET_RPC_URL` | ✅ | Unrestricted mainnet RPC for on-chain reads (token/Safe/ENS). Not a browser-allowlisted key. |
 | `GATE_ALLOW_ORIGIN` | ✅ | Exact HTTPS origin of your Chirpy web app. |
 | `GATE_DB_ENCRYPTION_KEY` | ✅ | Separate persistent 32-byte hex key; preserve it with every database restore. |
@@ -65,7 +65,7 @@ Then:
 
 `GET /health` returns HTTP `503` for missing required configuration. Configuration health does not prove RPC connectivity, valid room permissions, or successful live admission. Complete the controlled release checks before routing users.
 
-The installer refuses existing `gate.env` or `rooms.json`, validates the registry with the admission rules, creates secret files with mode 600, and generates distinct wallet/database keys once. Key input is hidden and keys are never passed as command-line arguments. Back up the generated secrets immediately. If setup stops after creating one file, inspect and preserve that partial configuration; rerunning will not overwrite it. TLS and reverse-proxy setup remain operator responsibilities.
+The installer refuses existing `gate.env`, `gate-registration.env` or `rooms.json`, validates the registry with the admission rules, creates secret files with mode 600, and generates distinct wallet/database keys once. Key input is hidden and keys are never passed as command-line arguments. New `gate.env` contains public identity/database configuration only; the wallet signing key stays in separate `gate-registration.env`, excluded from Git, Docker context and normal service startup. Back up both files immediately. Initial registration is a separate reviewed one-time action; preserve uncertain attempts. If setup stops after creating one file, inspect and preserve that partial configuration; rerunning will not overwrite it. TLS and reverse-proxy setup remain operator responsibilities.
 
 ## Why self-host
 

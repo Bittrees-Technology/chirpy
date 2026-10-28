@@ -8,7 +8,7 @@ import { readGateClientConfig } from '../server/gate-config.js';
 import { loadRooms } from '../server/room-join.js';
 
 export async function configureGate(env = process.env, directory = fileURLToPath(new URL('.', import.meta.url))) {
-  for (const name of ['gate.env', 'rooms.json']) {
+  for (const name of ['gate.env', 'gate-registration.env', 'rooms.json']) {
     try { await lstat(resolve(directory, name)); throw new Error('Existing configuration must not be overwritten.'); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
@@ -32,12 +32,15 @@ export async function configureGate(env = process.env, directory = fileURLToPath
   const address = privateKeyToAccount(privateKey).address;
   const config = {
     GATE_DOMAIN: domain, GATE_BIND_HOST: '127.0.0.1', GATE_PORT: '8788', GATE_ALLOW_ORIGIN: origin, MAINNET_RPC_URL: rpc,
-    XMTP_GATEKEEPER_PRIVATE_KEY: privateKey, GATE_DB_ENCRYPTION_KEY: databaseKey,
+    XMTP_GATEKEEPER_ADDRESS: address, GATE_DB_ENCRYPTION_KEY: databaseKey,
     GATE_DATA_DIR: '/data', GATE_XMTP_ENV: 'production',
     GATE_PUBLIC_URL: `https://${domain}/api/room-join`, CHIRPY_GATE_ROOMS_FILE: '/config/rooms.json',
   };
   // Exclusive creation also protects against another installer winning the race.
   // A partial failure is left for deliberate operator recovery, never overwrite/rekey.
+  const registration = { XMTP_GATEKEEPER_PRIVATE_KEY: privateKey, XMTP_GATEKEEPER_ADDRESS: address,
+    GATE_DB_ENCRYPTION_KEY: databaseKey, GATE_DATA_DIR: '/data', GATE_XMTP_ENV: 'production' };
+  await writeFile(resolve(directory, 'gate-registration.env'), Object.entries(registration).map(([key, value]) => `${key}='${value}'`).join('\n') + '\n', { flag: 'wx', mode: 0o600 });
   await writeFile(resolve(directory, 'gate.env'), Object.entries(config).map(([key, value]) => `${key}='${value}'`).join('\n') + '\n', { flag: 'wx', mode: 0o600 });
   await writeFile(resolve(directory, 'rooms.json'), JSON.stringify(rooms, null, 2) + '\n', { flag: 'wx', mode: 0o644 });
   await chmod(resolve(directory, 'rooms.json'), 0o644);

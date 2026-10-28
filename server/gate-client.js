@@ -1,5 +1,6 @@
 import { privateKeyToAccount } from 'viem/accounts';
 import { readGateClientConfig } from './gate-config.js';
+import { readGateResumeConfig } from './gate-resume-config.js';
 import { gateDatabasePath, readGateInstallation, requireRegisteredGate, reserveGateRegistration, sealGateInstallation } from './gate-storage.js';
 
 const defaultSdk = () => import('@xmtp/node-sdk');
@@ -20,8 +21,8 @@ export function createGateClientGetter({ env = process.env, loadSdk = defaultSdk
   let clientPromise;
   return function getClient() {
     if (!clientPromise) clientPromise = (async () => {
-      const config = readGateClientConfig(env);
-      const { address } = identity(config);
+      const config = readGateResumeConfig(env);
+      const { address } = config;
       const { directory, receipt } = await readGateInstallation(config, address);
       const { Client, IdentifierKind, LogLevel } = await loadSdk();
       // build has no wallet signer and cannot silently register a replacement.
@@ -36,6 +37,7 @@ export function createGateClientGetter({ env = process.env, loadSdk = defaultSdk
 export async function provisionGateInstallation({ env = process.env, loadSdk = defaultSdk } = {}) {
   const config = readGateClientConfig(env);
   const { account, address } = identity(config);
+  readGateResumeConfig(env); // Reject an explicit public/signing identity conflict before reserving.
   const directory = await reserveGateRegistration(config, address);
   const { Client, IdentifierKind, LogLevel } = await loadSdk();
   const client = await Client.create({
