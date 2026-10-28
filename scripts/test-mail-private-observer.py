@@ -125,6 +125,39 @@ class ObserverTests(unittest.TestCase):
         self.assertNotIn('other.service', result.stdout)
         self.assertEqual(result.stderr, '')
 
+    def test_recent_cached_report_cannot_refresh_an_old_worker_heartbeat(self):
+        f = Fixture()
+        for component, (service, _) in observer.UNITS.items():
+            payload = json.loads(f.reports[component]['MESSAGE'])
+            payload['checkedAt'] = WALL - 240000
+            if component == 'inbound':
+                payload['worker'].update(lastAttemptAt=WALL-240000, lastSuccessAt=WALL-480000)
+            else:
+                payload['lastSuccessfulTickAt'] = WALL-480000
+            f.reports[component]['MESSAGE'] = json.dumps(payload)
+            f.reports[component]['__MONOTONIC_TIMESTAMP'] = str(NOW-240000000)
+            f.properties[service]['ExecMainExitTimestampMonotonic'] = str(NOW-239999000)
+        result = f.observe()
+        self.assertEqual(result['status'], 'degraded')
+        for component in result['components']:
+            self.assertEqual(component['status'], 'degraded')
+            self.assertEqual(component['reportAgeMs'], 240000)
+            self.assertEqual(component['workerHeartbeatAgeMs'], 480000)
+
+    def test_worker_heartbeat_freshness_has_one_five_minute_boundary(self):
+        for age, expected in ((300000, 'healthy'), (300001, 'degraded')):
+            with self.subTest(age=age):
+                f = Fixture()
+                for component in observer.UNITS:
+                    payload = json.loads(f.reports[component]['MESSAGE'])
+                    payload['checkedAt'] = WALL-1000
+                    if component == 'inbound':
+                        payload['worker'].update(lastAttemptAt=WALL-1000, lastSuccessAt=WALL-age)
+                    else:
+                        payload['lastSuccessfulTickAt'] = WALL-age
+                    f.reports[component]['MESSAGE'] = json.dumps(payload)
+                self.assertEqual(f.observe()['status'], expected)
+
     def test_duplicate_properties_and_payload_fields_denied(self):
         f = Fixture()
         run = f.run

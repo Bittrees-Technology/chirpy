@@ -270,7 +270,8 @@ mailbox details and credentials are never returned. An inactive or disabled time
 is reported as disabled, and systemd's initial success result without a real recent
 execution is unavailable. A healthy observation requires a successful completed
 run and a matching, valid aggregate receipt and worker heartbeat no older than five
-minutes. This is cached operational evidence, not a new delivery or authority check.
+minutes at observation time. Cache age never resets heartbeat age. This is cached
+operational evidence, not a new delivery or authority check.
 
 The observer is not installed or remotely accessible by this source change. A
 future pinned, forced-command service identity needs separate review and exact

@@ -112,6 +112,10 @@ def payload_status(component, value, wall_ms):
         healthy = integer(tick) and tick > 0 and tick <= checked and checked - tick <= MAX_AGE_MS and not value['providerBlocked'] and value['uncertainCount'] == 0 and value['oldestDueAgeMs'] <= MAX_AGE_MS
         if value['workerHealthy'] != bool(healthy) or value['status'] != ('ok' if healthy else 'degraded'):
             raise ValueError('Inconsistent outbound health')
+    # Validate the source's own conclusion at checkedAt above, then independently
+    # age its heartbeat at observation time. A recently cached report cannot
+    # extend a worker's five-minute freshness window by another five minutes.
+    healthy = bool(healthy) and -30_000 <= wall_ms - tick <= MAX_AGE_MS
     return ('healthy' if healthy else 'degraded'), max(0, wall_ms - tick) if integer(tick) else None
 
 
