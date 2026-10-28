@@ -86,6 +86,25 @@ def parents(path):
     return protected(path)
 
 
+def install_lock(path):
+    # /run locks disappear on reboot. Check every ancestor before creating one;
+    # preserve and validate existing inodes rather than replacing them.
+    parents(path.parent)
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    except FileExistsError:
+        fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
+    lock = os.fdopen(fd, 'r+b')
+    try:
+        info = os.fstat(lock.fileno())
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1 and stat.S_IMODE(info.st_mode) == 0o600, 'Unsafe installation lock')
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BaseException:
+        lock.close()
+        raise
+    return lock
+
+
 def sync_dir(path):
     fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -230,10 +249,7 @@ def upgrade(selected, candidate, license_path, expected, expected_manifests):
             component = COMPONENTS[name]
             root, config = component['root'], component['config']
             parents(root); parents(config)
-            lock = stack.enter_context(os.fdopen(os.open(component['lock'], os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK), 'r+b'))
-            info = os.fstat(lock.fileno())
-            require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1 and stat.S_IMODE(info.st_mode) == 0o600, 'Unsafe installation lock')
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            stack.enter_context(install_lock(component['lock']))
             files = paths(component)
             require(all(not os.path.lexists(files[key]) for key in ('backup', 'attempt', 'receipt', 'candidate')), 'Prior attempt requires reconciliation; do not rerun')
             require(shutil.disk_usage(root).free >= MIN_FREE + len(selected) * NEW_BYTES, 'Insufficient storage reserve')
