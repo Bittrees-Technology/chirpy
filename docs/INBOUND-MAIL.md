@@ -257,6 +257,33 @@ destination, isolated runtime installation, provisioning, backup/restore and liv
 acceptance remain external activation requirements.
 
 
+## Private supervisor observation preparation
+
+`selfhost/mail-private-observer.py` is an operator-only, argument-free observer of
+existing systemd aggregate health results. It reads only the fixed inbound health
+and outbound API scheduler units, their timers and the latest matching invocation
+from the current boot's journal. It never starts a unit, opens sender state, calls
+the SDK or worker status command, changes configuration, or makes a network request.
+Each of at most six commands has a three-second deadline and a 16 KiB output
+limit; source log messages, unit invocation IDs,
+mailbox details and credentials are never returned. An inactive or disabled timer
+is reported as disabled, and systemd's initial success result without a real recent
+execution is unavailable. A healthy observation requires a successful completed
+run and a matching, valid aggregate receipt and worker heartbeat no older than five
+minutes at observation time. Cache age never resets heartbeat age. This is cached
+operational evidence, not a new delivery or authority check.
+
+The observer is not installed or remotely accessible by this source change. A
+future pinned, forced-command service identity needs separate review and exact
+host/key/helper authorization; never grant a general shell or unrestricted journal
+access to a monitor. Read access must cover only these aggregate receipts. Missing
+journal permissions, old boot/invocation data, malformed results or stale clocks
+hold evidence without retrying a worker. Exits are zero for healthy and two for
+disabled, degraded or unavailable. Actual host compatibility, least-privilege
+access, native transport boundaries and natural scheduled monitoring acceptance
+remain required before activation. Existing health timers and forwarding remain
+unchanged.
+
 ## Original-recipient forwarding history
 
 New intake records include an opaque `historyOwner` tag derived by domain-separated HMAC from the inbound data key and the wallet returned by the trusted Wallet authority. A private sorted index holds opaque job keys for that owner. No plaintext recipient wallet or mailbox is added to retained metadata. Queue metadata already retains receipts for 30 days; this feature does not extend that retention or retain message payloads longer. The original wallet can inspect its historical status after payload deletion or binding revocation; rebinding the mailbox to another wallet does not transfer old history or grant mailbox access.
