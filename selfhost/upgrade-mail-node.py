@@ -143,6 +143,28 @@ def snapshot(path, root_owned=True):
     return result
 
 
+def configuration_snapshot(component):
+    root = component['config']
+    source = root / 'source.json' if component['state'] is not None else None
+    account = pwd.getpwnam(component['account'])
+    if source is not None:
+        require(account.pw_uid != 0 and account.pw_gid != 0, 'Service account must be unprivileged')
+        require(os.path.lexists(source), 'Inbound source settings are missing')
+    result = {}
+    for entry in [root, *sorted(root.rglob('*'))]:
+        if entry == source:
+            # install-mail-inbound.py intentionally gives only this read-only
+            # settings file to the service account. Never chown or rewrite it.
+            info = entry.lstat()
+            require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and
+                    info.st_uid == account.pw_uid and info.st_gid == account.pw_gid and
+                    stat.S_IMODE(info.st_mode) == 0o400, 'Unsafe inbound source settings')
+        else:
+            info = protected(entry)
+        result[str(entry)] = (info.st_uid, info.st_gid, info.st_mode, digest(entry) if entry.is_file() else None)
+    return result
+
+
 def verify_tree(root, bundle):
     files = bundle.get('files')
     require(isinstance(files, dict) and 1 <= len(files) <= 20000, 'Invalid manifest')
@@ -272,7 +294,7 @@ def upgrade(selected, candidate, license_path, expected, expected_manifests):
                 require(not os.path.lexists(component['state'] / 'sender/.operation-lock'), 'Sender operation is active')
                 package = json.loads(read(root / 'release/node_modules/nodemailer/package.json'))
                 require(package.get('name') == 'nodemailer' and package.get('version') == '10.1.4', 'Apply the reviewed mail dependency patch first')
-            prepared.append((name, component, files, raw, bundle, node_info, policy, snapshot(config), snapshot(component['state'], root_owned=False)))
+            prepared.append((name, component, files, raw, bundle, node_info, policy, configuration_snapshot(component), snapshot(component['state'], root_owned=False)))
         no_runtime_processes([p[1] for p in prepared])
         STEP = 'preserve-original'
         for name, component, files, raw, bundle, info, policy, config_before, state_before in prepared:
@@ -284,7 +306,7 @@ def upgrade(selected, candidate, license_path, expected, expected_manifests):
             copy_candidate(candidate, files['candidate'], info)
         for name, component, files, raw, bundle, info, policy, config_before, state_before in prepared:
             require(units(component) == policy and snapshot(component['state'], root_owned=False) == state_before, 'State or service policy changed')
-            current = snapshot(component['config'])
+            current = configuration_snapshot(component)
             require(all(current.get(path) == value for path, value in config_before.items()), 'Configuration changed')
             require(read(files['bundle']) == raw and digest(files['node']) == OLD_SHA, 'Runtime changed during preparation')
         no_runtime_processes([p[1] for p in prepared])
@@ -304,7 +326,7 @@ def upgrade(selected, candidate, license_path, expected, expected_manifests):
         for name, component, files, bundle, policy, config_before, state_before in updated:
             disabled_smoke(component)
             require(units(component) == policy and snapshot(component['state'], root_owned=False) == state_before, 'State or service policy changed')
-            current = snapshot(component['config'])
+            current = configuration_snapshot(component)
             require(all(current.get(path) == value for path, value in config_before.items()), 'Configuration changed')
         no_runtime_processes([p[1] for p in updated])
         STEP = 'receipt'

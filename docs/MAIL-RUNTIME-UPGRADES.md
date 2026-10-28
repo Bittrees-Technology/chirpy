@@ -29,7 +29,13 @@ services, disabled timers/source socket, uniquely disabled environment flags,
 installation locks, process inspection and storage reserve before changing files.
 It refuses unavailable process inspection rather than treating it as no process.
 For both components, every preflight finishes before either runtime is replaced.
-Service-owned state is hashed and retained with its original ownership.
+Service-owned state is hashed and retained with its original ownership. The
+inbound installer deliberately assigns `source.json` to the dedicated service
+account with mode0400. The updater validates that exact owner, group, mode and
+single regular-file link, and preserves its bytes and metadata. All other
+configuration entries retain the root-ownership checks; scheduler files receive
+no such exception. Settings snapshots are rechecked before replacement and after
+the disabled runtime checks.
 Missing temporary installation locks are created exclusively with mode0600 after
 verifying root-protected parent directories. Existing lock files are never
 replaced: unsafe ownership, permissions, links or concurrent holders stop the
