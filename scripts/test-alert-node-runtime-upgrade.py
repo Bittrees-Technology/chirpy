@@ -110,7 +110,7 @@ class AlertUpgradeTests(unittest.TestCase):
         cases = ('bad-candidate', 'bad-license', 'busy-notifier', 'busy-worker', 'timer-enabled', 'unknown-instance',
             'active-runtime', 'bad-script', 'extra-software', 'changed-hook', 'changed-service', 'state-symlink',
             'state-owner', 'state-permissions', 'config-permissions', 'changed-provider-config', 'unarmed-config',
-            'low-space', 'candidate-symlink', 'prior-attempt', 'node-hardlink')
+            'low-space', 'low-rollback-space', 'candidate-symlink', 'prior-attempt', 'node-hardlink')
         for case in cases:
             with self.subTest(case=case):
                 # A fresh real filesystem for each negative case.
@@ -135,6 +135,7 @@ class AlertUpgradeTests(unittest.TestCase):
                     elif case == 'changed-provider-config': (m.CONFIG / 'alerts.env').write_bytes(b'CHAT_MAIL_ALERTS_ENABLED=1\nunknown')
                     elif case == 'unarmed-config': (m.CONFIG / 'alerts.env').write_bytes((m.CONFIG / 'alerts.env.before-hooks').read_bytes())
                     elif case == 'low-space': c.shutil.disk_usage = lambda _: types.SimpleNamespace(free=0)
+                    elif case == 'low-rollback-space': c.shutil.disk_usage = lambda path: types.SimpleNamespace(free=0 if path == m.CONFIG else 10 * 1024**3)
                     elif case == 'candidate-symlink': child.candidate.unlink(); child.candidate.symlink_to(child.node)
                     elif case == 'prior-attempt': child.write(c.paths({'root':m.ROOT, 'config':m.CONFIG})['attempt'], b'existing')
                     elif case == 'node-hardlink': os.link(child.node, child.base / 'linked')

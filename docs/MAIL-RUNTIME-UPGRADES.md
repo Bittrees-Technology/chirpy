@@ -78,7 +78,9 @@ This update requires idle workers, disabled delivery timers, idle notifier
 instances, the original reviewed notifier/unit bytes, the accepted activation
 and provider-configuration receipts, and root-protected credentials. It refuses
 unknown instances, software drift, unsafe state, unavailable process inspection,
-or any prior upgrade attempt. It preserves the armed configuration and failure
+or any prior upgrade attempt. Candidate and installed runtime must share a
+filesystem for atomic replacement; rollback storage is checked separately even
+when `/etc` and `/opt` use different filesystems. It preserves the armed configuration and failure
 hooks; it does not stop, mask, restart or reload any service or invoke a failure
 hook. The original test delivery state and all credentials stay intact.
 

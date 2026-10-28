@@ -175,11 +175,17 @@ def upgrade(candidate, license_path):
         C.require(all(not os.path.lexists(files[key]) for key in ('backup', 'attempt', 'receipt', 'candidate')), 'Prior attempt requires reconciliation; do not rerun')
         info = C.protected(files['node'])
         C.require(stat.S_IMODE(info.st_mode) == 0o550 and info.st_gid == account.pw_gid and C.digest(files['node']) == C.OLD_SHA, 'Original runtime differs')
+        C.require(files['candidate'].parent.stat().st_dev == files['node'].parent.stat().st_dev,
+            'Candidate and runtime must share a filesystem for atomic replacement')
         C.require(C.shutil.disk_usage(ROOT).free >= C.MIN_FREE + C.NEW_BYTES + info.st_size, 'Insufficient storage reserve')
         cinfo = candidate.lstat()
         C.require(stat.S_ISREG(cinfo.st_mode) and cinfo.st_nlink == 1 and cinfo.st_size == C.NEW_BYTES and C.digest(candidate) == C.NEW_SHA, 'Pinned candidate mismatch')
         license_bytes = C.read(license_path, 2 * 1024 ** 2)
         C.require(hashlib.sha256(license_bytes).hexdigest() == C.LICENSE_SHA, 'Pinned license mismatch')
+        # /etc may be on a separate filesystem from /opt. The rollback volume
+        # needs its own reserve even when the candidate volume has enough room.
+        C.require(C.shutil.disk_usage(CONFIG).free >= C.MIN_FREE + info.st_size + len(license_bytes),
+            'Insufficient rollback storage reserve')
         STEP = 'preflight-software'
         software()
         STEP = 'preflight-configuration'
