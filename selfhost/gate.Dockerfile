@@ -16,7 +16,7 @@ COPY --from=dependencies /usr/local/LICENSE /nodejs/LICENSE
 WORKDIR /app
 COPY --from=dependencies /app/package.json /app/package-lock.json ./
 COPY --from=dependencies /app/node_modules ./node_modules
-COPY --from=dependencies --chown=65532:65532 /data /data
+COPY --from=dependencies --chown=65532:65532 --chmod=0700 /data /data
 COPY packages/core ./packages/core
 COPY server/room-join.js server/server-utils.js server/ops-utils.js server/gate-client.js server/gate-storage.js server/gate-config.js server/gate-queue.js server/gate-membership.js server/gate-membership-worker.js server/native-origins.js server/gate-health.js server/gate-role-authority.js ./server/
 COPY selfhost/gate-server.mjs selfhost/gate-snapshot.mjs selfhost/register-gate-once.mjs ./selfhost/
