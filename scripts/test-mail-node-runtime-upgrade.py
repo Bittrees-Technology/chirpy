@@ -52,6 +52,9 @@ class UpgradeTests(unittest.TestCase):
             files = {'runtime/bin/node': OLD, c['script']: b'fixture script: not executed'}
             if c['state'] is not None:
                 files['release/node_modules/nodemailer/package.json'] = b'{"name":"nodemailer","version":"10.1.4"}'
+                source = c['config']/'source.json'
+                source.write_bytes(b'{"enabled":false,"fixture":"private source settings"}')
+                os.chown(source, 10001, 20001); source.chmod(0o400)
                 c['state'].mkdir(mode=0o700)
                 (c['state']/'journal').write_bytes(b'original fixture journal')
                 (c['state']/'journal').chmod(0o644)
@@ -104,6 +107,7 @@ class UpgradeTests(unittest.TestCase):
 
     def test_success_preserves_originals_and_nonroot_state(self):
         before = self.m.snapshot(self.components['inbound']['state'], root_owned=False)
+        source = self.source_file(); source_before = (source.read_bytes(), source.stat())
         result = self.run_upgrade()
         self.assertTrue(result['upgraded']); self.assertFalse(result['mailSent'])
         self.assertEqual(len(self.calls), 5)
@@ -117,6 +121,8 @@ class UpgradeTests(unittest.TestCase):
             self.assertEqual(json.loads(paths['attempt'].read_bytes())['neverAutomaticallyRetry'], True)
         self.assertEqual(self.m.snapshot(self.components['inbound']['state'], root_owned=False), before)
         self.assertEqual((self.components['inbound']['state']/'journal').stat().st_uid, 65534)
+        self.assertEqual(source.read_bytes(), source_before[0])
+        self.assertEqual((source.stat().st_uid, source.stat().st_gid, stat.S_IMODE(source.stat().st_mode)), (10001, 20001, 0o400))
         held = self.filesystem()
         with self.assertRaises(ValueError): self.run_upgrade()
         self.assertEqual(self.filesystem(), held)
@@ -156,6 +162,52 @@ class UpgradeTests(unittest.TestCase):
         parent = self.base/'unsafe-lock-directory'; parent.mkdir(mode=0o777); parent.chmod(0o777)
         lock = parent/'install.lock'; lock.write_bytes(b''); lock.chmod(0o600)
         self.components['inbound']['lock'] = lock
+        self.refuses_without_change()
+
+    def source_file(self):
+        return self.components['inbound']['config']/'source.json'
+
+    def test_wrong_source_owner(self):
+        os.chown(self.source_file(), 65534, 20001); self.refuses_without_change()
+
+    def test_wrong_source_group(self):
+        os.chown(self.source_file(), 10001, 65534); self.refuses_without_change()
+
+    def test_writable_source_settings(self):
+        self.source_file().chmod(0o600); self.refuses_without_change()
+
+    def test_hardlinked_source_settings(self):
+        os.link(self.source_file(), self.base/'source-link'); self.refuses_without_change()
+
+    def test_symlinked_source_settings(self):
+        source = self.source_file(); target = self.base/'original-source'; source.rename(target); source.symlink_to(target)
+        self.refuses_without_change()
+
+    def test_missing_inbound_source_settings(self):
+        self.source_file().unlink(); self.refuses_without_change()
+
+    def test_service_owned_unrelated_config_is_not_allowed(self):
+        p = self.components['inbound']['config']/'unrelated.json'; p.write_bytes(b'fixture')
+        os.chown(p, 10001, 20001); p.chmod(0o400); self.refuses_without_change()
+
+    def test_scheduler_has_no_source_owner_exception(self):
+        p = self.components['api-scheduler']['config']/'source.json'; p.write_bytes(b'fixture')
+        os.chown(p, 10001, 20001); p.chmod(0o400); self.refuses_without_change()
+
+    def test_source_change_after_preflight_stops_before_runtime_replacement(self):
+        original = self.m.copy_candidate
+        def change(*args):
+            original(*args)
+            self.source_file().write_bytes(b'changed fixture source')
+        self.m.copy_candidate = change
+        with self.assertRaisesRegex(ValueError, 'Configuration changed'): self.run_upgrade()
+        self.assertFalse(self.calls)
+        for c in self.components.values():
+            paths = self.m.paths(c)
+            self.assertEqual(paths['node'].read_bytes(), OLD)
+            self.assertTrue(paths['attempt'].exists())
+            self.assertFalse(paths['receipt'].exists())
+        self.m.copy_candidate = original
         self.refuses_without_change()
 
     def test_tampered_candidate(self):
