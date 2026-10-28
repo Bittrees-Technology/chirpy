@@ -35,7 +35,9 @@ jobs:
       - name: Dependency security audit
         run: pnpm audit --audit-level=moderate
       - name: Cold Node runtime upgrade safeguards
-        run: sudo -n env GITHUB_ACTIONS=true python3 -I scripts/test-mail-node-runtime-upgrade.py
+        run: |
+          sudo -n env GITHUB_ACTIONS=true python3 -I scripts/test-mail-node-runtime-upgrade.py
+          sudo -n env GITHUB_ACTIONS=true python3 -I scripts/test-alert-node-runtime-upgrade.py
       - name: Isolated inbound worker runtime
         env:
           CHAT_TEST_SYSTEMD_INSTALL: '1'
